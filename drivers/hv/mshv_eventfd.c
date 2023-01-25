@@ -214,6 +214,7 @@ irqfd_wakeup(wait_queue_entry_t *wait, unsigned int mode,
 	int idx;
 	unsigned int seq;
 	struct mshv_partition *partition = irqfd->partition;
+	int ret = 0;
 
 	if (flags & POLLIN) {
 		u64 cnt;
@@ -227,6 +228,8 @@ irqfd_wakeup(wait_queue_entry_t *wait, unsigned int mode,
 		/* An event has been signaled, inject an interrupt */
 		irqfd_inject(irqfd);
 		srcu_read_unlock(&partition->irq_srcu, idx);
+
+		ret = 1;
 	}
 
 	if (flags & POLLHUP) {
@@ -250,7 +253,7 @@ irqfd_wakeup(wait_queue_entry_t *wait, unsigned int mode,
 		spin_unlock_irqrestore(&partition->irqfds.lock, flags);
 	}
 
-	return 0;
+	return ret;
 }
 
 /* Must be called under irqfds.lock */
@@ -281,7 +284,7 @@ irqfd_ptable_queue_proc(struct file *file, wait_queue_head_t *wqh,
 		container_of(pt, struct mshv_kernel_irqfd, pt);
 
 	irqfd->wqh = wqh;
-	add_wait_queue(wqh, &irqfd->wait);
+	add_wait_queue_priority(wqh, &irqfd->wait);
 }
 
 static int
