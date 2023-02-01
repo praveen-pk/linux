@@ -140,11 +140,54 @@ stages:
 
         # Allow agent to run docker operations without sudo
         sudo chmod a+rw /run/docker.sock
+      displayName: 'Prepare Docker'
+
+    - bash: |
+        set -e
+        set -x
+
+        IMG_HASH=$(docker inspect mcr.microsoft.com/cbl-mariner/base/core:2.0 --format '{{ .ID }}')
+        echo "##vso[task.setVariable variable=MARINER_IMG_ID]${IMG_HASH}"
+      displayName: 'Query Container Image'
+
+    - task: Cache@2
+      inputs:
+        key: '"docker-container" | "$(MARINER_IMG_ID)" | "$(Agent.OSArchitecture)"'
+        path: docker_cache
+        cacheHitVar: CONTAINER_CACHE_HIT
+      displayName: 'Cache Container Image'
+
+    - bash: |
+        set -e
+        set -x
+
+        cat docker_cache/mariner.tar | $(CONTAINER_RT) import --change 'CMD ["/bin/bash"]' - $(CONTAINER_IMAGE)
+      condition: eq(variables.CONTAINER_CACHE_HIT, 'true')
+      displayName: 'Restore Container Image'
+
+    - bash: |
+        set -e
+        set -x
 
         $(CONTAINER_RT) pull $(CONTAINER_IMAGE)
+      condition: ne(variables.CONTAINER_CACHE_HIT, 'true')
+      displayName: 'Pull Container Image'
+
+    - bash: |
+        set -e
+        set -x
+
         $(CONTAINER_RT) run -d -t --name $(CONTAINER_NAME) --volume $PWD:$(CONTAINER_VOL) --volume $(Pipeline.Workspace):$(CONTAINER_RESULT) $(CONTAINER_IMAGE)
         $(CONTAINER_RT) exec $(CONTAINER_NAME) $(CONTAINER_VOL)/pipelines/scripts/mariner-prepare
       displayName: 'Prepare Container'
+
+    - bash: |
+        set -e
+        set -x
+        mkdir -p docker_cache
+        $(CONTAINER_RT) export $(CONTAINER_NAME) > docker_cache/mariner.tar
+      condition: ne(variables.CONTAINER_CACHE_HIT, 'true')
+      displayName: 'Export Container'
 
     - bash: |
         set -e
@@ -209,7 +252,7 @@ stages:
         set -e
         set -x
         $(CONTAINER_RT) rm -f $(CONTAINER_IMAGE)
-      displayName: 'Cleanup container'
+      displayName: 'Cleanup Container'
 
   - job: Checkpatch
     timeoutInMinutes: 30
