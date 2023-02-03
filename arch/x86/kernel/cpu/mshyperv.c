@@ -439,6 +439,21 @@ int hv_get_hypervisor_version(union hv_hypervisor_version_info *info)
 }
 EXPORT_SYMBOL_GPL(hv_get_hypervisor_version);
 
+static void __init __maybe_unused hv_preset_lpj(void)
+{
+	unsigned long khz;
+	u64 lpj;
+
+	if (!x86_platform.calibrate_tsc)
+		return;
+
+	khz = x86_platform.calibrate_tsc();
+
+	lpj = ((u64)khz * 1000);
+	do_div(lpj, HZ);
+	preset_lpj = lpj;
+}
+
 static void __init ms_hyperv_init_platform(void)
 {
 	int hv_max_functions_eax;
@@ -645,6 +660,12 @@ static void __init ms_hyperv_init_platform(void)
 	/* Register Hyper-V specific clocksource */
 	hv_init_clocksource();
 	hv_vtl_init_platform();
+
+	/*
+	 * Preset lpj to make calibrate_delay a no-op, which is turn helps to
+	 * speed up secondary cores initialization.
+	 */
+	hv_preset_lpj();
 #endif
 	/*
 	 * TSC should be marked as unstable only after Hyper-V
