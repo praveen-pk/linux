@@ -392,4 +392,17 @@ struct hv_output_add_logical_processor {
 	struct hv_lp_startup_status startup_status;
 } __packed;
 
+/* HV_INPUT_GET_LOGICAL_PROCESSOR_RUN_TIME */
+struct hv_input_get_logical_processor_run_time {
+	__u32 lp_index;
+} __packed;
+
+/* HV_OUTPUT_GET_LOGICAL_PROCESSOR_RUN_TIME */
+struct hv_output_get_logical_processor_run_time {
+	__u64 global_time;
+	__u64 local_run_time;
+	__u64 rsvdz0;
+	__u64 hypervisor_time;
+} __packed;
+
 #endif /* _UAPI_HV_HVHDK_MINI_H */
