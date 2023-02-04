@@ -365,6 +365,17 @@ struct hv_output_add_logical_processor {
 	struct hv_lp_startup_status startup_status;
 } __packed;
 
+struct hv_input_get_logical_processor_run_time {
+	u32 lp_index;
+} __packed;
+
+struct hv_output_get_logical_processor_run_time { /* HV_OUTPUT_GET_LOGICAL_PROCESSOR_RUN_TIME */
+	u64 global_time;
+	u64 local_run_time;
+	u64 rsvdz0;
+	u64 hypervisor_time;
+} __packed;
+
 enum {	/* HV_SUBNODE_TYPE */
 	HV_SUBNODE_ANY		= 0,
 	HV_SUBNODE_SOCKET,

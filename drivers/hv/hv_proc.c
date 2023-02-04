@@ -214,3 +214,37 @@ int hv_call_create_vp(int node, u64 partition_id, u32 vp_index, u32 flags)
 	return ret;
 }
 EXPORT_SYMBOL_GPL(hv_call_create_vp);
+
+bool hv_lp_exists(u32 lp_index)
+{
+	struct hv_input_get_logical_processor_run_time *input;
+	struct hv_output_get_logical_processor_run_time *out_page;
+	unsigned long flags;
+	u64 status;
+
+	local_irq_save(flags);
+
+	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
+	out_page = *this_cpu_ptr(hyperv_pcpu_output_arg);
+
+	input->lp_index = lp_index;
+	status = hv_do_hypercall(HVCALL_GET_LOGICAL_PROCESSOR_RUN_TIME, input,
+			out_page);
+
+	local_irq_restore(flags);
+
+	/*
+	 * This method is called early in boot before adding the LPs.
+	 *
+	 * HV_STATUS_SUCCESS and HV_STATUS_INVALID_LP_INDEX are the only
+	 * expected return codes here. Anything else means the system is
+	 * in some sort of an indeterminate state and we can't say for sure
+	 * whether the LP is added or not.
+	 */
+	if (status != HV_STATUS_SUCCESS && status != HV_STATUS_INVALID_LP_INDEX) {
+		hv_status_err(status, "\n");
+		BUG();
+	}
+
+	return hv_result_to_errno(status);
+}
