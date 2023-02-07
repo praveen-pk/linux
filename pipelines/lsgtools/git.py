@@ -22,3 +22,16 @@ def is_merge_commit(commit_id):
         return True
 
     return False
+
+
+def checkout(ref):
+    cmd = ["git", "checkout", ref]
+    log.debug(" ".join(cmd))
+    result = subprocess.run(cmd, capture_output=True)
+    if result.returncode == 0:
+        return True
+
+    log.err(result.stdout.decode("ascii"))
+    log.err(result.stderr.decode("ascii"))
+    log.fatal(f"git fetch failed with exit code: {result.returncode}")
+    return False
