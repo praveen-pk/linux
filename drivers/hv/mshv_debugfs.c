@@ -17,6 +17,7 @@
 #include <hv/hvhdk.h>
 
 #include "mshv.h"
+#include "mshv_root.h"
 
 static struct dentry *mshv_debugfs;
 static struct dentry *mshv_debugfs_partition;
@@ -255,6 +256,24 @@ static int __init mshv_debugfs_hv_stats_create(struct dentry *parent)
 unmap_hv_stats:
 	mshv_hv_stats_unmap();
 	return err;
+}
+
+int mshv_debugfs_partition_create(struct mshv_partition *partition)
+{
+	struct dentry *id;
+
+	id = partition_debugfs_create(partition->id, mshv_debugfs_partition);
+	if (IS_ERR(id))
+		return PTR_ERR(id);
+
+	partition->debugfs_dentry = id;
+
+	return 0;
+}
+
+void mshv_debugfs_partition_remove(struct mshv_partition *partition)
+{
+	partition_debugfs_remove(partition->id, partition->debugfs_dentry);
 }
 
 int __init mshv_debugfs_init(void)
