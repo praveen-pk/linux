@@ -39,7 +39,10 @@ struct mshv_vp {
 		unsigned int kicked_by_hv;
 		wait_queue_head_t suspend_queue;
 	} run;
+#ifdef CONFIG_DEBUG_FS
+	struct dentry *debugfs_dentry;
 	u64 *stats;
+#endif
 };
 
 struct mshv_mem_region {
@@ -88,6 +91,7 @@ struct mshv_partition {
 	u64 isolation_type;
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *debugfs_dentry;
+	struct dentry *debugfs_vp_dentry;
 #endif
 };
 
@@ -251,6 +255,8 @@ extern void __exit mshv_debugfs_exit(void);
 
 extern int mshv_debugfs_partition_create(struct mshv_partition *partition);
 extern void mshv_debugfs_partition_remove(struct mshv_partition *partition);
+extern int mshv_debugfs_vp_create(struct mshv_vp *vp);
+extern void mshv_debugfs_vp_remove(struct mshv_vp *vp);
 #else
 static inline int __init mshv_debugfs_init(void)
 {
@@ -263,6 +269,11 @@ static inline int mshv_debugfs_partition_create(struct mshv_partition *partition
 	return 0;
 }
 static inline void mshv_debugfs_partition_remove(struct mshv_partition *partition) { }
+static inline int mshv_debugfs_vp_create(struct mshv_vp *vp)
+{
+	return 0;
+}
+static inline void mshv_debugfs_vp_remove(struct mshv_vp *vp) { }
 #endif
 
 #endif /* _MSHV_ROOT_H_ */
