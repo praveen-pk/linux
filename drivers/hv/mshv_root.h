@@ -39,6 +39,7 @@ struct mshv_vp {
 		unsigned int kicked_by_hv;
 		wait_queue_head_t suspend_queue;
 	} run;
+	u64 *stats;
 };
 
 struct mshv_mem_region {

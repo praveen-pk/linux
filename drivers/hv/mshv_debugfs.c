@@ -22,6 +22,303 @@
 static struct dentry *mshv_debugfs;
 static struct dentry *mshv_debugfs_partition;
 
+static int vp_stats_show(struct seq_file *m, void *v)
+{
+	const u64 *stats = m->private;
+
+#define VP_SEQ_PRINTF(cnt)		\
+	seq_printf(m, "%-40s: %llu\n", __stringify(cnt), stats[Vp##cnt])
+
+	VP_SEQ_PRINTF(TotalRunTime);
+	VP_SEQ_PRINTF(HypervisorRunTime);
+	VP_SEQ_PRINTF(RemoteNodeRunTime);
+	VP_SEQ_PRINTF(NormalizedRunTime);
+	VP_SEQ_PRINTF(IdealCpu);
+	VP_SEQ_PRINTF(HypercallsCount);
+	VP_SEQ_PRINTF(HypercallsTime);
+	VP_SEQ_PRINTF(PageInvalidationsCount);
+	VP_SEQ_PRINTF(PageInvalidationsTime);
+	VP_SEQ_PRINTF(ControlRegisterAccessesCount);
+	VP_SEQ_PRINTF(ControlRegisterAccessesTime);
+	VP_SEQ_PRINTF(IoInstructionsCount);
+	VP_SEQ_PRINTF(IoInstructionsTime);
+	VP_SEQ_PRINTF(HltInstructionsCount);
+	VP_SEQ_PRINTF(HltInstructionsTime);
+	VP_SEQ_PRINTF(MwaitInstructionsCount);
+	VP_SEQ_PRINTF(MwaitInstructionsTime);
+	VP_SEQ_PRINTF(CpuidInstructionsCount);
+	VP_SEQ_PRINTF(CpuidInstructionsTime);
+	VP_SEQ_PRINTF(MsrAccessesCount);
+	VP_SEQ_PRINTF(MsrAccessesTime);
+	VP_SEQ_PRINTF(OtherInterceptsCount);
+	VP_SEQ_PRINTF(OtherInterceptsTime);
+	VP_SEQ_PRINTF(ExternalInterruptsCount);
+	VP_SEQ_PRINTF(ExternalInterruptsTime);
+	VP_SEQ_PRINTF(PendingInterruptsCount);
+	VP_SEQ_PRINTF(PendingInterruptsTime);
+	VP_SEQ_PRINTF(EmulatedInstructionsCount);
+	VP_SEQ_PRINTF(EmulatedInstructionsTime);
+	VP_SEQ_PRINTF(DebugRegisterAccessesCount);
+	VP_SEQ_PRINTF(DebugRegisterAccessesTime);
+	VP_SEQ_PRINTF(PageFaultInterceptsCount);
+	VP_SEQ_PRINTF(PageFaultInterceptsTime);
+	VP_SEQ_PRINTF(GuestPageTableMaps);
+	VP_SEQ_PRINTF(LargePageTlbFills);
+	VP_SEQ_PRINTF(SmallPageTlbFills);
+	VP_SEQ_PRINTF(ReflectedGuestPageFaults);
+	VP_SEQ_PRINTF(ApicMmioAccesses);
+	VP_SEQ_PRINTF(IoInterceptMessages);
+	VP_SEQ_PRINTF(MemoryInterceptMessages);
+	VP_SEQ_PRINTF(ApicEoiAccesses);
+	VP_SEQ_PRINTF(OtherMessages);
+	VP_SEQ_PRINTF(PageTableAllocations);
+	VP_SEQ_PRINTF(LogicalProcessorMigrations);
+	VP_SEQ_PRINTF(AddressSpaceEvictions);
+	VP_SEQ_PRINTF(AddressSpaceSwitches);
+	VP_SEQ_PRINTF(AddressDomainFlushes);
+	VP_SEQ_PRINTF(AddressSpaceFlushes);
+	VP_SEQ_PRINTF(GlobalGvaRangeFlushes);
+	VP_SEQ_PRINTF(LocalGvaRangeFlushes);
+	VP_SEQ_PRINTF(PageTableEvictions);
+	VP_SEQ_PRINTF(PageTableReclamations);
+	VP_SEQ_PRINTF(PageTableResets);
+	VP_SEQ_PRINTF(PageTableValidations);
+	VP_SEQ_PRINTF(ApicTprAccesses);
+	VP_SEQ_PRINTF(PageTableWriteIntercepts);
+	VP_SEQ_PRINTF(SyntheticInterrupts);
+	VP_SEQ_PRINTF(VirtualInterrupts);
+	VP_SEQ_PRINTF(ApicIpisSent);
+	VP_SEQ_PRINTF(ApicSelfIpisSent);
+	VP_SEQ_PRINTF(GpaSpaceHypercalls);
+	VP_SEQ_PRINTF(LogicalProcessorHypercalls);
+	VP_SEQ_PRINTF(LongSpinWaitHypercalls);
+	VP_SEQ_PRINTF(OtherHypercalls);
+	VP_SEQ_PRINTF(SyntheticInterruptHypercalls);
+	VP_SEQ_PRINTF(VirtualInterruptHypercalls);
+	VP_SEQ_PRINTF(VirtualMmuHypercalls);
+	VP_SEQ_PRINTF(VirtualProcessorHypercalls);
+	VP_SEQ_PRINTF(HardwareInterrupts);
+	VP_SEQ_PRINTF(NestedPageFaultInterceptsCount);
+	VP_SEQ_PRINTF(NestedPageFaultInterceptsTime);
+	VP_SEQ_PRINTF(PageScans);
+	VP_SEQ_PRINTF(LogicalProcessorDispatches);
+	VP_SEQ_PRINTF(WaitingForCpuTime);
+	VP_SEQ_PRINTF(ExtendedHypercalls);
+	VP_SEQ_PRINTF(ExtendedHypercallInterceptMessages);
+	VP_SEQ_PRINTF(MbecNestedPageTableSwitches);
+	VP_SEQ_PRINTF(OtherReflectedGuestExceptions);
+	VP_SEQ_PRINTF(GlobalIoTlbFlushes);
+	VP_SEQ_PRINTF(GlobalIoTlbFlushCost);
+	VP_SEQ_PRINTF(LocalIoTlbFlushes);
+	VP_SEQ_PRINTF(LocalIoTlbFlushCost);
+	VP_SEQ_PRINTF(HypercallsForwardedCount);
+	VP_SEQ_PRINTF(HypercallsForwardingTime);
+	VP_SEQ_PRINTF(PageInvalidationsForwardedCount);
+	VP_SEQ_PRINTF(PageInvalidationsForwardingTime);
+	VP_SEQ_PRINTF(ControlRegisterAccessesForwardedCount);
+	VP_SEQ_PRINTF(ControlRegisterAccessesForwardingTime);
+	VP_SEQ_PRINTF(IoInstructionsForwardedCount);
+	VP_SEQ_PRINTF(IoInstructionsForwardingTime);
+	VP_SEQ_PRINTF(HltInstructionsForwardedCount);
+	VP_SEQ_PRINTF(HltInstructionsForwardingTime);
+	VP_SEQ_PRINTF(MwaitInstructionsForwardedCount);
+	VP_SEQ_PRINTF(MwaitInstructionsForwardingTime);
+	VP_SEQ_PRINTF(CpuidInstructionsForwardedCount);
+	VP_SEQ_PRINTF(CpuidInstructionsForwardingTime);
+	VP_SEQ_PRINTF(MsrAccessesForwardedCount);
+	VP_SEQ_PRINTF(MsrAccessesForwardingTime);
+	VP_SEQ_PRINTF(OtherInterceptsForwardedCount);
+	VP_SEQ_PRINTF(OtherInterceptsForwardingTime);
+	VP_SEQ_PRINTF(ExternalInterruptsForwardedCount);
+	VP_SEQ_PRINTF(ExternalInterruptsForwardingTime);
+	VP_SEQ_PRINTF(PendingInterruptsForwardedCount);
+	VP_SEQ_PRINTF(PendingInterruptsForwardingTime);
+	VP_SEQ_PRINTF(EmulatedInstructionsForwardedCount);
+	VP_SEQ_PRINTF(EmulatedInstructionsForwardingTime);
+	VP_SEQ_PRINTF(DebugRegisterAccessesForwardedCount);
+	VP_SEQ_PRINTF(DebugRegisterAccessesForwardingTime);
+	VP_SEQ_PRINTF(PageFaultInterceptsForwardedCount);
+	VP_SEQ_PRINTF(PageFaultInterceptsForwardingTime);
+	VP_SEQ_PRINTF(VmclearEmulationCount);
+	VP_SEQ_PRINTF(VmclearEmulationTime);
+	VP_SEQ_PRINTF(VmptrldEmulationCount);
+	VP_SEQ_PRINTF(VmptrldEmulationTime);
+	VP_SEQ_PRINTF(VmptrstEmulationCount);
+	VP_SEQ_PRINTF(VmptrstEmulationTime);
+	VP_SEQ_PRINTF(VmreadEmulationCount);
+	VP_SEQ_PRINTF(VmreadEmulationTime);
+	VP_SEQ_PRINTF(VmwriteEmulationCount);
+	VP_SEQ_PRINTF(VmwriteEmulationTime);
+	VP_SEQ_PRINTF(VmxoffEmulationCount);
+	VP_SEQ_PRINTF(VmxoffEmulationTime);
+	VP_SEQ_PRINTF(VmxonEmulationCount);
+	VP_SEQ_PRINTF(VmxonEmulationTime);
+	VP_SEQ_PRINTF(NestedVMEntriesCount);
+	VP_SEQ_PRINTF(NestedVMEntriesTime);
+	VP_SEQ_PRINTF(NestedSLATSoftPageFaultsCount);
+	VP_SEQ_PRINTF(NestedSLATSoftPageFaultsTime);
+	VP_SEQ_PRINTF(NestedSLATHardPageFaultsCount);
+	VP_SEQ_PRINTF(NestedSLATHardPageFaultsTime);
+	VP_SEQ_PRINTF(InvEptAllContextEmulationCount);
+	VP_SEQ_PRINTF(InvEptAllContextEmulationTime);
+	VP_SEQ_PRINTF(InvEptSingleContextEmulationCount);
+	VP_SEQ_PRINTF(InvEptSingleContextEmulationTime);
+	VP_SEQ_PRINTF(InvVpidAllContextEmulationCount);
+	VP_SEQ_PRINTF(InvVpidAllContextEmulationTime);
+	VP_SEQ_PRINTF(InvVpidSingleContextEmulationCount);
+	VP_SEQ_PRINTF(InvVpidSingleContextEmulationTime);
+	VP_SEQ_PRINTF(InvVpidSingleAddressEmulationCount);
+	VP_SEQ_PRINTF(InvVpidSingleAddressEmulationTime);
+	VP_SEQ_PRINTF(NestedTlbPageTableReclamations);
+	VP_SEQ_PRINTF(NestedTlbPageTableEvictions);
+	VP_SEQ_PRINTF(FlushGuestPhysicalAddressSpaceHypercalls);
+	VP_SEQ_PRINTF(FlushGuestPhysicalAddressListHypercalls);
+	VP_SEQ_PRINTF(PostedInterruptNotifications);
+	VP_SEQ_PRINTF(PostedInterruptScans);
+	VP_SEQ_PRINTF(TotalCoreRunTime);
+	VP_SEQ_PRINTF(MaximumRunTime);
+	VP_SEQ_PRINTF(HwpRequestContextSwitches);
+	VP_SEQ_PRINTF(WaitingForCpuTimeBucket0);
+	VP_SEQ_PRINTF(WaitingForCpuTimeBucket1);
+	VP_SEQ_PRINTF(WaitingForCpuTimeBucket2);
+	VP_SEQ_PRINTF(WaitingForCpuTimeBucket3);
+	VP_SEQ_PRINTF(WaitingForCpuTimeBucket4);
+	VP_SEQ_PRINTF(WaitingForCpuTimeBucket5);
+	VP_SEQ_PRINTF(WaitingForCpuTimeBucket6);
+	VP_SEQ_PRINTF(VmloadEmulationCount);
+	VP_SEQ_PRINTF(VmloadEmulationTime);
+	VP_SEQ_PRINTF(VmsaveEmulationCount);
+	VP_SEQ_PRINTF(VmsaveEmulationTime);
+	VP_SEQ_PRINTF(GifInstructionEmulationCount);
+	VP_SEQ_PRINTF(GifInstructionEmulationTime);
+	VP_SEQ_PRINTF(EmulatedErrataSvmInstructions);
+	VP_SEQ_PRINTF(Placeholder1);
+	VP_SEQ_PRINTF(Placeholder2);
+	VP_SEQ_PRINTF(Placeholder3);
+	VP_SEQ_PRINTF(Placeholder4);
+	VP_SEQ_PRINTF(Placeholder5);
+	VP_SEQ_PRINTF(Placeholder6);
+	VP_SEQ_PRINTF(Placeholder7);
+	VP_SEQ_PRINTF(Placeholder8);
+	VP_SEQ_PRINTF(Placeholder9);
+	VP_SEQ_PRINTF(Placeholder10);
+	VP_SEQ_PRINTF(SchedulingPriority);
+	VP_SEQ_PRINTF(RdpmcInstructionsCount);
+	VP_SEQ_PRINTF(RdpmcInstructionsTime);
+	VP_SEQ_PRINTF(PerfmonPmuMsrAccessesCount);
+	VP_SEQ_PRINTF(PerfmonLbrMsrAccessesCount);
+	VP_SEQ_PRINTF(PerfmonIptMsrAccessesCount);
+	VP_SEQ_PRINTF(PerfmonInterruptCount);
+	VP_SEQ_PRINTF(Vtl1DispatchCount);
+	VP_SEQ_PRINTF(Vtl2DispatchCount);
+	VP_SEQ_PRINTF(Vtl2DispatchBucket0);
+	VP_SEQ_PRINTF(Vtl2DispatchBucket1);
+	VP_SEQ_PRINTF(Vtl2DispatchBucket2);
+	VP_SEQ_PRINTF(Vtl2DispatchBucket3);
+	VP_SEQ_PRINTF(Vtl2DispatchBucket4);
+	VP_SEQ_PRINTF(Vtl2DispatchBucket5);
+	VP_SEQ_PRINTF(Vtl2DispatchBucket6);
+	VP_SEQ_PRINTF(Vtl1RunTime);
+	VP_SEQ_PRINTF(Vtl2RunTime);
+	VP_SEQ_PRINTF(IommuHypercalls);
+	VP_SEQ_PRINTF(CpuGroupHypercalls);
+	VP_SEQ_PRINTF(VsmHypercalls);
+	VP_SEQ_PRINTF(EventLogHypercalls);
+	VP_SEQ_PRINTF(DeviceDomainHypercalls);
+	VP_SEQ_PRINTF(DepositHypercalls);
+	VP_SEQ_PRINTF(SvmHypercalls);
+
+#undef VP_SEQ_PRINTF
+
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(vp_stats);
+
+static void mshv_vp_stats_unmap(u64 partition_id, u32 vp_index)
+{
+	union hv_stats_object_identity identity = {
+		.vp.partition_id = partition_id,
+		.vp.vp_index = vp_index,
+	};
+	int err;
+
+	err = hv_call_unmap_stat_page(HV_STATS_OBJECT_VP, &identity);
+	if (err)
+		pr_err("%s: failed to unmap partition %llu vp %u stats, err: %d\n",
+		       __func__, partition_id, vp_index, err);
+}
+
+static void *mshv_vp_stats_map(u64 partition_id, u32 vp_index)
+{
+	union hv_stats_object_identity identity = {
+		.vp.partition_id = partition_id,
+		.vp.vp_index = vp_index,
+	};
+	void *stats;
+	int err;
+
+	err = hv_call_map_stat_page(HV_STATS_OBJECT_VP, &identity, &stats);
+	if (err) {
+		pr_err("%s: failed to map partition %llu vp %u stats, err: %d\n",
+		       __func__, partition_id, vp_index, err);
+		return ERR_PTR(err);
+	}
+	return stats;
+}
+
+static void *vp_debugfs_stats_create(u64 partition_id, u32 vp_index,
+				     struct dentry *parent)
+{
+	struct dentry *dentry;
+	void *stats;
+
+	stats = mshv_vp_stats_map(partition_id, vp_index);
+	if (IS_ERR(stats))
+		return stats;
+
+	dentry = debugfs_create_file("stats", 0400, parent,
+				     stats, &vp_stats_fops);
+	if (IS_ERR(dentry)) {
+		mshv_vp_stats_unmap(partition_id, vp_index);
+		return dentry;
+	}
+	return stats;
+}
+
+static void vp_debugfs_remove(u64 partition_id, u32 vp_index,
+			      struct dentry *vp_idx_dir)
+{
+	debugfs_remove_recursive(vp_idx_dir);
+	mshv_vp_stats_unmap(partition_id, vp_index);
+}
+
+static void *vp_debugfs_create(u64 partition_id, u32 vp_index,
+			       struct dentry *parent)
+{
+	struct dentry *vp_idx_dir;
+	char vp_idx_str[11]; /* sizeof(u32) + 1 */
+	u64 *stats;
+	int err;
+
+	sprintf(vp_idx_str, "%u", vp_index);
+
+	vp_idx_dir = debugfs_create_dir(vp_idx_str, parent);
+	if (IS_ERR(vp_idx_dir))
+		return vp_idx_dir;
+
+	stats = vp_debugfs_stats_create(partition_id, vp_index, vp_idx_dir);
+	if (IS_ERR(stats)) {
+		err = PTR_ERR(stats);
+		goto remove_debugfs_vp_idx;
+	}
+
+	return vp_idx_dir;
+
+remove_debugfs_vp_idx:
+	debugfs_remove_recursive(vp_idx_dir);
+	return ERR_PTR(err);
+}
+
 static int partition_stats_show(struct seq_file *m, void *v)
 {
 	const u64 *stats = m->private;
@@ -132,10 +429,11 @@ static void partition_debugfs_remove(u64 partition_id, struct dentry *dentry)
 }
 
 static struct dentry *partition_debugfs_create(u64 partition_id,
+					       struct dentry **vp_dir_ptr,
 					       struct dentry *parent)
 {
 	char part_id_str[21]; /* sizeof(u64) + 1 */
-	struct dentry *part_id_dir;
+	struct dentry *part_id_dir, *vp_dir;
 	int err;
 
 	sprintf(part_id_str, "%llu", partition_id);
@@ -144,9 +442,18 @@ static struct dentry *partition_debugfs_create(u64 partition_id,
 	if (IS_ERR(part_id_dir))
 		return part_id_dir;
 
+	vp_dir = debugfs_create_dir("vp", part_id_dir);
+	if (IS_ERR(vp_dir)) {
+		err = PTR_ERR(vp_dir);
+		goto remove_debugfs_partition_id;
+	}
+
 	err = mshv_debugfs_partition_stats_create(partition_id, part_id_dir);
 	if (err)
 		goto remove_debugfs_partition_id;
+
+	if (vp_dir_ptr)
+		*vp_dir_ptr = vp_dir;
 
 	return part_id_dir;
 
@@ -157,13 +464,18 @@ remove_debugfs_partition_id:
 
 static void mshv_debugfs_root_partition_remove(void)
 {
+	int idx;
+
+	for_each_present_cpu(idx)
+		vp_debugfs_remove(hv_current_partition_id, idx, NULL);
+
 	partition_debugfs_remove(hv_current_partition_id, NULL);
 }
 
 static int __init mshv_debugfs_root_partition_create(void)
 {
-	struct dentry *part_id_dir;
-	int err;
+	struct dentry *part_id_dir, *vp_dir;
+	int err, idx;
 
 	mshv_debugfs_partition = debugfs_create_dir("partition",
 						     mshv_debugfs);
@@ -171,14 +483,29 @@ static int __init mshv_debugfs_root_partition_create(void)
 		return PTR_ERR(mshv_debugfs_partition);
 
 	part_id_dir = partition_debugfs_create(hv_current_partition_id,
+					       &vp_dir,
 					       mshv_debugfs_partition);
 	if (IS_ERR(part_id_dir)) {
 		err = PTR_ERR(part_id_dir);
 		goto remove_debugfs_partition;
 	}
 
+	for_each_present_cpu(idx) {
+		struct dentry *d;
+
+		d = vp_debugfs_create(hv_current_partition_id, idx, vp_dir);
+		if (IS_ERR(d)) {
+			err = PTR_ERR(d);
+			goto remove_debugfs_partition_vp;
+		}
+	}
+
 	return 0;
 
+remove_debugfs_partition_vp:
+	for (idx -= 1; idx; idx--)
+		vp_debugfs_remove(hv_current_partition_id, idx, NULL);
+	partition_debugfs_remove(hv_current_partition_id, NULL);
 remove_debugfs_partition:
 	debugfs_remove_recursive(mshv_debugfs_partition);
 	return err;
@@ -269,6 +596,7 @@ int mshv_debugfs_partition_create(struct mshv_partition *partition)
 	struct dentry *part_id_dir;
 
 	part_id_dir = partition_debugfs_create(partition->id,
+					       NULL,
 					       mshv_debugfs_partition);
 	if (IS_ERR(part_id_dir))
 		return PTR_ERR(part_id_dir);
