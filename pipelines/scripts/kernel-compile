@@ -3,6 +3,26 @@
 set -x
 set -e
 
+export_modules=""
+
+# Get the options
+while getopts "e:h" option; do
+   case $option in
+      e) # set export_module flag to produce kernel module in given path
+         export_modules="$OPTARG";;
+      h) # print help menu for kernel-compile script
+	 set +x
+         echo "-h: Print the help menu with all options"
+         echo "-e: Pass this flag to save kernel modules.It will create folder path passed as argument and store all the modules in it.For example, ./kernel-compile -e /mnt/kernel_modules <FLAVOR>"
+         exit;;
+     \?) # Invalid option
+         echo "Error: Invalid option. Please use -h to print the option menu."
+         exit 1;;
+   esac
+done
+
+shift $((OPTIND-1))
+
 FLAVOR=$1
 
 SOURCE_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
@@ -45,7 +65,14 @@ case "${FLAVOR}" in
 esac
 
 make -j"$(nproc)" ARCH="${ARCH}" W=1
+
 make -j"$(nproc)" ARCH="${ARCH}" W=1 modules
+
+if [ "$export_modules" != "" ]; then
+	mkdir -p $export_modules
+	make -j"$(nproc)" ARCH="${ARCH}" W=1 modules_install INSTALL_MOD_PATH=$export_modules
+fi
 
 make -j"$(nproc)" ARCH="${ARCH}" -C tools/perf PYTHON=python3 all
 make -j"$(nproc)" ARCH="${ARCH}" -C tools/bpf/bpftool
+
