@@ -13,6 +13,7 @@ CFLAGS_hv_balloon.o = -I$(src)
 mshv-y				+= mshv_main.o hv_call.o
 mshv_root-y			:= mshv_root_main.o mshv_synic.o mshv_portid_table.o \
 				   mshv_eventfd.o mshv_msi.o vfio.o
+mshv_root-$(CONFIG_DEBUG_FS)	+= mshv_debugfs.o
 
 obj-$(CONFIG_MSHV_XFER_TO_GUEST_WORK) += xfer_to_guest.o
 hv_vmbus-y := vmbus_drv.o \
