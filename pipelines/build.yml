@@ -10,10 +10,10 @@ parameters:
     type: boolean
     default: False
     displayName: Run Guest Network Perf Tests
-  - name: run_generic_fio_tests
+  - name: run_storage_perf_tests
     type: boolean
     default: False
-    displayName: Run Guest FIO Test
+    displayName: Run Guest Storage Perf(FIO) Tests
   - name: run_stress_ng_tests
     type: boolean
     default: False
@@ -414,7 +414,7 @@ stages:
         azure_vm_size: ${{ parameters.azure_vm_size }}
         run_functional_tests: ${{ parameters.run_functional_tests }}
         run_network_perf_tests: ${{ parameters.run_network_perf_tests }}
-        run_generic_fio_tests: ${{ parameters.run_generic_fio_tests }}
+        run_storage_perf_tests: ${{ parameters.run_storage_perf_tests }}
         run_stress_ng_tests: ${{ parameters.run_stress_ng_tests }}
         run_ch_community_tests: ${{ parameters.run_ch_community_tests }}
         run_mshv_tests: ${{ parameters.run_mshv_tests }}
