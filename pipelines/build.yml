@@ -188,7 +188,6 @@ stages:
         echo "Preparing kernel modules artifact"
 
         if [ -d $(Pipeline.Workspace)/kernel_modules_install ];then
-          sudo apt install tar -y
           sudo mv $(Pipeline.Workspace)/kernel_modules_install/lib/modules/$kernel_version .
           tar_filename=kernel_modules_"$kernel_version".tar.gz
           sudo tar cvzf $tar_filename $kernel_version
