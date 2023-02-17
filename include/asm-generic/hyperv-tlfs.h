@@ -183,6 +183,8 @@ union hv_reference_tsc_msr {
 #define HVCALL_POST_DEBUG_DATA			0x0069
 #define HVCALL_RETRIEVE_DEBUG_DATA		0x006a
 #define HVCALL_RESET_DEBUG_SESSION		0x006b
+#define HVCALL_MAP_STATS_PAGE			0x006c
+#define HVCALL_UNMAP_STATS_PAGE			0x006d
 #define HVCALL_SET_SYSTEM_PROPERTY		0x006f
 #define HVCALL_ADD_LOGICAL_PROCESSOR		0x0076
 #define HVCALL_GET_SYSTEM_PROPERTY		0x007b
@@ -1557,5 +1559,55 @@ struct hv_async_completion_message_payload {
 	u32 completion_count;
 	u64 sub_status;
 } __packed;
+
+enum hv_stats_object_type {
+	HV_STATS_OBJECT_HYPERVISOR		= 0x00000001,
+	HV_STATS_OBJECT_LOGICAL_PROCESSOR	= 0x00000002,
+	HV_STATS_OBJECT_PARTITION		= 0x00010001,
+	HV_STATS_OBJECT_VP			= 0x00010002
+};
+
+union hv_stats_object_identity {
+	/* hv_stats_hypervisor */
+	struct {
+		u8 reserved[16];
+	} hv;
+
+	/* hv_stats_logical_processor */
+	struct {
+		u32 lp_index;
+		u8 reserved[12];
+	} lp;
+
+	/* hv_stats_partition */
+	struct {
+		u64 partition_id;
+		u8  reserved[4];
+		u16 flags;
+		u8  reserved1[2];
+	} partition;
+
+	/* hv_stats_vp */
+	struct {
+		u64 partition_id;
+		u32 vp_index;
+		u16 flags;
+		u8  reserved[2];
+	} vp;
+};
+
+struct hv_input_map_stats_page {
+	enum hv_stats_object_type type;
+	union hv_stats_object_identity identity;
+};
+
+struct hv_output_map_stats_page {
+	u64 map_location;
+};
+
+struct hv_input_unmap_stats_page {
+	enum hv_stats_object_type type;
+	union hv_stats_object_identity identity;
+};
 
 #endif

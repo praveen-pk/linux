@@ -241,4 +241,15 @@ static inline bool mshv_partition_isolation_type_snp(struct mshv_partition *part
 
 extern struct mshv mshv;
 
+#ifdef CONFIG_DEBUG_FS
+extern int __init mshv_debugfs_init(void);
+extern void __exit mshv_debugfs_exit(void);
+#else
+static inline int __init mshv_debugfs_init(void)
+{
+	return 0;
+}
+static inline void __exit mshv_debugfs_exit(void) { }
+#endif
+
 #endif /* _MSHV_ROOT_H_ */

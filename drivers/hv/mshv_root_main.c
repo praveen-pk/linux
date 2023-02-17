@@ -2093,6 +2093,8 @@ int __init mshv_root_init(void)
 
 	mshv_vfio_ops_init();
 
+	mshv_debugfs_init();
+
 	mshv_set_create_partition_func(__mshv_ioctl_create_partition);
 
 	return 0;
@@ -2108,6 +2110,8 @@ out:
 void __exit mshv_root_exit(void)
 {
 	mshv_set_create_partition_func(NULL);
+
+	mshv_debugfs_exit();
 
 	mshv_irqfd_wq_cleanup();
 

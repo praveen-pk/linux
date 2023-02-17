@@ -1193,3 +1193,63 @@ int hv_call_get_vp_cpuid_values(u32 vp_index,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(hv_call_get_vp_cpuid_values);
+
+int hv_call_map_stat_page(enum hv_stats_object_type type,
+		const union hv_stats_object_identity *identity,
+		void **addr)
+{
+	unsigned long flags;
+	struct hv_input_map_stats_page *input;
+	struct hv_output_map_stats_page *output;
+	u64 status, pfn;
+
+	local_irq_save(flags);
+	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
+	output = *this_cpu_ptr(hyperv_pcpu_output_arg);
+
+	memset(input, 0, sizeof(*input));
+	input->type = type;
+	input->identity = *identity;
+
+	status = hv_do_hypercall(HVCALL_MAP_STATS_PAGE, input, output);
+
+	pfn = output->map_location;
+
+	local_irq_restore(flags);
+
+	if (!hv_result_success(status)) {
+		pr_err("%s: %s\n", __func__, hv_status_to_string(status));
+		return hv_status_to_errno(status);
+	}
+
+	*addr = page_address(pfn_to_page(pfn));
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(hv_call_map_stat_page);
+
+int hv_call_unmap_stat_page(enum hv_stats_object_type type,
+			    const union hv_stats_object_identity *identity)
+{
+	unsigned long flags;
+	struct hv_input_unmap_stats_page *input;
+	u64 status;
+
+	local_irq_save(flags);
+	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
+
+	memset(input, 0, sizeof(*input));
+	input->type = type;
+	input->identity = *identity;
+
+	status = hv_do_hypercall(HVCALL_UNMAP_STATS_PAGE, input, NULL);
+	local_irq_restore(flags);
+
+	if (!hv_result_success(status)) {
+		pr_err("%s: %s\n", __func__, hv_status_to_string(status));
+		return hv_status_to_errno(status);
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(hv_call_unmap_stat_page);
