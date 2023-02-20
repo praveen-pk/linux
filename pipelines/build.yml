@@ -21,11 +21,15 @@ parameters:
   - name: run_ch_community_tests
     type: boolean
     default: False
-    displayName: Run CH community tests on Dom0
+    displayName: Run CH community Tests
+  - name: run_ch_perf_tests
+    type: boolean
+    default: False
+    displayName: Run CH Perf Tests
   - name: run_mshv_tests
     type: boolean
     default: True
-    displayName: Run MSHV tests
+    displayName: Run MSHV Tests
 
 resources:
   repositories:
@@ -36,6 +40,7 @@ resources:
     - repository: lisa
       type: git
       name: LSG/lsg-lisa
+      ref: refs/tags/virtstack/stable
 
 trigger:
   batch: false
@@ -417,6 +422,7 @@ stages:
         run_storage_perf_tests: ${{ parameters.run_storage_perf_tests }}
         run_stress_ng_tests: ${{ parameters.run_stress_ng_tests }}
         run_ch_community_tests: ${{ parameters.run_ch_community_tests }}
+        run_ch_perf_tests: ${{ parameters.run_ch_perf_tests }}
         run_mshv_tests: ${{ parameters.run_mshv_tests }}
         kernel_change_needed: True
         kernel_params: '{\"kernel_source\":\"$(kernel_source)\",\"kernel_artifact\":\"$(kernel_artifact)\",\"kernel_pattern\":\"$(kernel_pattern)\",\"modules_pattern\":\"$(modules_pattern)\"}'
