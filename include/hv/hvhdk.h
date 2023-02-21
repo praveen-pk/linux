@@ -2,7 +2,7 @@
 #ifndef _HV_HVHDK_H
 #define _HV_HVHDK_H
 
-enum hv_stats_hypervisor_counters {
+enum hv_stats_hypervisor_counters {					/* HV_HYPERVISOR_COUNTER */
 	HvLogicalProcessors         =  1,
 	HvPartitions                =  2,
 	HvTotalPages                =  3,
