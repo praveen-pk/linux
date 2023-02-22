@@ -38,6 +38,8 @@ static int hv_stats_show(struct seq_file *m, void *v)
 	HV_SEQ_PRINTF(NonEssentialPagesForDump);
 	HV_SEQ_PRINTF(SubsumedPages);
 
+#undef HV_SEQ_PRINTF
+
 	return 0;
 }
 DEFINE_SHOW_ATTRIBUTE(hv_stats);
