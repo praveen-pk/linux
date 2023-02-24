@@ -20,7 +20,7 @@ parameters:
     displayName: Run Stressng on Guests
   - name: run_ch_community_tests
     type: boolean
-    default: False
+    default: True
     displayName: Run CH community Tests
   - name: run_ch_perf_tests
     type: boolean
@@ -411,6 +411,13 @@ stages:
       value: "vmlinuz-*"
     - name: modules_pattern
       value: "kernel_modules_*"
+    - name: ch_integration_tests
+      # Should be of comma separated strings format
+      ${{ if eq(variables['Build.Reason'], 'Manual') }}:
+        value: ""
+      ${{ else }}:
+        # Following are VM life cycle tests from ch integration tests
+        value: "test_api_create_boot,test_api_pause_resume,test_api_shutdown,test_macvtap,test_focal_ovmf,test_snapshot_restore_basic"
 
   jobs:
     - template: virtstack\pipelines\templates\linux_dom0_test_template.yml@lisa
@@ -422,6 +429,7 @@ stages:
         run_storage_perf_tests: ${{ parameters.run_storage_perf_tests }}
         run_stress_ng_tests: ${{ parameters.run_stress_ng_tests }}
         run_ch_community_tests: ${{ parameters.run_ch_community_tests }}
+        ch_subtest_include_list: $(ch_integration_tests)
         run_ch_perf_tests: ${{ parameters.run_ch_perf_tests }}
         run_mshv_tests: ${{ parameters.run_mshv_tests }}
         kernel_change_needed: True
