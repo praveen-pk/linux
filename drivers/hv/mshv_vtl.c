@@ -1121,9 +1121,19 @@ static int mshv_vtl_mmap(struct file *filp, struct vm_area_struct *vma)
 	return 0;
 }
 
+static int mshv_vtl_release(struct inode *inode, struct file *filp)
+{
+	struct mshv_vtl *vtl = filp->private_data;
+
+	kfree(vtl);
+
+	return 0;
+}
+
 static const struct file_operations mshv_vtl_fops = {
     .owner = THIS_MODULE,
 	.unlocked_ioctl = mshv_vtl_ioctl,
+	.release = mshv_vtl_release,
 	.mmap = mshv_vtl_mmap,
 };
 
