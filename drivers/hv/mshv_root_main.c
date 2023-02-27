@@ -1724,6 +1724,8 @@ destroy_partition(struct mshv_partition *partition)
 		kfree(vp);
 	}
 
+	mshv_debugfs_partition_remove(partition);
+
 	/* Deallocates and unmaps everything including vcpus, GPA mappings etc */
 	hv_call_finalize_partition(partition->id);
 	/* Withdraw and free all pages we deposited */
@@ -1885,10 +1887,16 @@ __mshv_ioctl_create_partition(void __user *user_arg)
 		goto put_fd;
 	}
 
+	ret = mshv_debugfs_partition_create(partition);
+	if (ret)
+		goto put_file;
+
 	fd_install(fd, file);
 
 	return fd;
 
+put_file:
+	fput(file);
 put_fd:
 	put_unused_fd(fd);
 finalize_partition:
