@@ -155,6 +155,11 @@ remove_debugfs_partition_id:
 	return ERR_PTR(err);
 }
 
+static void mshv_debugfs_root_partition_remove(void)
+{
+	partition_debugfs_remove(hv_current_partition_id, NULL);
+}
+
 static int __init mshv_debugfs_root_partition_create(void)
 {
 	struct dentry *part_id_dir;
@@ -307,7 +312,7 @@ remove_mshv_dir:
 
 void __exit mshv_debugfs_exit(void)
 {
-	partition_debugfs_remove(hv_current_partition_id, NULL);
+	mshv_debugfs_root_partition_remove();
 
 	debugfs_remove_recursive(mshv_debugfs);
 
