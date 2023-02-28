@@ -146,7 +146,7 @@ stages:
         set -e
         set -x
 
-        IMG_HASH=$(docker inspect mcr.microsoft.com/cbl-mariner/base/core:2.0 --format '{{ .ID }}')
+        IMG_HASH=$($(CONTAINER_RT) inspect $(CONTAINER_IMAGE) --format '{{ .ID }}')
         echo "##vso[task.setVariable variable=MARINER_IMG_ID]${IMG_HASH}"
       displayName: 'Query Container Image'
 
