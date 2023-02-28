@@ -21,6 +21,186 @@
 
 static struct dentry *mshv_debugfs;
 static struct dentry *mshv_debugfs_partition;
+static struct dentry *mshv_debugfs_lp;
+
+static u64 mshv_lps_count;
+
+static int lp_stats_show(struct seq_file *m, void *v)
+{
+	const u64 *stats = m->private;
+
+#define LP_SEQ_PRINTF(cnt)		\
+	seq_printf(m, "%-29s: %llu\n", __stringify(cnt), stats[Lp##cnt])
+
+	LP_SEQ_PRINTF(GlobalTime);
+	LP_SEQ_PRINTF(TotalRunTime);
+	LP_SEQ_PRINTF(HypervisorRunTime);
+	LP_SEQ_PRINTF(HardwareInterrupts);
+	LP_SEQ_PRINTF(ContextSwitches);
+	LP_SEQ_PRINTF(InterProcessorInterrupts);
+	LP_SEQ_PRINTF(SchedulerInterrupts);
+	LP_SEQ_PRINTF(TimerInterrupts);
+	LP_SEQ_PRINTF(InterProcessorInterruptsSent);
+	LP_SEQ_PRINTF(ProcessorHalts);
+	LP_SEQ_PRINTF(MonitorTransitionCost);
+	LP_SEQ_PRINTF(ContextSwitchTime);
+	LP_SEQ_PRINTF(C1TransitionsCount);
+	LP_SEQ_PRINTF(C1RunTime);
+	LP_SEQ_PRINTF(C2TransitionsCount);
+	LP_SEQ_PRINTF(C2RunTime);
+	LP_SEQ_PRINTF(C3TransitionsCount);
+	LP_SEQ_PRINTF(C3RunTime);
+	LP_SEQ_PRINTF(RootVpIndex);
+	LP_SEQ_PRINTF(IdleSequenceNumber);
+	LP_SEQ_PRINTF(GlobalTscCount);
+	LP_SEQ_PRINTF(ActiveTscCount);
+	LP_SEQ_PRINTF(IdleAccumulation);
+	LP_SEQ_PRINTF(ReferenceCycleCount0);
+	LP_SEQ_PRINTF(ActualCycleCount0);
+	LP_SEQ_PRINTF(ReferenceCycleCount1);
+	LP_SEQ_PRINTF(ActualCycleCount1);
+	LP_SEQ_PRINTF(ProximityDomainId);
+	LP_SEQ_PRINTF(PostedInterruptNotifications);
+	LP_SEQ_PRINTF(BranchPredictorFlushes);
+	LP_SEQ_PRINTF(L1DataCacheFlushes);
+	LP_SEQ_PRINTF(ImmediateL1DataCacheFlushes);
+	LP_SEQ_PRINTF(MbFlushes);
+	LP_SEQ_PRINTF(CounterRefreshSequenceNumber);
+	LP_SEQ_PRINTF(CounterRefreshReferenceTime);
+	LP_SEQ_PRINTF(IdleAccumulationSnapshot);
+	LP_SEQ_PRINTF(ActiveTscCountSnapshot);
+	LP_SEQ_PRINTF(HwpRequestContextSwitches);
+	LP_SEQ_PRINTF(Placeholder1);
+	LP_SEQ_PRINTF(Placeholder2);
+	LP_SEQ_PRINTF(Placeholder3);
+	LP_SEQ_PRINTF(Placeholder4);
+	LP_SEQ_PRINTF(Placeholder5);
+	LP_SEQ_PRINTF(Placeholder6);
+	LP_SEQ_PRINTF(Placeholder7);
+	LP_SEQ_PRINTF(Placeholder8);
+	LP_SEQ_PRINTF(Placeholder9);
+	LP_SEQ_PRINTF(Placeholder10);
+	LP_SEQ_PRINTF(ReserveGroupId);
+	LP_SEQ_PRINTF(RunningPriority);
+	LP_SEQ_PRINTF(PerfmonInterruptCount);
+
+#undef LP_SEQ_PRINTF
+
+	return 0;
+}
+DEFINE_SHOW_ATTRIBUTE(lp_stats);
+
+static void mshv_lp_stats_unmap(u32 lp_index)
+{
+	union hv_stats_object_identity identity = {
+		.lp.lp_index = lp_index,
+	};
+	int err;
+
+	err = hv_call_unmap_stat_page(HV_STATS_OBJECT_LOGICAL_PROCESSOR,
+				      &identity);
+	if (err)
+		pr_err("%s: failed to unmap logical processor %u stats, "
+		       "err: %d\n", __func__, lp_index, err);
+}
+
+static void __init *mshv_lp_stats_map(u32 lp_index)
+{
+	union hv_stats_object_identity identity = {
+		.lp.lp_index = lp_index,
+	};
+	void *stats;
+	int err;
+
+	err = hv_call_map_stat_page(HV_STATS_OBJECT_LOGICAL_PROCESSOR,
+				    &identity, &stats);
+	if (err) {
+		pr_err("%s: failed to map logical processor %u stats, "
+		       "err: %d\n", __func__, lp_index, err);
+		return ERR_PTR(err);
+	}
+	return stats;
+}
+
+static void __init *lp_debugfs_stats_create(u32 lp_index, struct dentry *parent)
+{
+	struct dentry *dentry;
+	void *stats;
+
+	stats = mshv_lp_stats_map(lp_index);
+	if (IS_ERR(stats))
+		return stats;
+
+	dentry = debugfs_create_file("stats", 0400, parent,
+				     stats, &lp_stats_fops);
+	if (IS_ERR(dentry)) {
+		mshv_lp_stats_unmap(lp_index);
+		return dentry;
+	}
+	return stats;
+}
+
+static int __init lp_debugfs_create(u32 lp_index, struct dentry *parent)
+{
+	struct dentry *idx;
+	char lp_idx_str[11]; /* sizeof(u32) + 1 */
+	void *stats;
+	int err;
+
+	sprintf(lp_idx_str, "%u", lp_index);
+
+	idx = debugfs_create_dir(lp_idx_str, parent);
+	if (IS_ERR(idx))
+		return PTR_ERR(idx);
+
+	stats = lp_debugfs_stats_create(lp_index, idx);
+	if (IS_ERR(stats)) {
+		err = PTR_ERR(stats);
+		goto remove_debugfs_lp_idx;
+	}
+
+	return 0;
+
+remove_debugfs_lp_idx:
+	debugfs_remove_recursive(idx);
+	return err;
+}
+
+static void __exit mshv_debugfs_lp_remove(void)
+{
+	int lp_index;
+
+	debugfs_remove_recursive(mshv_debugfs_lp);
+
+	for (lp_index = 0; lp_index < mshv_lps_count; lp_index++)
+		mshv_lp_stats_unmap(lp_index);
+}
+
+static int __init mshv_debugfs_lp_create(struct dentry *parent)
+{
+	struct dentry *lp_dir;
+	int err, lp_index;
+
+	lp_dir = debugfs_create_dir("lp", parent);
+	if (IS_ERR(lp_dir))
+		return PTR_ERR(lp_dir);
+
+	for (lp_index = 0; lp_index < mshv_lps_count; lp_index++) {
+		err = lp_debugfs_create(lp_index, lp_dir);
+		if (err)
+			goto remove_debugfs_lps;
+	}
+
+	mshv_debugfs_lp = lp_dir;
+
+	return 0;
+
+remove_debugfs_lps:
+	for (lp_index -= 1; lp_index >= 0; lp_index--)
+		mshv_lp_stats_unmap(lp_index);
+	debugfs_remove_recursive(lp_dir);
+	return err;
+}
 
 static int vp_stats_show(struct seq_file *m, void *v)
 {
@@ -570,7 +750,7 @@ static void * __init mshv_hv_stats_map(void)
 static int __init mshv_debugfs_hv_stats_create(struct dentry *parent)
 {
 	struct dentry *dentry;
-	void *stats;
+	u64 *stats;
 	int err;
 
 	stats = mshv_hv_stats_map();
@@ -585,6 +765,8 @@ static int __init mshv_debugfs_hv_stats_create(struct dentry *parent)
 		err = PTR_ERR(dentry);
 		goto unmap_hv_stats;
 	}
+
+	mshv_lps_count = stats[HvLogicalProcessors];
 
 	return 0;
 
@@ -650,8 +832,14 @@ int __init mshv_debugfs_init(void)
 	if (err)
 		goto unmap_hv_stats;
 
+	err = mshv_debugfs_lp_create(mshv_debugfs);
+	if (err)
+		goto remove_partition_dir;
+
 	return 0;
 
+remove_partition_dir:
+	partition_debugfs_remove(hv_current_partition_id, NULL);
 unmap_hv_stats:
 	mshv_hv_stats_unmap();
 remove_mshv_dir:
@@ -661,6 +849,8 @@ remove_mshv_dir:
 
 void __exit mshv_debugfs_exit(void)
 {
+	mshv_debugfs_lp_remove();
+
 	mshv_debugfs_root_partition_remove();
 
 	debugfs_remove_recursive(mshv_debugfs);
