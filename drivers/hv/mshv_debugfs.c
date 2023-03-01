@@ -131,32 +131,33 @@ static void partition_debugfs_remove(u64 partition_id, struct dentry *dentry)
 	mshv_partition_stats_unmap(partition_id);
 }
 
-static struct dentry *partition_debugfs_create(u64 partition_id, struct dentry *parent)
+static struct dentry *partition_debugfs_create(u64 partition_id,
+					       struct dentry *parent)
 {
-	char part_id[21]; /* sizeof(u64) + 1 */
-	struct dentry *id;
+	char part_id_str[21]; /* sizeof(u64) + 1 */
+	struct dentry *part_id_dir;
 	int err;
 
-	sprintf(part_id, "%llu", partition_id);
+	sprintf(part_id_str, "%llu", partition_id);
 
-	id = debugfs_create_dir(part_id, parent);
-	if (IS_ERR(id))
-		return id;
+	part_id_dir = debugfs_create_dir(part_id_str, parent);
+	if (IS_ERR(part_id_dir))
+		return part_id_dir;
 
-	err = mshv_debugfs_partition_stats_create(partition_id, id);
+	err = mshv_debugfs_partition_stats_create(partition_id, part_id_dir);
 	if (err)
 		goto remove_debugfs_partition_id;
 
-	return id;
+	return part_id_dir;
 
 remove_debugfs_partition_id:
-	debugfs_remove_recursive(id);
+	debugfs_remove_recursive(part_id_dir);
 	return ERR_PTR(err);
 }
 
 static int __init mshv_debugfs_root_partition_create(void)
 {
-	struct dentry *id;
+	struct dentry *part_id_dir;
 	int err;
 
 	mshv_debugfs_partition = debugfs_create_dir("partition",
@@ -164,10 +165,10 @@ static int __init mshv_debugfs_root_partition_create(void)
 	if (IS_ERR(mshv_debugfs_partition))
 		return PTR_ERR(mshv_debugfs_partition);
 
-	id = partition_debugfs_create(hv_current_partition_id,
-				      mshv_debugfs_partition);
-	if (IS_ERR(id)) {
-		err = PTR_ERR(id);
+	part_id_dir = partition_debugfs_create(hv_current_partition_id,
+					       mshv_debugfs_partition);
+	if (IS_ERR(part_id_dir)) {
+		err = PTR_ERR(part_id_dir);
 		goto remove_debugfs_partition;
 	}
 
@@ -260,13 +261,14 @@ unmap_hv_stats:
 
 int mshv_debugfs_partition_create(struct mshv_partition *partition)
 {
-	struct dentry *id;
+	struct dentry *part_id_dir;
 
-	id = partition_debugfs_create(partition->id, mshv_debugfs_partition);
-	if (IS_ERR(id))
-		return PTR_ERR(id);
+	part_id_dir = partition_debugfs_create(partition->id,
+					       mshv_debugfs_partition);
+	if (IS_ERR(part_id_dir))
+		return PTR_ERR(part_id_dir);
 
-	partition->debugfs_dentry = id;
+	partition->debugfs_dentry = part_id_dir;
 
 	return 0;
 }
