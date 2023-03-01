@@ -918,6 +918,8 @@ mshv_partition_ioctl_create_vp(struct mshv_partition *partition,
 	partition->vps.count++;
 	partition->vps.array[args.vp_index] = vp;
 
+	mshv_debugfs_vp_create(vp);
+
 	fd_install(fd, file);
 
 	return fd;
@@ -1715,6 +1717,9 @@ destroy_partition(struct mshv_partition *partition)
 		vp = partition->vps.array[i];
 		if (!vp)
 			continue;
+
+		mshv_debugfs_vp_remove(vp);
+
 		kfree(vp->registers);
 		if (vp->intercept_message_page) {
 			(void)hv_call_unmap_vp_state_page(partition->id, vp->index,
