@@ -15,7 +15,6 @@
 
 #include <linux/kernel.h>
 #include <linux/mm.h>
-#include <linux/hyperv.h>
 #include <asm/mshyperv.h>
 
 /* Determined empirically */
@@ -867,7 +866,9 @@ int hv_call_translate_virtual_address(
 	}
 
 	*result = output->translation_result;
-	*gpa = (output->gpa_page << HV_HYP_PAGE_SHIFT) + offset_in_hvpage(gva);
+
+	*gpa = (output->gpa_page << HV_HYP_PAGE_SHIFT) + /* pfn to gpa */
+			((u64)gva & ~HV_HYP_PAGE_MASK);	 /* offset in gpa */
 
 out:
 	local_irq_restore(irq_flags);
