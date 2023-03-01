@@ -14,7 +14,6 @@
 #include <linux/tracehook.h>
 #include <linux/cpuhotplug.h>
 #include <linux/mshv.h>
-#include <linux/hyperv.h>
 #include <asm/debugreg.h>
 #include <asm/fpu/internal.h>
 #include <asm/mshyperv.h>
