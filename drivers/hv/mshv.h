@@ -15,29 +15,6 @@
 #include <uapi/linux/mshv.h>
 #include <asm/hyperv-tlfs.h>
 
-/* Determined empirically */
-#define HV_INIT_PARTITION_DEPOSIT_PAGES 208
-#define HV_MAP_GPA_DEPOSIT_PAGES	256
-
-#define HV_WITHDRAW_BATCH_SIZE	(HV_HYP_PAGE_SIZE / sizeof(u64))
-#define HV_MAP_GPA_BATCH_SIZE	\
-		((HV_HYP_PAGE_SIZE - sizeof(struct hv_map_gpa_pages)) / sizeof(u64))
-#define PIN_PAGES_BATCH_SIZE	(0x10000000 / HV_HYP_PAGE_SIZE)
-#define HV_GET_REGISTER_BATCH_SIZE	\
-	(HV_HYP_PAGE_SIZE / sizeof(union hv_register_value))
-#define HV_SET_REGISTER_BATCH_SIZE	\
-	((HV_HYP_PAGE_SIZE - sizeof(struct hv_set_vp_registers)) \
-		/ sizeof(struct hv_register_assoc))
-#define HV_GET_VP_STATE_BATCH_SIZE	\
-	((HV_HYP_PAGE_SIZE - sizeof(struct hv_get_vp_state_in)) \
-		/ sizeof(u64))
-#define HV_SET_VP_STATE_BATCH_SIZE	\
-	((HV_HYP_PAGE_SIZE - sizeof(struct hv_set_vp_state_in)) \
-		/ sizeof(u64))
-#define HV_GET_GPA_ACCESS_STATES_BATCH_SIZE	\
-	((HV_HYP_PAGE_SIZE - sizeof(union hv_gpa_page_access_state)) \
-		/ sizeof(union hv_gpa_page_access_state))
-
 /*
  * Hyper-V hypercalls
  */

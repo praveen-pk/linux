@@ -20,6 +20,8 @@
 #define MSHV_MAX_PARTITIONS		(1 << MSHV_PARTITIONS_HASH_BITS)
 #define MSHV_MAX_VPS			256
 
+#define PIN_PAGES_BATCH_SIZE	(0x10000000 / HV_HYP_PAGE_SIZE)
+
 struct mshv_vp {
 	u32 index;
 	struct mshv_partition *partition;
