@@ -216,10 +216,34 @@ stages:
         set -x
         echo "Preparing kernel image artifact"
 
-        kernel_image_path=$(make image_name)
-        kernel_version=$(cat include/config/kernel.release 2> /dev/null)
         mkdir -p artifacts_folder
-        cp $kernel_image_path ./artifacts_folder/vmlinuz-$kernel_version
+        case "$(FLAVOR)" in
+          uvm)
+             case "$(ARCH)" in
+               x86_64)
+                      kernel_image_path=arch/x86/boot/compressed/vmlinux.bin
+                      kernel_version=$(cat include/config/kernel.release 2> /dev/null)
+                      kernel_out_path=./artifacts_folder/vmlinux.bin-$kernel_version
+                      ;;
+               arm64)
+                      kernel_image_path=arch/arm64/boot/Image
+                      kernel_version=$(cat include/config/kernel.release 2> /dev/null)
+                      kernel_out_path=./artifacts_folder/Image-$kernel_version
+                      ;;
+               *)
+                      echo "Cannot build ARCH=$(ARCH)"
+                      exit 1
+                      ;;
+             esac
+             ;;
+          *)
+            # FIXME ARM64 artifact isn't vmlinuz
+            kernel_image_path=$(make image_name)
+            kernel_version=$(cat include/config/kernel.release 2> /dev/null)
+            kernel_out_path=./artifacts_folder/vmlinuz-$kernel_version
+            ;;
+        esac
+        cp $kernel_image_path $kernel_out_path
 
         echo "Build ID: $(Build.BuildId)" >> info.txt
         echo "Build Number: $(Build.BuildNumber)" >> info.txt
