@@ -15,10 +15,29 @@
 
 #include <linux/kernel.h>
 #include <linux/mm.h>
-#include <linux/hyperv.h>
 #include <asm/mshyperv.h>
 
-#include "mshv.h"
+/* Determined empirically */
+#define HV_INIT_PARTITION_DEPOSIT_PAGES 208
+#define HV_MAP_GPA_DEPOSIT_PAGES	256
+
+#define HV_WITHDRAW_BATCH_SIZE	(HV_HYP_PAGE_SIZE / sizeof(u64))
+#define HV_MAP_GPA_BATCH_SIZE	\
+		((HV_HYP_PAGE_SIZE - sizeof(struct hv_map_gpa_pages)) / sizeof(u64))
+#define HV_GET_REGISTER_BATCH_SIZE	\
+	(HV_HYP_PAGE_SIZE / sizeof(union hv_register_value))
+#define HV_SET_REGISTER_BATCH_SIZE	\
+	((HV_HYP_PAGE_SIZE - sizeof(struct hv_set_vp_registers)) \
+		/ sizeof(struct hv_register_assoc))
+#define HV_GET_VP_STATE_BATCH_SIZE	\
+	((HV_HYP_PAGE_SIZE - sizeof(struct hv_get_vp_state_in)) \
+		/ sizeof(u64))
+#define HV_SET_VP_STATE_BATCH_SIZE	\
+	((HV_HYP_PAGE_SIZE - sizeof(struct hv_set_vp_state_in)) \
+		/ sizeof(u64))
+#define HV_GET_GPA_ACCESS_STATES_BATCH_SIZE	\
+	((HV_HYP_PAGE_SIZE - sizeof(union hv_gpa_page_access_state)) \
+		/ sizeof(union hv_gpa_page_access_state))
 
 int hv_call_withdraw_memory(u64 count, int node, u64 partition_id)
 {
@@ -847,7 +866,9 @@ int hv_call_translate_virtual_address(
 	}
 
 	*result = output->translation_result;
-	*gpa = (output->gpa_page << HV_HYP_PAGE_SHIFT) + offset_in_hvpage(gva);
+
+	*gpa = (output->gpa_page << HV_HYP_PAGE_SHIFT) + /* pfn to gpa */
+			((u64)gva & ~HV_HYP_PAGE_MASK);	 /* offset in gpa */
 
 out:
 	local_irq_restore(irq_flags);

@@ -21,7 +21,6 @@
 #include <linux/io.h>
 #include <linux/cpuhotplug.h>
 #include <linux/random.h>
-#include <linux/hyperv.h>
 #include <linux/nospec.h>
 #include <asm/mshyperv.h>
 
