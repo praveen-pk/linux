@@ -176,14 +176,21 @@ static void mshv_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 
 static void mshv_synic_enable_regs(unsigned int cpu)
 {
+	union hv_synic_sint sint;
+
+	sint.as_uint64 = 0;
+	sint.vector = HYPERVISOR_CALLBACK_VECTOR;
+	sint.masked = false;
+	sint.auto_eoi = hv_recommend_using_aeoi();
+
 	/* Setup VTL2 Host VSP SINT. */
-	hv_synic_unmask_sint(HV_REGISTER_SINT0 + VTL2_VMBUS_SINT_INDEX,
-			     HYPERVISOR_CALLBACK_VECTOR);
+	hv_set_register(HV_REGISTER_SINT0 + VTL2_VMBUS_SINT_INDEX,
+			sint.as_uint64);
 
 	/* Enable intercepts */
 	if (!mshv_vsm_capabilities.intercept_page_available)
-		hv_synic_unmask_sint(HV_REGISTER_SINT0 + HV_SYNIC_INTERCEPTION_SINT_INDEX,
-				     HYPERVISOR_CALLBACK_VECTOR);
+		hv_set_register(HV_REGISTER_SINT0 + HV_SYNIC_INTERCEPTION_SINT_INDEX,
+				sint.as_uint64);
 }
 
 static int mshv_vtl_get_vsm_regs(void)
