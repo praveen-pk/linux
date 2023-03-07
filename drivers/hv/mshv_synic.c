@@ -449,15 +449,6 @@ void mshv_isr(void)
 	}
 }
 
-static inline bool hv_recommend_using_aeoi(void)
-{
-#ifdef HV_DEPRECATING_AEOI_RECOMMENDED
-	return !(ms_hyperv.hints & HV_DEPRECATING_AEOI_RECOMMENDED);
-#else
-	return false;
-#endif
-}
-
 int mshv_synic_init(unsigned int cpu)
 {
 	union hv_synic_simp simp;
