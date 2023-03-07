@@ -158,6 +158,7 @@ enum hv_system_property {
 	/* Add more values when needed */
 	HV_SYSTEM_PROPERTY_SLEEP_STATE = 3,
 	HV_SYSTEM_PROPERTY_SCHEDULER_TYPE = 15,
+	HV_SYSTEM_PROPERTY_DIAGOSTICS_LOG_BUFFERS = 28,
 };
 
 struct hv_sleep_state_info {
@@ -174,9 +175,16 @@ struct hv_input_get_system_property {
 	};
 } __packed;
 
-struct hv_output_get_system_property {
+/* HV_SYSTEM_DIAG_LOG_BUFFER_CONFIG */
+struct  hv_system_diag_log_buffer_config {
+	__u32 buffer_count;
+	__u32 buffer_size_in_pages;
+} __packed;
+
+struct hv_output_get_system_property { /* HV_OUTPUT_GET_SYSTEM_PROPERTY */
 	union {
-		__u32 scheduler_type; /* enum hv_scheduler_type */
+		__u32 scheduler_type; /* HV_SCHEDULER_TYPE */
+		struct hv_system_diag_log_buffer_config hv_diagbuf_info;
 	};
 } __packed;
 

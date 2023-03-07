@@ -6,6 +6,7 @@ obj-$(CONFIG_DXGKRNL)		+= dxgkrnl/
 obj-$(CONFIG_MSHV)		+= mshv.o
 obj-$(CONFIG_MSHV_VTL)		+= mshv_vtl.o
 obj-$(CONFIG_MSHV_ROOT)		+= mshv_root.o
+obj-$(CONFIG_MSHV_DIAG)		+= diag/
 
 CFLAGS_hv_trace.o = -I$(src)
 CFLAGS_hv_balloon.o = -I$(src)

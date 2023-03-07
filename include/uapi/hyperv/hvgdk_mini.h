@@ -8,6 +8,7 @@
 #include <linux/types.h>
 
 #define HVGDK_MINI_H_VERSION		(25294)
+typedef __u64 hv_nano100_time_t;	/* HV_NANO100_TIME */
 
 struct hv_u128 {
 	__u64 low_part;
@@ -241,6 +242,8 @@ union hv_hypervisor_version_info {
 #define HVCALL_DISCONNECT_PORT			0x005b
 #define HVCALL_POST_MESSAGE			0x005c
 #define HVCALL_SIGNAL_EVENT			0x005d
+#define HVCALL_MAP_EVENT_LOG_BUFFER		0x0064
+#define HVCALL_UNMAP_EVENT_LOG_BUFFER		0x0065
 #define HVCALL_POST_DEBUG_DATA			0x0069
 #define HVCALL_RETRIEVE_DEBUG_DATA		0x006a
 #define HVCALL_RESET_DEBUG_SESSION		0x006b
@@ -285,6 +288,7 @@ union hv_hypervisor_version_info {
 #define HVCALL_IMPORT_ISOLATED_PAGES		0x00ef
 #define HVCALL_COMPLETE_ISOLATED_IMPORT		0x00f1
 #define HVCALL_GET_VP_CPUID_VALUES		0x00f4
+#define HVCALL_LOG_HYPERVISOR_SYSTEM_CONFIG	0x00f8
 
 /*
  * Some macros - i.e. GENMASK_ULL and BIT_ULL - are not currently supported by
@@ -1378,5 +1382,11 @@ struct hv_input_install_intercept {
 	__u32 intercept_type;	/* hv_intercept_type */
 	union hv_intercept_parameters intercept_parameter;
 } __packed;
+
+enum hv_eventlog_type { /* HV_EVENTLOG_TYPE */
+	HV_EVENT_LOG_TYPE_GLOBAL_SYSTEM_EVENTS  = 0x00000000,
+	HV_EVENT_LOG_TYPE_LOCAL_DIAGNOSTICS     = 0x00000001,
+	HV_EVENT_LOG_TYPE_SYSTEM_DIAGNOSTICS    = 0x00000002,
+};
 
 #endif /* _UAPI_HV_HVGDK_MINI_H */

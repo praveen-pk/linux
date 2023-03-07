@@ -274,6 +274,11 @@ struct mshv_complete_isolated_import {
 #define MSHV_COMPLETE_ISOLATED_IMPORT                                          \
 	_IOW(MSHV_IOCTL, 0x30, struct mshv_complete_isolated_import)
 
+/* Ioctls for mshv_diag device */
+#define MSHV_DIAG_IOCTL 0xB9
+#define MSHV_GET_DIAGLOG_FD                             \
+		_IO(MSHV_DIAG_IOCTL, HV_EVENT_LOG_TYPE_SYSTEM_DIAGNOSTICS)
+
 /* register page mapping example:
  * struct hv_vp_register_page *regs = mmap(NULL,
  *					   4096,
