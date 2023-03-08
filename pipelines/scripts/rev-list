@@ -69,7 +69,8 @@ def rev_is_ignored(rev):
 
     # Exclude usual set version business
     found = 0
-    set_version_files = ["Makefile", "arch/arm64/configs/mshv_defconfig", "arch/x86/configs/mshv_defconfig"]
+    set_version_files = ["Makefile", "arch/arm64/configs/mshv_defconfig", "arch/x86/configs/mshv_defconfig",
+                         "arch/arm64/configs/uvm_defconfig", "arch/x86/configs/uvm_defconfig"]
     for f in files:
         if f in set_version_files:
             found = found + 1
@@ -80,7 +81,8 @@ def rev_is_ignored(rev):
 
     # Exclude defconfig fixes
     found = 0
-    conf_files = ["arch/arm64/configs/mshv_defconfig", "arch/x86/configs/mshv_defconfig"]
+    conf_files = ["arch/arm64/configs/mshv_defconfig", "arch/x86/configs/mshv_defconfig",
+                  "arch/arm64/configs/uvm_defconfig", "arch/x86/configs/uvm_defconfig"]
     for f in files:
         if f in conf_files:
             found = found + 1
