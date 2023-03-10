@@ -459,7 +459,7 @@ stages:
         value: ""
       ${{ else }}:
         # Following are VM life cycle tests from ch integration tests
-        value: "test_api_create_boot,test_api_pause_resume,test_api_shutdown,test_macvtap,test_focal_ovmf,test_snapshot_restore_basic"
+        value: 'common_parallel::test_api_create_boot,common_parallel::test_api_pause_resume,common_parallel::test_api_shutdown,common_parallel::test_macvtap,common_parallel::test_focal_ovmf,common_parallel::test_snapshot_restore_basic'
 
   jobs:
     - template: virtstack\pipelines\templates\linux_dom0_test_template.yml@lisa
