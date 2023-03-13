@@ -120,10 +120,6 @@ stages:
           machinePool: 'lsg-virt-aarch64-1es-agent-pool-2'
           FLAVOR: 'dom0-disabled'
           ARCH: 'arm64'
-        'Mariner x86_64':
-          machinePool: 'lsg-virt-amd64-1es-agent-pool-2'
-          FLAVOR: 'mariner'
-          ARCH: 'x86_64'
     pool:
       name: $(machinePool)
 
