@@ -42,6 +42,12 @@ case "${FLAVOR}" in
 		curl -o .config https://raw.githubusercontent.com/microsoft/CBL-Mariner/main/SPECS/kernel-mshv/config
 		CONFIG=olddefconfig
 		;;
+	uvm)
+		CONFIG=uvm_defconfig
+		if [ "x86_64" == "${ARCH}" ]; then
+			KCFLAGS="-Wa,-mx86-used-note=no"
+		fi
+		;;
 	dom0-built-in)
 		# pass
 		;;
@@ -64,7 +70,15 @@ case "${FLAVOR}" in
 		;;
 esac
 
-make -j"$(nproc)" ARCH="${ARCH}" W=1
+KCFLAGS="${KCFLAGS}" make -j"$(nproc)" ARCH="${ARCH}" W=1
+
+if [ "uvm" == "${FLAVOR}" ]; then
+	# There are no modules nor any other tools. The only artifact is the image.
+	if [ "$export_modules" != "" ]; then
+		echo "Modules are not to be built for flavor '${FLAVOR}'"
+	fi
+	exit 0
+fi
 
 make -j"$(nproc)" ARCH="${ARCH}" W=1 modules
 

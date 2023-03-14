@@ -3,6 +3,11 @@
 set -x
 set -e
 
+CONF=$1
+if [ -z "${CONF}" ]; then
+	CONF=mshv_defconfig
+fi
+
 SOURCE_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 cd "${SOURCE_ROOT}"
 
@@ -24,7 +29,7 @@ esac
 
 make mrproper
 
-cp "arch/${ARCHDIR}/configs/mshv_defconfig" .config
+cp "arch/${ARCHDIR}/configs/${CONF}" .config
 make LC_ALL= ARCH=${ARCH} olddefconfig
 
-diff -u arch/${ARCHDIR}/configs/mshv_defconfig .config
+diff -u "arch/${ARCHDIR}/configs/${CONF}" .config

@@ -168,14 +168,15 @@ arch_map = {
         "arm64": "arm64"
         }
 for k in arch_map:
-    cfg = "arch/{}/configs/mshv_defconfig".format(k)
-    with open(cfg, "r") as f:
-        c = f.read()
-    f.close()
-    with open(cfg, "w") as f:
-        c = re.sub("Linux/.*Kernel Configuration", "Linux/{} {} Kernel Configuration".format(arch_map[k], version_mshv), c)
-        f.write(c)
-    f.close()
+    for fn in ["mshv_defconfig", "uvm_defconfig"]:
+        cfg = "arch/{}/configs/{}".format(k, fn)
+        with open(cfg, "r") as f:
+            c = f.read()
+        f.close()
+        with open(cfg, "w") as f:
+            c = re.sub("Linux/.*Kernel Configuration", "Linux/{} {} Kernel Configuration".format(arch_map[k], version_mshv), c)
+            f.write(c)
+        f.close()
 
 cmd = ["git", "commit", "-a", "-m", "'makefile: config: Set MSHV version'"]
 log.info("{}".format(" ".join(cmd)))

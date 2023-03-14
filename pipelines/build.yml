@@ -120,6 +120,16 @@ stages:
           machinePool: 'lsg-virt-aarch64-1es-agent-pool-2'
           FLAVOR: 'dom0-disabled'
           ARCH: 'arm64'
+        'UVM x86_64':
+          machinePool: 'lsg-virt-amd64-1es-agent-pool-2'
+          FLAVOR: 'uvm'
+          ARCH: 'x86_64'
+          DEFCONF: 'uvm_defconfig'
+        'UVM aarch64':
+          machinePool: 'lsg-virt-aarch64-1es-agent-pool-2'
+          FLAVOR: 'uvm'
+          ARCH: 'arm64'
+          DEFCONF: 'uvm_defconfig'
     pool:
       name: $(machinePool)
 
@@ -188,15 +198,17 @@ stages:
     - bash: |
         set -e
         set -x
-        $(CONTAINER_RT) exec $(CONTAINER_NAME) $(CONTAINER_VOL)/pipelines/scripts/config-validate
-      condition: eq(variables.FLAVOR, 'dom0-built-in')
+        $(CONTAINER_RT) exec $(CONTAINER_NAME) $(CONTAINER_VOL)/pipelines/scripts/config-validate $(DEFCONF)
+      condition: or(eq(variables.FLAVOR, 'dom0-built-in'), eq(variables.FLAVOR, 'uvm'))
       displayName: 'Validate Config'
 
     - bash: |
         set -e
         set -x
-        export_modules_path=$(CONTAINER_RESULT)/kernel_modules_install
-        $(CONTAINER_RT) exec $(CONTAINER_NAME) $(CONTAINER_VOL)/pipelines/scripts/kernel-compile -e $export_modules_path $(FLAVOR)
+        if [ "uvm" != "$(FLAVOR)" ]; then
+                export_modules_arg="-e $(CONTAINER_RESULT)/kernel_modules_install"
+        fi
+        $(CONTAINER_RT) exec $(CONTAINER_NAME) $(CONTAINER_VOL)/pipelines/scripts/kernel-compile $export_modules_arg $(FLAVOR)
       displayName: 'Compile Kernel'
 
     - bash: |
@@ -204,10 +216,34 @@ stages:
         set -x
         echo "Preparing kernel image artifact"
 
-        kernel_image_path=$(make image_name)
-        kernel_version=$(cat include/config/kernel.release 2> /dev/null)
         mkdir -p artifacts_folder
-        cp $kernel_image_path ./artifacts_folder/vmlinuz-$kernel_version
+        case "$(FLAVOR)" in
+          uvm)
+             case "$(ARCH)" in
+               x86_64)
+                      kernel_image_path=arch/x86/boot/compressed/vmlinux.bin
+                      kernel_version=$(cat include/config/kernel.release 2> /dev/null)
+                      kernel_out_path=./artifacts_folder/vmlinux.bin-$kernel_version
+                      ;;
+               arm64)
+                      kernel_image_path=arch/arm64/boot/Image
+                      kernel_version=$(cat include/config/kernel.release 2> /dev/null)
+                      kernel_out_path=./artifacts_folder/Image-$kernel_version
+                      ;;
+               *)
+                      echo "Cannot build ARCH=$(ARCH)"
+                      exit 1
+                      ;;
+             esac
+             ;;
+          *)
+            # FIXME ARM64 artifact isn't vmlinuz
+            kernel_image_path=$(make image_name)
+            kernel_version=$(cat include/config/kernel.release 2> /dev/null)
+            kernel_out_path=./artifacts_folder/vmlinuz-$kernel_version
+            ;;
+        esac
+        cp $kernel_image_path $kernel_out_path
 
         echo "Build ID: $(Build.BuildId)" >> info.txt
         echo "Build Number: $(Build.BuildNumber)" >> info.txt
@@ -232,8 +268,10 @@ stages:
           sudo tar cvzf $tar_filename $kernel_version
           sudo mv $tar_filename ./artifacts_folder
         else
-          echo "Can not find kernel modules artifact"
-          exit 1
+          if [ "uvm" != "$(FLAVOR)" ]; then
+            echo "Can not find kernel modules artifact"
+            exit 1
+          fi
         fi
       displayName: 'Prepare Artifacts'
       name: PrepareArtifact
