@@ -2096,6 +2096,7 @@ CONFIG_HYPERV=y
 CONFIG_HYPERV_TIMER=y
 # CONFIG_HYPERV_BALLOON is not set
 # CONFIG_MSHV is not set
+# CONFIG_MSHV_DIAG is not set
 # CONFIG_DXGKRNL is not set
 # end of Microsoft Hyper-V guest support
 
