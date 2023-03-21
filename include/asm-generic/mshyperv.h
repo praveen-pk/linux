@@ -160,9 +160,9 @@ extern bool hv_root_partition;
 extern bool hv_nested;
 
 #ifdef HV_SUPPORTS_NESTED
-#define REG_EOM (hv_nested ? HV_REGISTER_NESTED_EOM : HV_REGISTER_EOM)
+#define REG_EOM (hv_nested ? HV_SYN_REG_NESTED_EOM : HV_SYN_REG_EOM)
 #else
-#define REG_EOM (HV_REGISTER_EOM)
+#define REG_EOM (HV_SYN_REG_EOM)
 #endif
 
 /* Free the message slot and signal end-of-message if required */
