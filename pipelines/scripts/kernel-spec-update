@@ -5,11 +5,8 @@ __copyright__ = "Copyright (c) Microsoft Corporation."
 import os
 import sys
 import requests
-import json
-import re
 import hashlib
 import subprocess
-import tarfile
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))  # noqa E402
 
 from lsgtools import log
@@ -71,51 +68,25 @@ if 0 != res.returncode:
     raise Exception(err)
 
 
+# Update kernel-mshv.spec
 kernel_spec_path = "SPECS/kernel/kernel-mshv.spec"
 kernel_sums_path = "SPECS/kernel/kernel-mshv.signatures.json"
 kernel_conf = {
         "x86": {"path": "SPECS/kernel/config_x86", "sha256": None, "kernel_arch": "x86"},
         "aarch64": {"path": "SPECS/kernel/config_aarch64", "sha256": None, "kernel_arch": "arm64"}
         }
-
-# Patch config
-for k in kernel_conf:
-    cf = kernel_conf[k]["path"]
-
-    # Extract configs from the tarball into the SPEC
-    config_path_in_tar = "arch/{}/configs/mshv_defconfig".format(kernel_conf[k]["kernel_arch"])
-    conf = None
-    with tarfile.open(tarball_local_path, "r") as tar:
-        # Expect just one root member in the tarball which is a dir
-        for ti in tar:
-            if ti.isdir():
-                config_path_in_tar = "{}/{}".format(ti.name, config_path_in_tar)
-                log.info("Reading '{}' from '{}'".format(config_path_in_tar, tarball_local_path))
-                conf = tar.extractfile(config_path_in_tar).read().decode("utf-8")
-                break
-    tar.close()
-    if not bool(conf):
-        raise Exception("Read empty config from '{}' in '{}".format(config_path_in_tar, tarball_local_path))
-
-    # TODO Introduce an array with pattern/replacement and pack it into the module
-    conf = re.sub(re.compile("CONFIG_SYSTEM_TRUSTED_KEYS=.*"), 'CONFIG_SYSTEM_TRUSTED_KEYS="certs/mariner.pem"', conf)
-    conf = re.sub(re.compile("Linux/(.*) (.*) Kernel Configuration"), "Linux/\\1 {} Kernel Configuration".format(version),
-                  conf)
-
-    with open(cf, "w") as f:
-        f.write(conf)
-    f.close()
-
-    kernel_conf[k]["sha256"] = hashlib.sha256(conf.encode()).hexdigest()
-
+kernel_conf_patch = [
+    ["CONFIG_SYSTEM_TRUSTED_KEYS=.*", 'CONFIG_SYSTEM_TRUSTED_KEYS="certs/mariner.pem"'],
+    ["Linux/(.*) (.*) Kernel Configuration", "Linux/\\1 {} Kernel Configuration".format(version)]
+]
+kernel_conf = kernel.patch_config(tarball_local_path, kernel_conf, kernel_conf_patch, "mshv_defconfig")
 # Recalculate sum
 pem_path = "SPECS/kernel/cbl-mariner-ca-20211013.pem"
 with open(pem_path, "rb") as f:
     pem_sha256 = hashlib.sha256(f.read()).hexdigest()
 f.close()
-
 # Re-create signatures file
-sigs_struct = {
+sums_struct = {
     "Signatures": {
         os.path.basename(pem_path): pem_sha256,
         os.path.basename(kernel_conf["x86"]["path"]): kernel_conf["x86"]["sha256"],
@@ -123,20 +94,33 @@ sigs_struct = {
         tarball_name: tarball_sha256,
             }
     }
-with open(kernel_sums_path, "w") as f:
-    json.dump(sigs_struct, f, indent=2)
-f.close()
-
+kernel.update_spec_sums(kernel_sums_path, sums_struct)
 # Update spec
-with open(kernel_spec_path, "r") as f:
-    kernel_spec = f.read()
-f.close()
-kernel_spec = re.sub(re.compile("%global pkgrel.*"), "%global pkgrel 1000", kernel_spec)
-kernel_spec = re.sub(re.compile("%global kernelver.*"), "%global kernelver {}".format(version), kernel_spec)
-kernel_spec = re.sub(re.compile("%global gitrev.*"), "%global gitrev {}".format(rev_hash), kernel_spec)
-with open(kernel_spec_path, "w") as f:
-    f.write(kernel_spec)
-f.close()
+kernel.update_spec(kernel_spec_path, version, rev_hash)
+
+
+# Update kernel-uvm.spec
+kernel_spec_path = "SPECS/kernel/kernel-uvm.spec"
+kernel_sums_path = "SPECS/kernel/kernel-uvm.signatures.json"
+kernel_conf = {
+        "x86": {"path": "SPECS/kernel/config_uvm_x86", "sha256": None, "kernel_arch": "x86"},
+        "aarch64": {"path": "SPECS/kernel/config_uvm_aarch64", "sha256": None, "kernel_arch": "arm64"}
+        }
+kernel_conf_patch = [
+    ["Linux/(.*) (.*) Kernel Configuration", "Linux/\\1 {} Kernel Configuration".format(version)]
+]
+kernel_conf = kernel.patch_config(tarball_local_path, kernel_conf, kernel_conf_patch, "uvm_defconfig")
+# Re-create signatures file
+sums_struct = {
+    "Signatures": {
+        os.path.basename(kernel_conf["x86"]["path"]): kernel_conf["x86"]["sha256"],
+        os.path.basename(kernel_conf["aarch64"]["path"]): kernel_conf["aarch64"]["sha256"],
+        tarball_name: tarball_sha256,
+            }
+    }
+kernel.update_spec_sums(kernel_sums_path, sums_struct)
+# Update spec
+kernel.update_spec(kernel_spec_path, version, rev_hash)
 
 
 # Commit the branch
