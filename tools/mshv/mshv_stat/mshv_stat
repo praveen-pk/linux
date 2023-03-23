@@ -186,7 +186,7 @@ class StatsStreamScreen(StatsStream):
     def __init__(self):
         self.times_written = 0
 
-    def write(self, stats_dict: dict[str, int], max_name_len: int):
+    def write(self, stats_dict: dict[str, int], max_name_len: int, header: str = None):
         """Write statistics to the screen.
 
         Args:
@@ -212,7 +212,7 @@ class StatsStreamCsvScreen(StatsStream):
     def __init__(self):
         self.keys = None
 
-    def write(self, stats_dict: dict[str, int], max_name_len: int):
+    def write(self, stats_dict: dict[str, int], max_name_len: int, header: str = None):
         """
         Write statistics to screen as CSV file.
 
@@ -235,7 +235,7 @@ class StatsStreamCsvFile(StatsStream):
         self.csvfile = open(path, 'w', newline='')
         self.writer = None
 
-    def write(self, stats_dict: dict[str, int], max_name_len: int):
+    def write(self, stats_dict: dict[str, int], max_name_len: int, header: str = None):
         """
         Write statistics to a CSV file.
 
@@ -326,7 +326,7 @@ class StatsWriter:
         if not stats_dict:
             return
         for stream in self.streams:
-            stream.write(stats_dict, stats.max_name_len)
+            stream.write(stats_dict, stats.max_name_len, stats.header)
 
 
 class CsvStatsWriter(StatsWriter):
@@ -434,6 +434,16 @@ class SummarizedStats(Stats):
             return self.__term_subdirs
         return [os.path.basename(d) for d in Path(self.path).glob("[0-9]*") if Path(d).is_dir()]
 
+    @property
+    def header_parts(self) -> tuple[str, str]:
+        """
+        Returns a tuple containing two strings: a term pluralization indicator and a comma-separated
+        list of subdirectory names.
+        """
+        plural = "s" if len(self.term_subdirs) != 1 else ""
+        subdirs_list = ",".join(sorted(self.__term_subdirs)) if self.__term_subdirs else "combined"
+        return [plural, subdirs_list]
+
     def as_dict(self) -> dict[str, int]:
         """
         Get a dictionary representation of the summarized stats.
@@ -462,6 +472,10 @@ class IncrementalStats(Stats):
         """
         self.stats = stats
         self.stats_dict = stats.as_dict()
+
+    @property
+    def header(self):
+        return self.stats.header
 
     @property
     def max_name_len(self) -> int:
@@ -495,6 +509,10 @@ class PartitionStats(Stats):
         """
         Stats.__init__(self)
         self.partition = partition
+
+    @property
+    def header(self):
+        return "Microsoft hypervisor statistics: Partition {}".format(self.partition)
 
     @property
     def path(self) -> str:
@@ -544,6 +562,10 @@ class SummarizedVpStats(SummarizedStats):
         """
         SummarizedStats.__init__(self, vp_idx_list)
         self.partition = partition
+
+    @property
+    def header(self):
+        return "Microsoft hypervisor statistics: Partition {} Virtual Processor{} {}".format(self.partition, *self.header_parts)
 
     @property
     def path(self) -> str:
@@ -600,6 +622,10 @@ class SummarizedLpStats(SummarizedStats):
         SummarizedStats.__init__(self, lp_idx_list)
 
     @property
+    def header(self):
+        return "Microsoft hypervisor statistics: Logical processor{} {}".format(*self.header_parts)
+
+    @property
     def path(self) -> str:
         """
         The path to the logical processor directory.
@@ -627,6 +653,10 @@ class MshvStats(Stats):
         Initializes a MshvStats class.
         """
         Stats.__init__(self)
+
+    @property
+    def header(self):
+        return "Microsoft hypervisor statistics"
 
     @property
     def path(self) -> str:
