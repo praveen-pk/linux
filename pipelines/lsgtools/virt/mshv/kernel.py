@@ -74,7 +74,7 @@ def patch_config(tarball_local_path, kernel_conf, conf_patch, kernel_basename):
 
         kernel_conf[k]["sha256"] = hashlib.sha256(conf.encode()).hexdigest()
 
-        return kernel_conf
+    return kernel_conf
 
 
 def update_spec_sums(kernel_sums_path, sums_struct):
