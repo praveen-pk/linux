@@ -2,7 +2,7 @@
 
 # SPDX-License-Identifier: GPL-2.0-only
 #
-# An utility for displaying mshv statistics
+# A top-like utility for displaying mshv statistics
 #
 # Copyright (c) 2023, Microsoft Corporation.
 #
@@ -26,6 +26,7 @@ import sys
 import re
 import time
 import csv
+import curses
 
 from pathlib import Path
 
@@ -329,6 +330,39 @@ class StatsWriter:
             stream.write(stats_dict, stats.max_name_len, stats.header)
 
 
+class StatsStreamTop(StatsStream):
+    """
+    This class represents a top-like statistics stream for displaying information on a curses-based terminal interface.
+    """
+    def __init__(self):
+        # Initialize the curses screen and set some options
+        self.screen = curses.initscr()
+        curses.noecho()
+        curses.cbreak()
+
+    def __del__(self):
+        # Restore the terminal to its previous state when the object is deleted
+        curses.nocbreak()
+        self.screen.keypad(False)
+        curses.echo()
+        curses.endwin()
+
+    def write(self, stats_dict: dict, max_name_len: int, header=None):
+        # Write the header if it is provided
+        if header:
+            self.screen.addstr(0, 0, header)
+
+        # Write each key-value pair in stats_dict to the screen
+        row = 2
+        for k, v in stats_dict.items():
+            self.screen.addstr(row, 2, "{}{} : {}".format(
+                k, ' ' * (max_name_len - len(k)), v))
+            row += 1
+
+        # Refresh the screen to show the updated contents
+        self.screen.refresh()
+
+
 class CsvStatsWriter(StatsWriter):
     """
     A concrete class for writing statistics in CSV format to output streams
@@ -359,7 +393,7 @@ class IncrementalStatsWriter(StatsWriter):
         CsvStatsWriter.__init__(self, stats_names, stats_filter, csv_path, print_all)
         self.count = int(count) if count else None
         if csv_path or csv_path is None:  # Add screen writer only if CSV output isn't writtent to screen
-            self.streams.append(StatsStreamScreen())
+            self.streams.append(StatsStreamTop())
 
     def __run(self) -> bool:
         """
