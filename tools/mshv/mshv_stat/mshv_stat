@@ -25,6 +25,7 @@ import os
 import sys
 import re
 import time
+import csv
 
 from pathlib import Path
 
@@ -204,6 +205,52 @@ class StatsStreamScreen(StatsStream):
         self.times_written += 1
 
 
+class StatsStreamCsvScreen(StatsStream):
+    """
+    A concrete class for writing statistics to the screen in CSV format.
+    """
+    def __init__(self):
+        self.keys = None
+
+    def write(self, stats_dict: dict[str, int], max_name_len: int):
+        """
+        Write statistics to screen as CSV file.
+
+        Args:
+            stats_dict (Dict[str, int]): A dictionary of statistics to be printed.
+            max_name_len (int): The maximum length of the statistic names, used for formatting.
+        """
+        if not self.keys:
+            self.keys = sorted(stats_dict.keys())
+            print(','.join('"{0}"'.format(k) for k in self.keys), flush=True)
+        print(",".join('"{0}"'.format(stats_dict[k]) for k in self.keys),
+              flush=True)
+
+
+class StatsStreamCsvFile(StatsStream):
+    """
+    A concrete class for writing statistics to a file in CSV format.
+    """
+    def __init__(self, path: str):
+        self.csvfile = open(path, 'w', newline='')
+        self.writer = None
+
+    def write(self, stats_dict: dict[str, int], max_name_len: int):
+        """
+        Write statistics to a CSV file.
+
+        Args:
+            stats_dict (Dict[str, int]): A dictionary of statistics to be printed.
+            max_name_len (int): The maximum length of the statistic names, used for formatting.
+        """
+        if not self.writer:
+            self.writer = csv.DictWriter(self.csvfile,
+                                         fieldnames=list(stats_dict.keys()),
+                                         dialect="unix")
+            self.writer.writeheader()
+        self.writer.writerow(stats_dict)
+
+
 class StatsWriter:
     """
     A base class for writing statistics to output streams
@@ -282,23 +329,37 @@ class StatsWriter:
             stream.write(stats_dict, stats.max_name_len)
 
 
+class CsvStatsWriter(StatsWriter):
+    """
+    A concrete class for writing statistics in CSV format to output streams
+    """
+    def __init__(self, stats_names=None, stats_filter=None, csv_path=None, print_all=None):
+        StatsWriter.__init__(self, stats_names, stats_filter, print_all)
+        if csv_path:  # Write statistics as CSV to a file if path has non-zero lengh
+            self.streams.append(StatsStreamCsvFile(csv_path))
+        elif csv_path is not None:  # Or write statistics as CSV to screen, if not None
+            self.streams.append(StatsStreamCsvScreen())
+
+
 class BatchStatsWriter(StatsWriter):
     """
     A concrete class for writing statistics to the screen in a batch.
     """
-    def __init__(self, stats_names: list = None, stats_filter: str = None, print_all: bool = None):
-        StatsWriter.__init__(self, stats_names, stats_filter, print_all)
-        self.streams.append(StatsStreamScreen())
+    def __init__(self, stats_names: list = None, stats_filter: str = None, csv_path: str = None, print_all: bool = None):
+        CsvStatsWriter.__init__(self, stats_names, stats_filter, csv_path, print_all)
+        if csv_path or csv_path is None:  # Add screen writer only if CSV output isn't writtent to screen
+            self.streams.append(StatsStreamScreen())
 
 
 class IncrementalStatsWriter(StatsWriter):
     """
     A concrete class for writing statistics to the screen incrementally.
     """
-    def __init__(self, stats_names: list = None, stats_filter: str = None, print_all: bool = None, count: str = None):
-        StatsWriter.__init__(self, stats_names, stats_filter, print_all)
+    def __init__(self, stats_names: list = None, stats_filter: str = None, csv_path: str = None, print_all: bool = None, count: str = None):
+        CsvStatsWriter.__init__(self, stats_names, stats_filter, csv_path, print_all)
         self.count = int(count) if count else None
-        self.streams.append(StatsStreamScreen())
+        if csv_path or csv_path is None:  # Add screen writer only if CSV output isn't writtent to screen
+            self.streams.append(StatsStreamScreen())
 
     def __run(self) -> bool:
         """
@@ -615,6 +676,12 @@ Incremental mode examples:
     Display only specific statistics increments for a guest partition and its all virtual processors:
         mshv_stat -p 3 --vp --all -s TotalRunTime HypervisorRunTime
 
+    Display only specific statistics increments for a guest partition and its all virtual processors as CSV:
+        mshv_stat -p 3 --vp --all -s TotalRunTime HypervisorRunTime --csv
+
+    Write statistics that match a regular expression into a file as CSV:
+        mshv_stat --lp -1 -f .*RunTime --csv stats.csv
+
 """
 
     def check_number(value):
@@ -646,6 +713,8 @@ Incremental mode examples:
         return value
 
     def check_path(value):
+        if not len(value):
+            return ""
         if not os.access(os.path.dirname(value), os.W_OK):
             sys.stderr.write("Can't open {} for writing\n".format(
                 os.path.dirname(value)))
@@ -689,7 +758,16 @@ Incremental mode examples:
     parser.add_argument("-f", "--filter", type=check_regex, required=False,
                         help="regular expression to filter statistics by name")
 
+    parser.add_argument("--csv", type=check_path, nargs='?', const="",
+                        required=False,
+                        help="file name to write CSV representation into"
+                        "(STDOUT if none)")
+
     args = parser.parse_args()
+
+    if args.csv and not args.all and not args.filter and not args.stats:
+        parser.error("CSV output requires either \"--filter\", \"--stats\""
+                     "or \"--all\" option")
 
     if args.vp is not None and not args.partition:
         args.partition = "1"
@@ -744,10 +822,12 @@ def main():
         if options.once:
             writer = BatchStatsWriter(stats_names=options.stats,
                                       stats_filter=options.filter,
+                                      csv_path=options.csv,
                                       print_all=options.all)
         else:
             writer = IncrementalStatsWriter(stats_names=options.stats,
                                             stats_filter=options.filter,
+                                            csv_path=options.csv,
                                             print_all=options.all,
                                             count=options.count)
         writer.write(stats)
