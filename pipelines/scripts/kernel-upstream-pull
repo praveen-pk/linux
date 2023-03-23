@@ -49,7 +49,7 @@ for cmd in cmds:
 
 def tag_get_latest(reg=None):
     # Read the latest tag matching the pattern
-    cmd = ["git", "tag", "--list"]
+    cmd = ["git", "tag", "--list", "--sort=committerdate"]
     if reg is not None:
         cmd.append(reg)
     log.debug("{}".format(" ".join(cmd)))
