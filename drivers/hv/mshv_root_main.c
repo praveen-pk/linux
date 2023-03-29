@@ -600,7 +600,7 @@ mshv_vp_ioctl_get_set_state(struct mshv_vp *vp, void __user *user_args, bool is_
 {
 	struct mshv_vp_state args;
 	long ret = 0;
-	union hv_get_vp_state_out vp_state;
+	union hv_output_get_vp_state vp_state;
 
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;

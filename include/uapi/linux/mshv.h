@@ -9,8 +9,7 @@
  */
 
 #include <linux/types.h>
-#include <asm/hyperv-tlfs.h>
-#include <asm-generic/hyperv-tlfs.h>
+#include <hyperv/hvhdk.h>
 
 #define MSHV_CAP_CORE_API_STABLE	0x0
 #define MSHV_CAP_REGISTER_PAGE		0x1

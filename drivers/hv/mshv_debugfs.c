@@ -11,10 +11,7 @@
 
 #include <linux/debugfs.h>
 #include <linux/stringify.h>
-
 #include <asm/mshyperv.h>
-
-#include <hv/hvhdk.h>
 
 #include "mshv.h"
 #include "mshv_root.h"
