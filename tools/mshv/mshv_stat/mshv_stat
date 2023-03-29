@@ -145,6 +145,9 @@ class Stats(object):
     """
     A utility class to read statistics from a file and return them as a dictionary.
     """
+
+    aggregated = {}
+
     def __init__(self):
         """
         Initializes a new instance of the Stats class.
@@ -169,7 +172,11 @@ class Stats(object):
             )
             # Finds the length of the longest statistic name and stores it in self.max_name_len
             self.max_name_len = len(max(stats.keys(), key=len))
-            return stats  # Returns the dictionary containing the statistics.
+
+        for name, terms in self.aggregated.items():
+            stats[name] = sum([stats[t] for t in terms])
+
+        return stats  # Returns the dictionary containing the statistics.
 
 
 class StatsStream(object):
@@ -562,6 +569,158 @@ class VpStats(Stats):
     """
     A concrete class representing the statistics of a partition's virtual processor.
     """
+    aggregated = {
+        "TotalMessages": [
+            "ExtendedHypercallInterceptMessages",
+            "MemoryInterceptMessages",
+            "OtherMessages",
+            # The following counters are AMD64-specific
+            "IoInterceptMessages"
+        ],
+
+        "TotalIntercepts": [
+            "HypercallsCount",
+            "OtherInterceptsCount",
+            "ExternalInterruptsCount",
+            "PendingInterruptsCount",
+            "NestedPageFaultInterceptsCount",
+
+            # The following counters are AMD64-specific
+            "ControlRegisterAccessesCount",
+            "DebugRegisterAccessesCount",
+            "EmulatedInstructionsCount",
+            "CpuidInstructionsCount",
+            "HltInstructionsCount",
+            "IoInstructionsCount",
+            "MsrAccessesCount",
+            "MwaitInstructionsCount",
+            "PageFaultInterceptsCount",
+            "PageInvalidationsCount",
+            "ControlRegisterAccessesForwardedCount",
+            "HypercallsForwardedCount",
+            "PageInvalidationsForwardedCount",
+            "IoInstructionsForwardedCount",
+            "HltInstructionsForwardedCount",
+            "MwaitInstructionsForwardedCount",
+            "CpuidInstructionsForwardedCount",
+            "MsrAccessesForwardedCount",
+            "OtherInterceptsForwardedCount",
+            "PendingInterruptsForwardedCount",
+            "EmulatedInstructionsForwardedCount",
+            "DebugRegisterAccessesForwardedCount",
+            "PageFaultInterceptsForwardedCount",
+            "VmclearEmulationCount",
+            "VmptrldEmulationCount",
+            "VmptrstEmulationCount",
+            "VmreadEmulationCount",
+            "VmwriteEmulationCount",
+            "VmxoffEmulationCount",
+            "VmxonEmulationCount",
+            "NestedVMEntriesCount",
+            "NestedSLATSoftPageFaultsCount",
+            "NestedSLATHardPageFaultsCount",
+            "InvEptAllContextEmulationCount",
+            "InvEptSingleContextEmulationCount",
+            "InvVpidAllContextEmulationCount",
+            "InvVpidSingleContextEmulationCount",
+            "InvVpidSingleAddressEmulationCount",
+            "VmloadEmulationCount",
+            "VmsaveEmulationCount",
+            "GifInstructionEmulationCount"
+        ],
+
+        "TotalInterceptsTime": [
+            "HypercallsTime",
+            "OtherInterceptsTime",
+            "ExternalInterruptsTime",
+            "PendingInterruptsTime",
+            "NestedPageFaultInterceptsTime",
+
+            # The following counters are AMD64-specific
+            "ControlRegisterAccessesTime",
+            "CpuidInstructionsTime",
+            "DebugRegisterAccessesTime",
+            "EmulatedInstructionsTime",
+            "HltInstructionsTime",
+            "IoInstructionsTime",
+            "MsrAccessesTime",
+            "MwaitInstructionsTime",
+            "PageFaultInterceptsTime",
+            "PageInvalidationsTime",
+            "HypercallsForwardingTime",
+            "PageInvalidationsForwardingTime",
+            "ControlRegisterAccessesForwardingTime",
+            "IoInstructionsForwardingTime",
+            "HltInstructionsForwardingTime",
+            "MwaitInstructionsForwardingTime",
+            "CpuidInstructionsForwardingTime",
+            "MsrAccessesForwardingTime",
+            "OtherInterceptsForwardingTime",
+            "PendingInterruptsForwardingTime",
+            "EmulatedInstructionsForwardingTime",
+            "DebugRegisterAccessesForwardingTime",
+            "PageFaultInterceptsForwardingTime",
+            "VmclearEmulationTime",
+            "VmptrldEmulationTime",
+            "VmptrstEmulationTime",
+            "VmreadEmulationTime",
+            "VmwriteEmulationTime",
+            "VmxoffEmulationTime",
+            "VmxonEmulationTime",
+            "NestedVMEntriesTime",
+            "NestedSLATSoftPageFaultsTime",
+            "NestedSLATHardPageFaultsTime",
+            "InvEptAllContextEmulationTime",
+            "InvEptSingleContextEmulationTime",
+            "InvVpidAllContextEmulationTime",
+            "InvVpidSingleContextEmulationTime",
+            "InvVpidSingleAddressEmulationTime",
+            "VmloadEmulationTime",
+            "VmsaveEmulationTime",
+            "GifInstructionEmulationTime"
+        ],
+
+        "TotalVirtInstrEmulation": [
+            # The following counters are AMD64-specific
+            "VmclearEmulationCount",
+            "VmptrldEmulationCount",
+            "VmptrstEmulationCount",
+            "VmreadEmulationCount",
+            "VmwriteEmulationCount",
+            "VmxoffEmulationCount",
+            "VmxonEmulationCount",
+            "NestedVMEntriesCount",
+            "InvEptAllContextEmulationCount",
+            "InvEptSingleContextEmulationCount",
+            "InvVpidAllContextEmulationCount",
+            "InvVpidSingleContextEmulationCount",
+            "InvVpidSingleAddressEmulationCount",
+            "VmloadEmulationCount",
+            "VmsaveEmulationCount",
+            "GifInstructionEmulationCount"
+        ],
+
+        "TotalVirtInstrEmulationTime": [
+            # The following counters are AMD64-specific
+            "VmclearEmulationTime",
+            "VmptrldEmulationTime",
+            "VmptrstEmulationTime",
+            "VmreadEmulationTime",
+            "VmwriteEmulationTime",
+            "VmxoffEmulationTime",
+            "VmxonEmulationTime",
+            "NestedVMEntriesTime",
+            "InvEptAllContextEmulationTime",
+            "InvEptSingleContextEmulationTime",
+            "InvVpidAllContextEmulationTime",
+            "InvVpidSingleContextEmulationTime",
+            "InvVpidSingleAddressEmulationTime",
+            "VmloadEmulationTime",
+            "VmsaveEmulationTime",
+            "GifInstructionEmulationTime"
+        ]
+    }
+
     def __init__(self, partition: str, vp_idx: str):
         """
         Initializes a VpStats object.
@@ -624,6 +783,16 @@ class LpStats(Stats):
     """
     A concrete class representing the statistics of a logical processor.
     """
+
+    aggregated = {
+        "TotalInterrupts": [
+            "HardwareInterrupts",
+            "InterProcessorInterrupts",
+            "SchedulerInterrupts",
+            "TimerInterrupts"
+        ]
+    }
+
     def __init__(self, lp_idx: str):
         """
         Initializes a LpStats object.
