@@ -164,19 +164,28 @@ enum hv_status {
 #endif /* CONFIG_X86_64 */
 
 /*
- * Version info reported by hypervisors
+ * Version info reported by hypervisor
+ * Changed to a union for convenience
  */
-struct hv_hypervisor_version_info {
-	__u32 build_number;
+union hv_hypervisor_version_info {
+	struct {
+		u32 build_number;
 
-	__u32 minor_version:16;
-	__u32 major_version:16;
+		u32 minor_version : 16;
+		u32 major_version : 16;
 
-	__u32 service_pack;
+		u32 service_pack;
 
-	__u32 service_number:24;
-	__u32 service_branch:8;
-} __packed;
+		u32 service_number : 24;
+		u32 service_branch : 8;
+	};
+	struct {
+		u32 eax;
+		u32 ebx;
+		u32 ecx;
+		u32 edx;
+	};
+};
 
 /* HV_CPUID_FUNCTION */
 #define HYPERV_CPUID_VENDOR_AND_MAX_FUNCTIONS	0x40000000
