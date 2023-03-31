@@ -23,17 +23,18 @@
 
 #define HV_WITHDRAW_BATCH_SIZE	(HV_HYP_PAGE_SIZE / sizeof(u64))
 #define HV_MAP_GPA_BATCH_SIZE	\
-		((HV_HYP_PAGE_SIZE - sizeof(struct hv_map_gpa_pages)) / sizeof(u64))
+	((HV_HYP_PAGE_SIZE - sizeof(struct hv_input_map_gpa_pages)) \
+		/ sizeof(u64))
 #define HV_GET_REGISTER_BATCH_SIZE	\
 	(HV_HYP_PAGE_SIZE / sizeof(union hv_register_value))
 #define HV_SET_REGISTER_BATCH_SIZE	\
-	((HV_HYP_PAGE_SIZE - sizeof(struct hv_set_vp_registers)) \
+	((HV_HYP_PAGE_SIZE - sizeof(struct hv_input_set_vp_registers)) \
 		/ sizeof(struct hv_register_assoc))
 #define HV_GET_VP_STATE_BATCH_SIZE	\
-	((HV_HYP_PAGE_SIZE - sizeof(struct hv_get_vp_state_in)) \
+	((HV_HYP_PAGE_SIZE - sizeof(struct hv_input_get_vp_state)) \
 		/ sizeof(u64))
 #define HV_SET_VP_STATE_BATCH_SIZE	\
-	((HV_HYP_PAGE_SIZE - sizeof(struct hv_set_vp_state_in)) \
+	((HV_HYP_PAGE_SIZE - sizeof(struct hv_input_set_vp_state)) \
 		/ sizeof(u64))
 #define HV_GET_GPA_ACCESS_STATES_BATCH_SIZE	\
 	((HV_HYP_PAGE_SIZE - sizeof(union hv_gpa_page_access_state)) \
@@ -41,8 +42,8 @@
 
 int hv_call_withdraw_memory(u64 count, int node, u64 partition_id)
 {
-	struct hv_withdraw_memory_in *input_page;
-	struct hv_withdraw_memory_out *output_page;
+	struct hv_input_withdraw_memory *input_page;
+	struct hv_output_withdraw_memory *output_page;
 	struct page *page;
 	u16 completed;
 	unsigned long remaining = count;
@@ -58,7 +59,7 @@ int hv_call_withdraw_memory(u64 count, int node, u64 partition_id)
 	while (remaining) {
 		local_irq_save(flags);
 
-		input_page = (struct hv_withdraw_memory_in *)(*this_cpu_ptr(
+		input_page = (struct hv_input_withdraw_memory *)(*this_cpu_ptr(
 			hyperv_pcpu_input_arg));
 
 		input_page->partition_id = partition_id;
@@ -98,17 +99,17 @@ int hv_call_create_partition(
 		union hv_partition_isolation_properties isolation_properties,
 		u64 *partition_id)
 {
-	struct hv_create_partition_in *input;
-	struct hv_create_partition_out *output;
+	struct hv_input_create_partition *input;
+	struct hv_output_create_partition *output;
 	u64 status;
 	int ret;
 	unsigned long irq_flags;
 
 	do {
 		local_irq_save(irq_flags);
-		input = (struct hv_create_partition_in *)(*this_cpu_ptr(
+		input = (struct hv_input_create_partition *)(*this_cpu_ptr(
 			hyperv_pcpu_input_arg));
-		output = (struct hv_create_partition_out *)(*this_cpu_ptr(
+		output = (struct hv_output_create_partition *)(*this_cpu_ptr(
 			hyperv_pcpu_output_arg));
 
 		input->flags = flags;
@@ -145,7 +146,7 @@ EXPORT_SYMBOL_GPL(hv_call_create_partition);
 
 int hv_call_initialize_partition(u64 partition_id)
 {
-	struct hv_initialize_partition input;
+	struct hv_input_initialize_partition input;
 	u64 status;
 	int ret;
 
@@ -179,7 +180,7 @@ EXPORT_SYMBOL_GPL(hv_call_initialize_partition);
 
 int hv_call_finalize_partition(u64 partition_id)
 {
-	struct hv_finalize_partition input;
+	struct hv_input_finalize_partition input;
 	u64 status;
 
 	input.partition_id = partition_id;
@@ -196,7 +197,7 @@ EXPORT_SYMBOL_GPL(hv_call_finalize_partition);
 
 int hv_call_delete_partition(u64 partition_id)
 {
-	struct hv_delete_partition input;
+	struct hv_input_delete_partition input;
 	u64 status;
 
 	input.partition_id = partition_id;
@@ -215,7 +216,7 @@ int hv_call_map_gpa_pages(
 		u64 page_count, u32 flags,
 		struct page **pages)
 {
-	struct hv_map_gpa_pages *input_page;
+	struct hv_input_map_gpa_pages *input_page;
 	u64 status;
 	int i;
 	struct page **p;
@@ -230,7 +231,7 @@ int hv_call_map_gpa_pages(
 		rep_count = min(remaining, HV_MAP_GPA_BATCH_SIZE);
 
 		local_irq_save(irq_flags);
-		input_page = (struct hv_map_gpa_pages *)(*this_cpu_ptr(
+		input_page = (struct hv_input_map_gpa_pages *)(*this_cpu_ptr(
 			hyperv_pcpu_input_arg));
 
 		input_page->target_partition_id = partition_id;
@@ -280,7 +281,7 @@ int hv_call_unmap_gpa_pages(
 		u64 gpa_target,
 		u64 page_count, u32 flags)
 {
-	struct hv_unmap_gpa_pages *input_page;
+	struct hv_input_unmap_gpa_pages *input_page;
 	u64 status;
 	int ret = 0;
 	u32 completed = 0;
@@ -290,7 +291,7 @@ int hv_call_unmap_gpa_pages(
 
 	while (remaining) {
 		local_irq_save(irq_flags);
-		input_page = (struct hv_unmap_gpa_pages *)(*this_cpu_ptr(
+		input_page = (struct hv_input_unmap_gpa_pages *)(*this_cpu_ptr(
 			hyperv_pcpu_input_arg));
 
 		input_page->target_partition_id = partition_id;
@@ -332,7 +333,7 @@ int hv_call_get_vp_registers(
 		union hv_input_vtl input_vtl,
 		struct hv_register_assoc *registers)
 {
-	struct hv_get_vp_registers *input_page;
+	struct hv_input_get_vp_registers *input_page;
 	union hv_register_value *output_page;
 	u16 completed = 0;
 	unsigned long remaining = count;
@@ -342,7 +343,7 @@ int hv_call_get_vp_registers(
 
 	local_irq_save(flags);
 
-	input_page = (struct hv_get_vp_registers *)(*this_cpu_ptr(
+	input_page = (struct hv_input_get_vp_registers *)(*this_cpu_ptr(
 		hyperv_pcpu_input_arg));
 	output_page = (union hv_register_value *)(*this_cpu_ptr(
 		hyperv_pcpu_output_arg));
@@ -440,7 +441,7 @@ int hv_call_set_vp_registers(
 		union hv_input_vtl input_vtl,
 		struct hv_register_assoc *registers)
 {
-	struct hv_set_vp_registers *input_page;
+	struct hv_input_set_vp_registers *input_page;
 	u16 completed = 0;
 	unsigned long remaining = count;
 	int rep_count;
@@ -448,7 +449,7 @@ int hv_call_set_vp_registers(
 	unsigned long flags;
 
 	local_irq_save(flags);
-	input_page = (struct hv_set_vp_registers *)(*this_cpu_ptr(
+	input_page = (struct hv_input_set_vp_registers *)(*this_cpu_ptr(
 		hyperv_pcpu_input_arg));
 
 	input_page->partition_id = partition_id;
@@ -488,14 +489,14 @@ int hv_call_install_intercept(
 		enum hv_intercept_type intercept_type,
 		union hv_intercept_parameters intercept_parameter)
 {
-	struct hv_install_intercept *input;
+	struct hv_input_install_intercept *input;
 	unsigned long flags;
 	u64 status;
 	int ret;
 
 	do {
 		local_irq_save(flags);
-		input = (struct hv_install_intercept *)(*this_cpu_ptr(
+		input = (struct hv_input_install_intercept *)(*this_cpu_ptr(
 					hyperv_pcpu_input_arg));
 		input->partition_id = partition_id;
 		input->access_type = access_type;
@@ -526,12 +527,12 @@ int hv_call_assert_virtual_interrupt(
 		u64 dest_addr,
 		union hv_interrupt_control control)
 {
-	struct hv_assert_virtual_interrupt *input;
+	struct hv_input_assert_virtual_interrupt *input;
 	unsigned long flags;
 	u64 status;
 
 	local_irq_save(flags);
-	input = (struct hv_assert_virtual_interrupt *)(*this_cpu_ptr(
+	input = (struct hv_input_assert_virtual_interrupt *)(*this_cpu_ptr(
 			hyperv_pcpu_input_arg));
 	memset(input, 0, sizeof(*input));
 	input->partition_id = partition_id;
@@ -560,10 +561,10 @@ int hv_call_get_vp_state(
 		/* Choose between pages and ret_output */
 		u64 page_count,
 		struct page **pages,
-		union hv_get_vp_state_out *ret_output)
+		union hv_output_get_vp_state *ret_output)
 {
-	struct hv_get_vp_state_in *input;
-	union hv_get_vp_state_out *output;
+	struct hv_input_get_vp_state *input;
+	union hv_output_get_vp_state *output;
 	u64 status;
 	int i;
 	u64 control;
@@ -578,9 +579,9 @@ int hv_call_get_vp_state(
 
 	do {
 		local_irq_save(flags);
-		input = (struct hv_get_vp_state_in *)
+		input = (struct hv_input_get_vp_state *)
 				(*this_cpu_ptr(hyperv_pcpu_input_arg));
-		output = (union hv_get_vp_state_out *)
+		output = (union hv_output_get_vp_state *)
 				(*this_cpu_ptr(hyperv_pcpu_output_arg));
 		memset(input, 0, sizeof(*input));
 		memset(output, 0, sizeof(*output));
@@ -629,7 +630,7 @@ int hv_call_set_vp_state(
 		u32 num_bytes,
 		u8 *bytes)
 {
-	struct hv_set_vp_state_in *input;
+	struct hv_input_set_vp_state *input;
 	u64 status;
 	int i;
 	u64 control;
@@ -652,7 +653,7 @@ int hv_call_set_vp_state(
 
 	do {
 		local_irq_save(flags);
-		input = (struct hv_set_vp_state_in *)
+		input = (struct hv_input_set_vp_state *)
 				(*this_cpu_ptr(hyperv_pcpu_input_arg));
 		memset(input, 0, sizeof(*input));
 
@@ -770,13 +771,13 @@ int hv_call_get_partition_property(
 {
 	u64 status;
 	unsigned long flags;
-	struct hv_get_partition_property_in *input;
-	struct hv_get_partition_property_out *output;
+	struct hv_input_get_partition_property *input;
+	struct hv_output_get_partition_property *output;
 
 	local_irq_save(flags);
-	input = (struct hv_get_partition_property_in *)(*this_cpu_ptr(
+	input = (struct hv_input_get_partition_property *)(*this_cpu_ptr(
 			hyperv_pcpu_input_arg));
-	output = (struct hv_get_partition_property_out *)(*this_cpu_ptr(
+	output = (struct hv_output_get_partition_property *)(*this_cpu_ptr(
 			hyperv_pcpu_output_arg));
 	memset(input, 0, sizeof(*input));
 	input->partition_id = partition_id;
@@ -805,10 +806,10 @@ int hv_call_set_partition_property(
 {
 	u64 status;
 	unsigned long flags;
-	struct hv_set_partition_property *input;
+	struct hv_input_set_partition_property *input;
 
 	local_irq_save(flags);
-	input = (struct hv_set_partition_property *)(*this_cpu_ptr(
+	input = (struct hv_input_set_partition_property *)(*this_cpu_ptr(
 			hyperv_pcpu_input_arg));
 	memset(input, 0, sizeof(*input));
 	input->partition_id = partition_id;
@@ -842,8 +843,8 @@ int hv_call_translate_virtual_address(
 {
 	u64 status;
 	unsigned long irq_flags;
-	struct hv_translate_virtual_address_in *input;
-	struct hv_translate_virtual_address_out *output;
+	struct hv_input_translate_virtual_address *input;
+	struct hv_output_translate_virtual_address *output;
 
 	local_irq_save(irq_flags);
 
@@ -904,14 +905,14 @@ hv_call_create_port(u64 port_partition_id, union hv_port_id port_id,
 		    struct hv_port_info *port_info,
 		    u8 port_vtl, u8 min_connection_vtl, int node)
 {
-	struct hv_create_port *input;
+	struct hv_input_create_port *input;
 	unsigned long flags;
 	int ret = 0;
 	int status;
 
 	do {
 		local_irq_save(flags);
-		input = (struct hv_create_port *)(*this_cpu_ptr(
+		input = (struct hv_input_create_port *)(*this_cpu_ptr(
 				hyperv_pcpu_input_arg));
 		memset(input, 0, sizeof(*input));
 
@@ -947,7 +948,7 @@ EXPORT_SYMBOL_GPL(hv_call_create_port);
 int
 hv_call_delete_port(u64 port_partition_id, union hv_port_id port_id)
 {
-	union hv_delete_port input = { 0 };
+	union hv_input_delete_port input = { 0 };
 	unsigned long flags;
 	int status;
 
@@ -976,13 +977,13 @@ hv_call_connect_port(u64 port_partition_id, union hv_port_id port_id,
 		     struct hv_connection_info *connection_info,
 		     u8 connection_vtl, int node)
 {
-	struct hv_connect_port *input;
+	struct hv_input_connect_port *input;
 	unsigned long flags;
 	int ret = 0, status;
 
 	do {
 		local_irq_save(flags);
-		input = (struct hv_connect_port *)(*this_cpu_ptr(
+		input = (struct hv_input_connect_port *)(*this_cpu_ptr(
 				hyperv_pcpu_input_arg));
 		memset(input, 0, sizeof(*input));
 		input->port_partition_id = port_partition_id;
@@ -1018,7 +1019,7 @@ int
 hv_call_disconnect_port(u64 connection_partition_id,
 			union hv_connection_id connection_id)
 {
-	union hv_disconnect_port input = { 0 };
+	union hv_input_disconnect_port input = { 0 };
 	unsigned long flags;
 	int status;
 
@@ -1044,7 +1045,7 @@ EXPORT_SYMBOL_GPL(hv_call_disconnect_port);
 int
 hv_call_notify_port_ring_empty(u32 sint_index)
 {
-	union hv_notify_port_ring_empty input = { 0 };
+	union hv_input_notify_port_ring_empty input = { 0 };
 	unsigned long flags;
 	int status;
 

@@ -13,7 +13,6 @@
 #include <linux/pfn_t.h>
 #include <linux/tracehook.h>
 #include <linux/cpuhotplug.h>
-#include <linux/mshv.h>
 #include <asm/debugreg.h>
 #include <asm/fpu/internal.h>
 #include <asm/mshyperv.h>
@@ -221,7 +220,7 @@ static int mshv_vtl_get_vsm_regs(void)
 
 static int mshv_vtl_configure_vsm_partition(void)
 {
-	union hv_vsm_partition_config config;
+	union hv_register_vsm_partition_config config;
 	struct hv_register_assoc reg_assoc;
 	union hv_input_vtl input_vtl;
 
@@ -459,7 +458,7 @@ static int mshv_vtl_ioctl_set_poll_file(struct mshv_set_poll_file __user *user_i
 static int mshv_vtl_set_reg(struct hv_register_assoc *regs)
 {
 	u64 reg64;
-	enum hv_x64_register_name gpr_name;
+	enum hv_register_name gpr_name;
 
 	gpr_name = regs->name;
 	reg64 = regs->value.reg64;
@@ -631,7 +630,7 @@ hypercall:
 static int mshv_vtl_get_reg(struct hv_register_assoc *regs)
 {
 	u64 *reg64;
-	enum hv_x64_register_name gpr_name;
+	enum hv_register_name gpr_name;
 
 	gpr_name = regs->name;
 	reg64 = (u64 *)&regs->value.reg64;

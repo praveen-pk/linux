@@ -13,7 +13,6 @@
 #include <linux/srcu.h>
 #include <linux/wait.h>
 #include <uapi/linux/mshv.h>
-#include <asm/hyperv-tlfs.h>
 
 /*
  * Hyper-V hypercalls
@@ -76,7 +75,7 @@ int hv_call_get_vp_state(
 		/* Choose between pages and ret_output */
 		u64 page_count,
 		struct page **pages,
-		union hv_get_vp_state_out *ret_output);
+		union hv_output_get_vp_state *ret_output);
 int hv_call_set_vp_state(
 		u32 vp_index,
 		u64 partition_id,
