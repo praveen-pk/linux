@@ -469,24 +469,6 @@ void mnt_drop_write_file(struct file *file)
 }
 EXPORT_SYMBOL(mnt_drop_write_file);
 
-/**
- * mnt_hold_writers - prevent write access to the given mount
- * @mnt: mnt to prevent write access to
- *
- * Prevents write access to @mnt if there are no active writers for @mnt.
- * This function needs to be called and return successfully before changing
- * properties of @mnt that need to remain stable for callers with write access
- * to @mnt.
- *
- * After this functions has been called successfully callers must pair it with
- * a call to mnt_unhold_writers() in order to stop preventing write access to
- * @mnt.
- *
- * Context: This function expects lock_mount_hash() to be held serializing
- *          setting MNT_WRITE_HOLD.
- * Return: On success 0 is returned.
- *	   On error, -EBUSY is returned.
- */
 static inline int mnt_hold_writers(struct mount *mnt)
 {
 	mnt->mnt.mnt_flags |= MNT_WRITE_HOLD;
@@ -518,18 +500,6 @@ static inline int mnt_hold_writers(struct mount *mnt)
 	return 0;
 }
 
-/**
- * mnt_unhold_writers - stop preventing write access to the given mount
- * @mnt: mnt to stop preventing write access to
- *
- * Stop preventing write access to @mnt allowing callers to gain write access
- * to @mnt again.
- *
- * This function can only be called after a successful call to
- * mnt_hold_writers().
- *
- * Context: This function expects lock_mount_hash() to be held.
- */
 static inline void mnt_unhold_writers(struct mount *mnt)
 {
 	/*
@@ -563,9 +533,12 @@ int sb_prepare_remount_readonly(struct super_block *sb)
 	lock_mount_hash();
 	list_for_each_entry(mnt, &sb->s_mounts, mnt_instance) {
 		if (!(mnt->mnt.mnt_flags & MNT_READONLY)) {
-			err = mnt_hold_writers(mnt);
-			if (err)
+			mnt->mnt.mnt_flags |= MNT_WRITE_HOLD;
+			smp_mb();
+			if (mnt_get_writers(mnt) > 0) {
+				err = -EBUSY;
 				break;
+			}
 		}
 	}
 	if (!err && atomic_long_read(&sb->s_remove_count))
@@ -4012,53 +3985,45 @@ static inline bool mnt_allow_writers(const struct mount_kattr *kattr,
 	       !kattr->mnt_userns;
 }
 
-static int mount_setattr_prepare(struct mount_kattr *kattr, struct mount *mnt)
+static struct mount *mount_setattr_prepare(struct mount_kattr *kattr,
+					   struct mount *mnt, int *err)
 {
-	struct mount *m;
-	int err;
+	struct mount *m = mnt, *last = NULL;
 
-	for (m = mnt; m; m = next_mnt(m, mnt)) {
-		if (!can_change_locked_flags(m, recalc_flags(kattr, m))) {
-			err = -EPERM;
-			break;
+	if (!is_mounted(&m->mnt)) {
+		*err = -EINVAL;
+		goto out;
+	}
+
+	if (!(mnt_has_parent(m) ? check_mnt(m) : is_anon_ns(m->mnt_ns))) {
+		*err = -EINVAL;
+		goto out;
+	}
+
+	do {
+		unsigned int flags;
+
+		flags = recalc_flags(kattr, m);
+		if (!can_change_locked_flags(m, flags)) {
+			*err = -EPERM;
+			goto out;
 		}
 
-		err = can_idmap_mount(kattr, m);
-		if (err)
-			break;
+		*err = can_idmap_mount(kattr, m);
+		if (*err)
+			goto out;
+
+		last = m;
 
 		if (!mnt_allow_writers(kattr, m)) {
-			err = mnt_hold_writers(m);
-			if (err)
-				break;
+			*err = mnt_hold_writers(m);
+			if (*err)
+				goto out;
 		}
+	} while (kattr->recurse && (m = next_mnt(m, mnt)));
 
-		if (!kattr->recurse)
-			return 0;
-	}
-
-	if (err) {
-		struct mount *p;
-
-		/*
-		 * If we had to call mnt_hold_writers() MNT_WRITE_HOLD will
-		 * be set in @mnt_flags. The loop unsets MNT_WRITE_HOLD for all
-		 * mounts and needs to take care to include the first mount.
-		 */
-		for (p = mnt; p; p = next_mnt(p, mnt)) {
-			/* If we had to hold writers unblock them. */
-			if (p->mnt.mnt_flags & MNT_WRITE_HOLD)
-				mnt_unhold_writers(p);
-
-			/*
-			 * We're done once the first mount we changed got
-			 * MNT_WRITE_HOLD unset.
-			 */
-			if (p == m)
-				break;
-		}
-	}
-	return err;
+out:
+	return last;
 }
 
 static void do_idmap_mount(const struct mount_kattr *kattr, struct mount *mnt)
@@ -4086,32 +4051,43 @@ static void do_idmap_mount(const struct mount_kattr *kattr, struct mount *mnt)
 		put_user_ns(old_mnt_userns);
 }
 
-static void mount_setattr_commit(struct mount_kattr *kattr, struct mount *mnt)
+static void mount_setattr_commit(struct mount_kattr *kattr,
+				 struct mount *mnt, struct mount *last,
+				 int err)
 {
-	struct mount *m;
+	struct mount *m = mnt;
 
-	for (m = mnt; m; m = next_mnt(m, mnt)) {
-		unsigned int flags;
+	do {
+		if (!err) {
+			unsigned int flags;
 
-		do_idmap_mount(kattr, m);
-		flags = recalc_flags(kattr, m);
-		WRITE_ONCE(m->mnt.mnt_flags, flags);
+			do_idmap_mount(kattr, m);
+			flags = recalc_flags(kattr, m);
+			WRITE_ONCE(m->mnt.mnt_flags, flags);
+		}
 
 		/* If we had to hold writers unblock them. */
 		if (m->mnt.mnt_flags & MNT_WRITE_HOLD)
 			mnt_unhold_writers(m);
 
-		if (kattr->propagation)
+		if (!err && kattr->propagation)
 			change_mnt_propagation(m, kattr->propagation);
-		if (!kattr->recurse)
+
+		/*
+		 * On failure, only cleanup until we found the first mount
+		 * we failed to handle.
+		 */
+		if (err && m == last)
 			break;
-	}
-	touch_mnt_namespace(mnt->mnt_ns);
+	} while (kattr->recurse && (m = next_mnt(m, mnt)));
+
+	if (!err)
+		touch_mnt_namespace(mnt->mnt_ns);
 }
 
 static int do_mount_setattr(struct path *path, struct mount_kattr *kattr)
 {
-	struct mount *mnt = real_mount(path->mnt);
+	struct mount *mnt = real_mount(path->mnt), *last = NULL;
 	int err = 0;
 
 	if (path->dentry != mnt->mnt.mnt_root)
@@ -4132,32 +4108,16 @@ static int do_mount_setattr(struct path *path, struct mount_kattr *kattr)
 		}
 	}
 
-	err = -EINVAL;
 	lock_mount_hash();
 
-	/* Ensure that this isn't anything purely vfs internal. */
-	if (!is_mounted(&mnt->mnt))
-		goto out;
-
 	/*
-	 * If this is an attached mount make sure it's located in the callers
-	 * mount namespace. If it's not don't let the caller interact with it.
-	 * If this is a detached mount make sure it has an anonymous mount
-	 * namespace attached to it, i.e. we've created it via OPEN_TREE_CLONE.
+	 * Get the mount tree in a shape where we can change mount
+	 * properties without failure.
 	 */
-	if (!(mnt_has_parent(mnt) ? check_mnt(mnt) : is_anon_ns(mnt->mnt_ns)))
-		goto out;
+	last = mount_setattr_prepare(kattr, mnt, &err);
+	if (last) /* Commit all changes or revert to the old state. */
+		mount_setattr_commit(kattr, mnt, last, err);
 
-	/*
-	 * First, we get the mount tree in a shape where we can change mount
-	 * properties without failure. If we succeeded to do so we commit all
-	 * changes and if we failed we clean up.
-	 */
-	err = mount_setattr_prepare(kattr, mnt);
-	if (!err)
-		mount_setattr_commit(kattr, mnt);
-
-out:
 	unlock_mount_hash();
 
 	if (kattr->propagation) {
