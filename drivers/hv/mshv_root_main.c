@@ -39,6 +39,9 @@ struct mshv mshv = {};
 
 enum hv_scheduler_type hv_scheduler_type;
 
+static bool ignore_hv_version;
+module_param(ignore_hv_version, bool, 0);
+
 /* Once we implement the fast extended hypercall ABI they can go away. */
 static void __percpu **root_scheduler_input;
 static void __percpu **root_scheduler_output;
@@ -2068,9 +2071,30 @@ root_scheduler_deinit(void)
 int __init mshv_root_init(void)
 {
 	int ret;
+	union hv_hypervisor_version_info version_info;
 
 	if (!hv_root_partition)
 		return -ENODEV;
+
+	if (hv_get_hypervisor_version(&version_info))
+		return -ENODEV;
+
+	if (version_info.build_number < MSHV_HV_MIN_VERSION ||
+	    version_info.build_number > MSHV_HV_MAX_VERSION) {
+		pr_warn("%s: Hypervisor version %u not supported!\n",
+				__func__, version_info.build_number);
+		pr_warn("%s: Min version: %u, max version: %u\n",
+		       __func__, MSHV_HV_MIN_VERSION,
+		       MSHV_HV_MAX_VERSION);
+		if (ignore_hv_version) {
+			pr_warn("%s: Continuing because param mshv_root.ignore_hv_version is set\n",
+				__func__);
+		} else {
+			pr_err("%s: Failing because version is not supported. Use param mshv.ignore_hv_version=1 to proceed anyway\n",
+			       __func__);
+			return -ENODEV;
+		}
+	}
 
 	if (mshv_retrieve_scheduler_type())
 		return -ENODEV;

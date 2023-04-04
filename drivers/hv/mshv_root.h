@@ -15,6 +15,13 @@
 #include <linux/hashtable.h>
 #include <uapi/linux/mshv.h>
 
+/*
+ * Hypervisor must be between these version numbers (inclusive)
+ * to guarantee compatibility
+ */
+#define MSHV_HV_MIN_VERSION		(25212)
+#define MSHV_HV_MAX_VERSION		(25330)
+
 #define MSHV_PARTITIONS_HASH_BITS	9
 #define MSHV_MAX_PARTITIONS		(1 << MSHV_PARTITIONS_HASH_BITS)
 #define MSHV_MAX_VPS			256
