@@ -98,7 +98,6 @@ union hv_msi_entry {
 	} __packed;
 };
 
-#include <uapi/asm/hyperv-tlfs.h>
 #include <asm-generic/hyperv-tlfs.h>
 
 #endif

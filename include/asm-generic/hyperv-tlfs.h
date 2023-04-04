@@ -12,7 +12,6 @@
 #include <linux/types.h>
 #include <linux/bits.h>
 #include <linux/time64.h>
-#include <uapi/asm-generic/hyperv-tlfs.h>
 
 /*
  * While not explicitly listed in the TLFS, Hyper-V always runs with a page size
@@ -159,32 +158,16 @@ union hv_reference_tsc_msr {
 #define HVCALL_FLUSH_VIRTUAL_ADDRESS_SPACE_EX	0x0013
 #define HVCALL_FLUSH_VIRTUAL_ADDRESS_LIST_EX	0x0014
 #define HVCALL_SEND_IPI_EX			0x0015
-#define HVCALL_CREATE_PARTITION			0x0040
-#define HVCALL_INITIALIZE_PARTITION		0x0041
-#define HVCALL_FINALIZE_PARTITION		0x0042
-#define HVCALL_DELETE_PARTITION			0x0043
-#define HVCALL_GET_PARTITION_PROPERTY		0x0044
-#define HVCALL_SET_PARTITION_PROPERTY		0x0045
 #define HVCALL_GET_PARTITION_ID			0x0046
 #define HVCALL_DEPOSIT_MEMORY			0x0048
-#define HVCALL_WITHDRAW_MEMORY			0x0049
-#define HVCALL_MAP_GPA_PAGES			0x004b
-#define HVCALL_UNMAP_GPA_PAGES			0x004c
-#define HVCALL_INSTALL_INTERCEPT		0x004d
 #define HVCALL_CREATE_VP			0x004e
 #define HVCALL_GET_VP_REGISTERS			0x0050
 #define HVCALL_SET_VP_REGISTERS			0x0051
-#define HVCALL_TRANSLATE_VIRTUAL_ADDRESS	0x0052
-#define HVCALL_CLEAR_VIRTUAL_INTERRUPT		0x0056
-#define HVCALL_DELETE_PORT			0x0058
-#define HVCALL_DISCONNECT_PORT			0x005b
 #define HVCALL_POST_MESSAGE			0x005c
 #define HVCALL_SIGNAL_EVENT			0x005d
 #define HVCALL_POST_DEBUG_DATA			0x0069
 #define HVCALL_RETRIEVE_DEBUG_DATA		0x006a
 #define HVCALL_RESET_DEBUG_SESSION		0x006b
-#define HVCALL_MAP_STATS_PAGE			0x006c
-#define HVCALL_UNMAP_STATS_PAGE			0x006d
 #define HVCALL_SET_SYSTEM_PROPERTY		0x006f
 #define HVCALL_ADD_LOGICAL_PROCESSOR		0x0076
 #define HVCALL_GET_SYSTEM_PROPERTY		0x007b
@@ -193,21 +176,12 @@ union hv_reference_tsc_msr {
 #define HVCALL_RETARGET_INTERRUPT		0x007e
 #define HVCALL_NOTIFY_PARTITION_EVENT		0x0087
 #define HVCALL_ENTER_SLEEP_STATE		0x0084
-#define HVCALL_NOTIFY_PORT_RING_EMPTY		0x008b
-#define HVCALL_REGISTER_INTERCEPT_RESULT	0x0091
-#define HVCALL_ASSERT_VIRTUAL_INTERRUPT		0x0094
-#define HVCALL_CREATE_PORT			0x0095
-#define HVCALL_CONNECT_PORT			0x0096
 #define HVCALL_FLUSH_GUEST_PHYSICAL_ADDRESS_SPACE 0x00af
 #define HVCALL_FLUSH_GUEST_PHYSICAL_ADDRESS_LIST 0x00b0
-#define HVCALL_GET_GPA_PAGES_ACCESS_STATES 0x00c9
 #define HVCALL_CREATE_DEVICE_DOMAIN		0x00b1
 #define HVCALL_ATTACH_DEVICE_DOMAIN		0x00b2
 #define HVCALL_MAP_DEVICE_GPA_PAGES		0x00b3
 #define HVCALL_UNMAP_DEVICE_GPA_PAGES		0x00b4
-#define HVCALL_SIGNAL_EVENT_DIRECT		0x00c0
-#define HVCALL_POST_MESSAGE_DIRECT		0x00c1
-#define HVCALL_DISPATCH_VP			0x00c2
 #define HVCALL_DETACH_DEVICE_DOMAIN		0x00c4
 #define HVCALL_DELETE_DEVICE_DOMAIN		0x00c5
 #define HVCALL_QUERY_DEVICE_DOMAIN		0x00c6
@@ -215,15 +189,7 @@ union hv_reference_tsc_msr {
 #define HVCALL_UNMAP_SPARSE_DEVICE_GPA_PAGES	0x00c8
 #define HVCALL_CONFIGURE_DEVICE_DOMAIN		0x00ce
 #define HVCALL_FLUSH_DEVICE_DOMAIN		0x00d0
-#define HVCALL_ACQUIRE_SPARSE_SPA_PAGE_HOST_ACCESS	0x00d7
-#define HVCALL_RELEASE_SPARSE_SPA_PAGE_HOST_ACCESS	0x00d8
-#define HVCALL_MAP_VP_STATE_PAGE			0x00e1
-#define HVCALL_UNMAP_VP_STATE_PAGE		0x00e2
-#define HVCALL_GET_VP_STATE				0x00e3
-#define HVCALL_SET_VP_STATE				0x00e4
-#define HVCALL_IMPORT_ISOLATED_PAGES		0x00ef
-#define HVCALL_COMPLETE_ISOLATED_IMPORT		0x00f1
-#define HVCALL_GET_VP_CPUID_VALUES		0x00f4
+#define HVCALL_MODIFY_SPARSE_GPA_PAGE_HOST_VISIBILITY 0x00db
 
 /* Extended hypercalls */
 #define HV_EXT_CALL_QUERY_CAPABILITIES		0x8001
@@ -242,21 +208,25 @@ enum HV_GENERIC_SET_FORMAT {
 	HV_GENERIC_SET_ALL,
 };
 
-/* Each generic set contains 64 elements */
-#define HV_GENERIC_SET_SHIFT 6
-
 #define HV_PARTITION_ID_SELF		((u64)-1)
 #define HV_VP_INDEX_SELF		((u32)-2)
 
 #define HV_HYPERCALL_RESULT_MASK	GENMASK_ULL(15, 0)
 #define HV_HYPERCALL_FAST_BIT		BIT(16)
 #define HV_HYPERCALL_VARHEAD_OFFSET	17
-#define HV_HYPERCALL_NESTED		BIT(31)
+#define HV_HYPERCALL_VARHEAD_MASK	GENMASK_ULL(26, 17)
+#define HV_HYPERCALL_RSVD0_MASK		GENMASK_ULL(31, 27)
+#define HV_HYPERCALL_NESTED		BIT_ULL(31)
 #define HV_HYPERCALL_REP_COMP_OFFSET	32
 #define HV_HYPERCALL_REP_COMP_1		BIT_ULL(32)
 #define HV_HYPERCALL_REP_COMP_MASK	GENMASK_ULL(43, 32)
+#define HV_HYPERCALL_RSVD1_MASK		GENMASK_ULL(47, 44)
 #define HV_HYPERCALL_REP_START_OFFSET	48
 #define HV_HYPERCALL_REP_START_MASK	GENMASK_ULL(59, 48)
+#define HV_HYPERCALL_RSVD2_MASK		GENMASK_ULL(63, 60)
+#define HV_HYPERCALL_RSVD_MASK		(HV_HYPERCALL_RSVD0_MASK | \
+					 HV_HYPERCALL_RSVD1_MASK | \
+					 HV_HYPERCALL_RSVD2_MASK)
 
 /* hypercall status code */
 #define __HV_STATUS_DEF(OP) \
@@ -325,6 +295,84 @@ enum hv_status {
 
 #define HV_SYNIC_STIMER_COUNT		(4)
 
+/* Define synthetic interrupt controller message constants. */
+#define HV_MESSAGE_SIZE			(256)
+#define HV_MESSAGE_PAYLOAD_BYTE_COUNT	(240)
+#define HV_MESSAGE_PAYLOAD_QWORD_COUNT	(30)
+
+/*
+ * Define hypervisor message types. Some of the message types
+ * are x86/x64 specific, but there's no good way to separate
+ * them out into the arch-specific version of hyperv-tlfs.h
+ * because C doesn't provide a way to extend enum types.
+ * Keeping them all in the arch neutral hyperv-tlfs.h seems
+ * the least messy compromise.
+ */
+enum hv_message_type {
+	HVMSG_NONE			= 0x00000000,
+
+	/* Memory access messages. */
+	HVMSG_UNMAPPED_GPA		= 0x80000000,
+	HVMSG_GPA_INTERCEPT		= 0x80000001,
+
+	/* Timer notification messages. */
+	HVMSG_TIMER_EXPIRED		= 0x80000010,
+
+	/* Error messages. */
+	HVMSG_INVALID_VP_REGISTER_VALUE	= 0x80000020,
+	HVMSG_UNRECOVERABLE_EXCEPTION	= 0x80000021,
+	HVMSG_UNSUPPORTED_FEATURE	= 0x80000022,
+
+	/* Trace buffer complete messages. */
+	HVMSG_EVENTLOG_BUFFERCOMPLETE	= 0x80000040,
+
+	/* Platform-specific processor intercept messages. */
+	HVMSG_X64_IOPORT_INTERCEPT	= 0x80010000,
+	HVMSG_X64_MSR_INTERCEPT		= 0x80010001,
+	HVMSG_X64_CPUID_INTERCEPT	= 0x80010002,
+	HVMSG_X64_EXCEPTION_INTERCEPT	= 0x80010003,
+	HVMSG_X64_APIC_EOI		= 0x80010004,
+	HVMSG_X64_LEGACY_FP_ERROR	= 0x80010005
+};
+
+/* Define synthetic interrupt controller message flags. */
+union hv_message_flags {
+	__u8 asu8;
+	struct {
+		__u8 msg_pending:1;
+		__u8 reserved:7;
+	} __packed;
+};
+
+/* Define port identifier type. */
+union hv_port_id {
+	__u32 asu32;
+	struct {
+		__u32 id:24;
+		__u32 reserved:8;
+	} __packed u;
+};
+
+/* Define synthetic interrupt controller message header. */
+struct hv_message_header {
+	__u32 message_type;
+	__u8 payload_size;
+	union hv_message_flags message_flags;
+	__u8 reserved[2];
+	union {
+		__u64 sender;
+		union hv_port_id port;
+	};
+} __packed;
+
+/* Define synthetic interrupt controller message format. */
+struct hv_message {
+	struct hv_message_header header;
+	union {
+		__u64 payload[HV_MESSAGE_PAYLOAD_QWORD_COUNT];
+	} u;
+} __packed;
+
 /* Define the synthetic interrupt message page layout. */
 struct hv_message_page {
 	struct hv_message sint_message[HV_SYNIC_SINT_COUNT];
@@ -338,31 +386,9 @@ struct hv_timer_message_payload {
 	__u64 delivery_time;	/* When the message was delivered */
 } __packed;
 
-/*
- * Message format for notifications delivered via
- * intercept message(as_intercept=1)
- */
-struct hv_notification_message_payload {
-	u32 sint_index;
-} __packed;
-
-/* Define the synthentic interrupt controller event ring format */
-#define HV_SYNIC_EVENT_RING_MESSAGE_COUNT 63
-
-struct hv_synic_event_ring {
-	u8  signal_masked;
-	u8  ring_full;
-	u16 reserved_z;
-	u32 data[HV_SYNIC_EVENT_RING_MESSAGE_COUNT];
-} __packed;
-
-struct hv_synic_event_ring_page {
-	volatile struct hv_synic_event_ring sint_event_ring[HV_SYNIC_SINT_COUNT];
-};
 
 /* Define synthetic interrupt controller flag constants. */
 #define HV_EVENT_FLAGS_COUNT		(256 * 8)
-#define HV_EVENT_FLAGS_BYTE_COUNT	(256)
 #define HV_EVENT_FLAGS_LONG_COUNT	(256 / sizeof(unsigned long))
 
 /*
@@ -383,31 +409,10 @@ union hv_stimer_config {
 	} __packed;
 };
 
-union hv_vsm_partition_config {
-	u64 as_u64;
-	struct {
-		u64 enable_vtl_protection : 1;
-		u64 default_vtl_protection_mask : 4;
-		u64 zero_memory_on_reset : 1;
-		u64 deny_lower_vtl_startup : 1;
-		u64 intercept_acceptance : 1;
-		u64 intercept_enable_vtl_protection : 1;
-		u64 intercept_vp_startup : 1;
-		u64 intercept_cpuid_unimplemented : 1;
-		u64 intercept_unrecoverable_exception : 1;
-		u64 intercept_page : 1;
-		u64 mbz	: 51;
-	};
-};
 
 /* Define the synthetic interrupt controller event flags format. */
 union hv_synic_event_flags {
-	unsigned char flags8[HV_EVENT_FLAGS_BYTE_COUNT];
 	unsigned long flags[HV_EVENT_FLAGS_LONG_COUNT];
-};
-
-struct hv_synic_event_flags_page {
-	volatile union hv_synic_event_flags event_flags[HV_SYNIC_SINT_COUNT];
 };
 
 /* Define SynIC control register. */
@@ -454,20 +459,16 @@ union hv_synic_siefp {
 	} __packed;
 };
 
-union hv_synic_sirbp {
-	u64 as_uint64;
-	struct {
-		u64 sirbp_enabled:1;
-		u64 preserved:11;
-		u64 base_sirbp_gpa:52;
-	} __packed;
-};
-
 struct hv_vpset {
 	u64 format;
 	u64 valid_bank_mask;
 	u64 bank_contents[];
 } __packed;
+
+/* The maximum number of sparse vCPU banks which can be encoded by 'struct hv_vpset' */
+#define HV_MAX_SPARSE_VCPU_BANKS (64)
+/* The number of vCPUs in one sparse bank */
+#define HV_VCPUS_PER_SPARSE_BANK (64)
 
 /* HvCallSendSyntheticClusterIpi hypercall */
 struct hv_send_ipi {
@@ -567,16 +568,6 @@ union hv_proximity_domain_info {
 		struct hv_proximity_domain_flags flags;
 	};
 	u64 as_uint64;
-} __packed;
-
-struct hv_withdraw_memory_in {
-	u64 partition_id;
-	union hv_proximity_domain_info proximity_domain_info;
-} __packed;
-
-struct hv_withdraw_memory_out {
-	/* Hack - compiler doesn't like empty array size in struct with no other members */
-	u64 gpa_page_list[0];
 } __packed;
 
 struct hv_lp_startup_status {
@@ -684,24 +675,24 @@ struct hv_retarget_device_interrupt {
 
 union hv_input_vtl {
 	u8 as_uint8;
+};
+
+/* HvGetVpRegisters hypercall input with variable size reg name list*/
+struct hv_get_vp_registers_input {
 	struct {
-		u8 target_vtl: 4;
-		u8 use_target_vtl: 1;
-		u8 reserved_z: 3;
-	};
+		u64 partitionid;
+		u32 vpindex;
+		u8  inputvtl;
+		u8  padding[3];
+	} header;
+	struct input {
+		u32 name0;
+		u32 name1;
+	} element[];
 } __packed;
 
-/* HvGetVpRegisters hypercall with variable size reg name list*/
-struct hv_get_vp_registers {
-	u64 partition_id;
-	u32 vp_index;
-	union hv_input_vtl input_vtl;
-	u8  rsvd_z8;
-	u16 rsvd_z16;
-	u32 names[];
-} __packed;
 
-/* HvGetVpRegisters returns an array of register values */
+/* HvGetVpRegisters returns an array of these output elements */
 struct hv_get_vp_registers_output {
 	union {
 		struct {
@@ -715,6 +706,23 @@ struct hv_get_vp_registers_output {
 			u64 high;
 		} as64 __packed;
 	};
+};
+
+/* HvSetVpRegisters hypercall with variable size reg name/value list*/
+struct hv_set_vp_registers_input {
+	struct {
+		u64 partitionid;
+		u32 vpindex;
+		u8  inputvtl;
+		u8  padding[3];
+	} header;
+	struct {
+		u32 name;
+		u32 padding1;
+		u64 padding2;
+		u64 valuelow;
+		u64 valuehigh;
+	} element[];
 } __packed;
 
 enum hv_device_type {
@@ -846,340 +854,6 @@ struct hv_memory_hint {
 	union hv_gpa_page_range ranges[];
 } __packed;
 
-/* Non-userspace-visible partition creation flags */
-#define HV_PARTITION_CREATION_FLAG_EXO_PARTITION                    BIT(8)
-#define HV_PARTITION_CREATION_FLAG_INTERCEPT_MESSAGE_PAGE_ENABLED   BIT(19)
-
-#define HV_MAKE_COMPATIBILITY_VERSION(major_, minor_)	\
-	((u32)((major_) << 8 | (minor_)))
-
-#define HV_COMPATIBILITY_19_H1		HV_MAKE_COMPATIBILITY_VERSION(0X6, 0X5)
-#define HV_COMPATIBILITY_20_H1		HV_MAKE_COMPATIBILITY_VERSION(0X6, 0X7)
-#define HV_COMPATIBILITY_21_H1		HV_MAKE_COMPATIBILITY_VERSION(0X6, 0X8)
-#define HV_COMPATIBILITY_21_H2		HV_MAKE_COMPATIBILITY_VERSION(0X6, 0X9)
-#define HV_COMPATIBILITY_PRERELEASE	HV_MAKE_COMPATIBILITY_VERSION(0XFE, 0X0)
-#define HV_COMPATIBILITY_EXPERIMENT	HV_MAKE_COMPATIBILITY_VERSION(0XFF, 0X0)
-
-struct hv_create_partition_in {
-	u64 flags;
-	union hv_proximity_domain_info proximity_domain_info;
-	u32 compatibility_version;
-	u32 padding;
-	struct hv_partition_creation_properties partition_creation_properties;
-	union hv_partition_isolation_properties isolation_properties;
-} __packed;
-
-struct hv_create_partition_out {
-	u64 partition_id;
-} __packed;
-
-struct hv_initialize_partition {
-	u64 partition_id;
-} __packed;
-
-struct hv_finalize_partition {
-	u64 partition_id;
-} __packed;
-
-struct hv_delete_partition {
-	u64 partition_id;
-} __packed;
-
-struct hv_map_gpa_pages {
-	u64 target_partition_id;
-	u64 target_gpa_base;
-	u32 map_flags;
-	u32 padding;
-	u64 source_gpa_page_list[];
-} __packed;
-
-struct hv_unmap_gpa_pages {
-	u64 target_partition_id;
-	u64 target_gpa_base;
-	u32 unmap_flags;
-	u32 padding;
-} __packed;
-
-struct hv_install_intercept {
-	u64 partition_id;
-	u32 access_type; /* mask */
-	u32 intercept_type;
-	union hv_intercept_parameters intercept_parameter;
-} __packed;
-
-struct hv_assert_virtual_interrupt {
-	u64 partition_id;
-	union hv_interrupt_control control;
-	u64 dest_addr; /* cpu's apic id */
-	u32 vector;
-	u8 target_vtl;
-	u8 rsvd_z0;
-	u16 rsvd_z1;
-} __packed;
-
-#ifdef HV_SUPPORTS_VP_STATE
-
-struct hv_vp_state_data {
-	u32 type;
-	u32 rsvd;
-	struct hv_vp_state_data_xsave xsave;
-} __packed;
-
-struct hv_get_vp_state_in {
-	u64 partition_id;
-	u32 vp_index;
-	u8 input_vtl;
-	u8 rsvd0;
-	u16 rsvd1;
-	struct hv_vp_state_data state_data;
-	u64 output_data_pfns[];
-} __packed;
-
-#endif
-
-struct hv_stimer_state
-{
-	struct
-	{
-		// Indicates if there is an undelivered timer expiry message.
-		u32 undelivered_msg_pending:1;
-		u32 reserved:31;
-	} flags;
-
-	u32 resvd;
-
-	// Timer configuration and count.
-	u64 config;
-	u64 count;
-
-	// Timer adjustment.
-	u64 adjustment;
-
-	// Expiration time of the undelivered message.
-	u64 undelivered_exp_time;
-
-} __packed;
-
-struct hv_synthetic_timers_state
-{
-	struct hv_stimer_state timers[HV_SYNIC_STIMER_COUNT];
-
-	// Reserved space for time unhalted timer.
-	u64 reserved[5];
-} __packed;
-
-#ifdef HV_SUPPORTS_VP_STATE
-
-union hv_get_vp_state_out {
-	struct hv_local_interrupt_controller_state interrupt_controller_state;
-	struct hv_synthetic_timers_state synthetictimersstate;
-} __packed;
-
-union hv_input_set_vp_state_data {
-	u64 pfns;
-	u8 bytes;
-} __packed;
-
-struct hv_set_vp_state_in {
-	u64 partition_id;
-	u32 vp_index;
-	u8 input_vtl;
-	u8 rsvd0;
-	u16 rsvd1;
-	struct hv_vp_state_data state_data;
-	union hv_input_set_vp_state_data data[];
-} __packed;
-
-#endif
-
-struct hv_get_partition_property_in {
-	u64 partition_id;
-	u32 property_code; /* enum hv_partition_property_code */
-	u32 padding;
-} __packed;
-
-struct hv_get_partition_property_out {
-	u64 property_value;
-} __packed;
-
-struct hv_set_partition_property {
-	u64 partition_id;
-	u32 property_code; /* enum hv_partition_property_code */
-	u32 padding;
-	u64 property_value;
-} __packed;
-
-struct hv_translate_virtual_address_in {
-	u64 partition_id;
-	u32 vp_index;
-	u32 padding;
-	u64 control_flags;
-	u64 gva_page;
-} __packed;
-
-struct hv_translate_virtual_address_out {
-	union hv_translate_gva_result translation_result;
-	u64 gpa_page;
-} __packed;
-
-struct hv_port_info {
-	u32 port_type;
-	u32 padding;
-	union {
-		struct {
-			u32 target_sint;
-			u32 target_vp;
-			u64 rsvdz;
-		} message_port_info;
-		struct {
-			u32 target_sint;
-			u32 target_vp;
-			u16 base_flag_number;
-			u16 flag_count;
-			u32 rsvdz;
-		} event_port_info;
-		struct {
-			u64 monitor_address;
-			u64 rsvdz;
-		} monitor_port_info;
-		struct {
-			u32 target_sint;
-			u32 target_vp;
-			u64 rsvdz;
-		} doorbell_port_info;
-	};
-} __packed;
-
-struct hv_create_port {
-	u64 port_partition_id;
-	union hv_port_id port_id;
-	u8 port_vtl;
-	u8 min_connection_vtl;
-	u16 padding;
-	u64 connection_partition_id;
-	struct hv_port_info port_info;
-	union hv_proximity_domain_info proximity_domain_info;
-} __packed;
-
-union hv_delete_port {
-	u64 as_uint64[2];
-	struct {
-		u64 port_partition_id;
-		union hv_port_id port_id;
-		u32 reserved;
-	};
-} __packed;
-
-union hv_notify_port_ring_empty {
-	u64 as_uint64;
-	struct {
-		u32 sint_index;
-		u32 reserved;
-	};
-} __packed;
-
-struct hv_connection_info {
-	u32 port_type;
-	u32 padding;
-	union {
-		struct {
-			u64 rsvdz;
-		} message_connection_info;
-		struct {
-			u64 rsvdz;
-		} event_connection_info;
-		struct {
-			u64 monitor_address;
-		} monitor_connection_info;
-		struct {
-			u64 gpa;
-			u64 trigger_value;
-			u64 flags;
-		} doorbell_connection_info;
-	};
-} __packed;
-
-struct hv_connect_port {
-	u64 connection_partition_id;
-	union hv_connection_id connection_id;
-	u8 connection_vtl;
-	u8 rsvdz0;
-	u16 rsvdz1;
-	u64 port_partition_id;
-	union hv_port_id port_id;
-	u32 reserved2;
-	struct hv_connection_info connection_info;
-	union hv_proximity_domain_info proximity_domain_info;
-} __packed;
-
-union hv_disconnect_port {
-	u64 as_uint64[2];
-	struct {
-		u64 connection_partition_id;
-		union hv_connection_id connection_id;
-		u32 is_doorbell: 1;
-		u32 reserved: 31;
-	};
-} __packed;
-
-struct hv_input_signal_event_direct {
-	u64 target_partition;
-	u32 target_vp;
-	u8  target_vtl;
-	u8  target_sint;
-	u16 flag_number;
-} __packed;
-
-struct hv_output_signal_event_direct {
-	u8	newly_signaled;
-	u8	reserved[7];
-} __packed;
-
-struct hv_input_post_message_direct {
-	u64 partition_id;
-	u32 vp_index;
-	u8  vtl;
-	u8  padding[3];
-	u32 sint_index;
-	u8  message[HV_MESSAGE_SIZE];
-	u32 padding2;
-} __packed;
-
-struct hv_cpuid_leaf_info {
-    u32 eax;
-    u32 ecx;
-    u64 xfem;
-    u64 xss;
-} __packed;
-
-union hv_get_vp_cpuid_values_flags {
-	u32 as_uint32;
-	struct {
-		u32 use_vp_xfem_xss: 1;
-		u32 apply_registered_values: 1;
-		u32 reserved: 30;
-	};
-} __packed;
-
-struct hv_input_get_vp_cpuid_values {
-	u64 partition_id;
-	u32 vp_index;
-	union hv_get_vp_cpuid_values_flags flags;
-	u32 reserved;
-	u32 padding;
-	struct hv_cpuid_leaf_info cpuid_leaf_info[];
-} __packed;
-
-union hv_output_get_vp_cpuid_values {
-	u32 as_uint32[4];
-	struct {
-		u32 eax;
-		u32 ebx;
-		u32 ecx;
-		u32 edx;
-	};
-} __packed;
-
 /* Device domain types */
 #define HV_DEVICE_DOMAIN_TYPE_S2  0 /* Stage 2 domain */
 #define HV_DEVICE_DOMAIN_TYPE_S1  1 /* Stage 1 domain */
@@ -1296,46 +970,6 @@ struct hv_input_configure_device_domain {
 	struct hv_device_domain_settings settings;
 } __packed;
 
-struct hv_input_modify_sparse_spa_page_host_access {
-	u32 host_access:2;
-	u32 reserved:30;
-	u32 flags;
-	u64 partition_id;
-	u64 spa_page_list[];
-} __packed;
-
-/*
- * Maximum number of pages that can be specified in a single
- * HVCALL_ACQUIRE_SPARSE_SPA_PAGE_HOST_ACCESS or
- * HVCALL_RELEASE_SPARSE_SPA_PAGE_HOST_ACCESS hypercall.
- */
-#define HV_MODIFY_SPARSE_SPA_PAGE_HOST_ACCESS_MAX_PAGE_COUNT \
-	((HV_PAGE_SIZE - sizeof(hv_input_modify_sparse_spa_page_host_access)) / \
-	sizeof(u64))
-
-struct hv_input_import_isolated_pages {
-	u64 partition_id;
-	enum hv_isolated_page_type page_type;
-	enum hv_isolated_page_size page_size;
-	u64 page_number[];
-} __packed;
-
-struct hv_input_map_vp_state_page {
-	u64 partition_id;
-	u32 vp_index;
-	u32 type; /* enum hv_vp_state_page_type */
-} __packed;
-
-struct hv_output_map_vp_state_page {
-	u64 map_location; /* GPA page number */
-} __packed;
-
-struct hv_input_unmap_vp_state_page {
-	u64 partition_id;
-	u32 vp_index;
-	u32 type; /* enum hv_vp_state_page_type */
-} __packed;
-
 enum hv_system_property {
 	/* Add more values when needed */
 	HV_SYSTEM_PROPERTY_SLEEP_STATE = 3,
@@ -1391,131 +1025,6 @@ struct hv_input_set_system_property {
 	};
 } __packed;
 
-/*
- * Dispatch state for the VP communicated by the hypervisor to the
- * VP-dispatching thread in the root on return from HVCALL_DISPATCH_VP.
- */
-enum hv_vp_dispatch_state {
-	HV_VP_DISPATCH_STATE_INVALID = 0,
-	HV_VP_DISPATCH_STATE_BLOCKED = 1,
-	HV_VP_DISPATCH_STATE_READY = 2,
-};
-
-/*
- * Dispatch event that caused the current dispatch state on return from
- * HVCALL_DISPATCH_VP.
- *
- * The following are the only valid combinations for dispatch states and
- * events:
- *
- *      HV_VP_DISPATCH_STATE_BLOCKED
- *
- *          HV_VP_DISPATCH_EVENT_SUSPEND
- *          HV_VP_DISPATCH_EVENT_HALT
- *          HV_VP_DISPATCH_EVENT_STARTUP
- *          HV_VP_DISPATCH_EVENT_DELETE
- *          HV_VP_DISPATCH_EVENT_MACHINECHECK
- *          HV_VP_DISPATCH_EVENT_IDLE
- *          HV_VP_DISPATCH_EVENT_SYSTEM
- *          HV_VP_DISPATCH_EVENT_PARTITION
- *          HV_VP_DISPATCH_EVENT_TERMINATE
- *          HV_VP_DISPATCH_EVENT_SERVICING
- *          HV_VP_DISPATCH_EVENT_TIMEFREEZE
- *
- *      HV_VP_DISPATCH_STATE_READY
- *
- *          HV_VP_DISPATCH_EVENT_INTERCEPT
- *          HV_VP_DISPATCH_EVENT_PREEMPTED
- *          HV_VP_DISPATCH_EVENT_CANCELLED
- *          HV_VP_DISPATCH_EVENT_SCHEDULER
- *          HV_VP_DISPATCH_EVENT_LONGSPINWAIT
- *          HV_VP_DISPATCH_EVENT_TIMESLICEEND
- */
-enum hv_vp_dispatch_event {
-	HV_VP_DISPATCH_EVENT_INVALID =	0x00000000,
-
-	HV_VP_DISPATCH_EVENT_SUSPEND = 0x00000001,
-	HV_VP_DISPATCH_EVENT_INTERCEPT = 0x00000002,
-	HV_VP_DISPATCH_EVENT_HALT = 0x00000004,
-	HV_VP_DISPATCH_EVENT_STARTUP = 0x00000008,
-	HV_VP_DISPATCH_EVENT_DELETE = 0x00000020,
-	HV_VP_DISPATCH_EVENT_MACHINECHECK = 0x00000040,
-	HV_VP_DISPATCH_EVENT_IDLE = 0x00000080,
-	HV_VP_DISPATCH_EVENT_SYSTEM = 0x00000100,
-	HV_VP_DISPATCH_EVENT_PARTITION = 0x00000200,
-	HV_VP_DISPATCH_EVENT_TERMINATE = 0x00004000,
-	HV_VP_DISPATCH_EVENT_SERVICING = 0x00008000,
-	HV_VP_DISPATCH_EVENT_TIMEFREEZE = 0x00010000,
-
-	HV_VP_DISPATCH_EVENT_INTERNAL = 0x10000001,
-	HV_VP_DISPATCH_EVENT_PREEMPTED = 0x10000002,
-	HV_VP_DISPATCH_EVENT_CANCELLED = 0x10000003,
-	HV_VP_DISPATCH_EVENT_SCHEDULER = 0x10000004,
-	HV_VP_DISPATCH_EVENT_LONGSPINWAIT = 0x10000005,
-	HV_VP_DISPATCH_EVENT_TIMESLICEEND = 0x10000006,
-};
-
-#define HV_ROOT_SCHEDULER_MAX_VPS_PER_CHILD_PARTITION   1024
-/* The maximum array size of HV_GENERIC_SET (vp_set) buffer */
-#define HV_GENERIC_SET_QWORD_COUNT(max) (((((max) - 1) >> 6) + 1) + 2)
-
-struct hv_vp_signal_bitset_scheduler_message {
-	u64 partition_id;
-	u32 overflow_count;
-	u16 vp_count;
-	u16 reserved;
-
-#define BITSET_BUFFER_SIZE \
-	HV_GENERIC_SET_QWORD_COUNT(HV_ROOT_SCHEDULER_MAX_VPS_PER_CHILD_PARTITION)
-	union {
-		struct hv_vpset bitset;
-		u64 bitset_buffer[BITSET_BUFFER_SIZE];
-	} vp_bitset;
-#undef BITSET_BUFFER_SIZE
-} __packed;
-
-static_assert(sizeof(struct hv_vp_signal_bitset_scheduler_message) <=
-	(sizeof(struct hv_message) - sizeof(struct hv_message_header)));
-
-#define HV_MESSAGE_MAX_PARTITION_VP_PAIR_COUNT \
-	(((sizeof(struct hv_message) - sizeof(struct hv_message_header)) / \
-	 (sizeof(u64 /* partition id */) + sizeof(u32 /* vp index */))) - 1)
-
-struct hv_vp_signal_pair_scheduler_message {
-	u32 overflow_count;
-	u8 vp_count;
-	u8 reserved1[3];
-
-	u64 partition_ids[HV_MESSAGE_MAX_PARTITION_VP_PAIR_COUNT];
-	u32 vp_indexes[HV_MESSAGE_MAX_PARTITION_VP_PAIR_COUNT];
-
-	u8 reserved2[4];
-} __packed;
-
-static_assert(sizeof(struct hv_vp_signal_pair_scheduler_message) ==
-	(sizeof(struct hv_message) - sizeof(struct hv_message_header)));
-
-/* Input and output structures for HVCALL_DISPATCH_VP */
-#define HV_DISPATCH_VP_FLAG_CLEAR_INTERCEPT_SUSPEND 0x1
-#define HV_DISPATCH_VP_FLAG_ENABLE_CALLER_INTERRUPTS 0x2
-#define HV_DISPATCH_VP_FLAG_SET_CALLER_SPEC_CTRL 0x4
-#define HV_DISPATCH_VP_FLAG_SKIP_VP_SPEC_FLUSH 0x8
-#define HV_DISPATCH_VP_FLAG_SKIP_CALLER_SPEC_FLUSH 0x10
-#define HV_DISPATCH_VP_FLAG_SKIP_CALLER_USER_SPEC_FLUSH 0x20
-
-struct hv_input_dispatch_vp {
-	u64 partition_id;
-	u32 vp_index;
-	u32 flags;
-	u64 time_slice; /* in 100ns */
-	u64 spec_ctrl;
-} __packed;
-
-struct hv_output_dispatch_vp {
-	u32 dispatch_state; /* enum hv_vp_dispatch_state */
-	u32 dispatch_event; /* enum hv_vp_dispatch_event */
-} __packed;
-
 enum hv_crashdump_action {
 	HV_CRASHDUMP_NONE = 0,
 	HV_CRASHDUMP_SUSPEND_ALL_VPS,
@@ -1562,63 +1071,6 @@ struct hv_input_enter_sleep_state {
 	u32 sleep_state; /* enum hv_sleep_state */
 } __packed;
 
-struct hv_async_completion_message_payload {
-	u64 partition_id;
-	u32 status;
-	u32 completion_count;
-	u64 sub_status;
-} __packed;
-
-enum hv_stats_object_type {
-	HV_STATS_OBJECT_HYPERVISOR		= 0x00000001,
-	HV_STATS_OBJECT_LOGICAL_PROCESSOR	= 0x00000002,
-	HV_STATS_OBJECT_PARTITION		= 0x00010001,
-	HV_STATS_OBJECT_VP			= 0x00010002
-};
-
-union hv_stats_object_identity {
-	/* hv_stats_hypervisor */
-	struct {
-		u8 reserved[16];
-	} hv;
-
-	/* hv_stats_logical_processor */
-	struct {
-		u32 lp_index;
-		u8 reserved[12];
-	} lp;
-
-	/* hv_stats_partition */
-	struct {
-		u64 partition_id;
-		u8  reserved[4];
-		u16 flags;
-		u8  reserved1[2];
-	} partition;
-
-	/* hv_stats_vp */
-	struct {
-		u64 partition_id;
-		u32 vp_index;
-		u16 flags;
-		u8  reserved[2];
-	} vp;
-};
-
-struct hv_input_map_stats_page {
-	enum hv_stats_object_type type;
-	union hv_stats_object_identity identity;
-};
-
-struct hv_output_map_stats_page {
-	u64 map_location;
-};
-
-struct hv_input_unmap_stats_page {
-	enum hv_stats_object_type type;
-	union hv_stats_object_identity identity;
-};
-
 /*
  * Version info reported by hypervisor
  */
@@ -1640,6 +1092,24 @@ union hv_hypervisor_version_info {
 		u32 ecx;
 		u32 edx;
 	};
+};
+
+/* HV Map GPA (Guest Physical Address) Flags */
+#define HV_MAP_GPA_PERMISSIONS_NONE	0x0
+#define HV_MAP_GPA_READABLE		0x1
+#define HV_MAP_GPA_WRITABLE		0x2
+#define HV_MAP_GPA_KERNEL_EXECUTABLE	0x4
+#define HV_MAP_GPA_USER_EXECUTABLE	0x8
+#define HV_MAP_GPA_EXECUTABLE		0xC
+#define HV_MAP_GPA_PERMISSIONS_MASK	0xF
+
+/* Define connection identifier type. */
+union hv_connection_id {
+	__u32 asu32;
+	struct {
+		__u32 id:24;
+		__u32 reserved:8;
+	} u;
 };
 
 #endif
