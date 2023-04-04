@@ -717,16 +717,6 @@ struct hv_get_vp_registers_output {
 	};
 } __packed;
 
-/* HvSetVpRegisters hypercall with variable size reg name/value list*/
-struct hv_set_vp_registers {
-	u64 partition_id;
-	u32 vp_index;
-	union hv_input_vtl input_vtl;
-	u8  rsvd_z8;
-	u16 rsvd_z16;
-	struct hv_register_assoc elements[];
-} __packed;
-
 enum hv_device_type {
 	HV_DEVICE_TYPE_LOGICAL = 0,
 	HV_DEVICE_TYPE_PCI = 1,

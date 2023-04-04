@@ -3,7 +3,6 @@
 #define _UAPI_ASM_ARM64_HYPERV_TLFS_USER_H
 
 #include <linux/types.h>
-#include <asm-generic/hyperv-common-types.h>
 
 enum hv_arm64_pending_interruption_type {
 	HV_ARM64_PENDING_INTERRUPT = 0,
@@ -48,21 +47,6 @@ union hv_arm64_pending_secure_exception_event {
 	struct {
 		HV_ARM64_PENDING_EVENT_HEADER;
 	};
-};
-
-union hv_register_value {
-	struct hv_u128 reg128;
-	__u64 reg64;
-	__u32 reg32;
-	__u16 reg16;
-	__u8 reg8;
-	union hv_explicit_suspend_register explicit_suspend;
-	union hv_intercept_suspend_register intercept_suspend;
-	union hv_dispatch_suspend_register dispatch_suspend;
-	union hv_arm64_pending_interruption_register pending_interruption;
-	union hv_arm64_interrupt_state_register interrupt_state;
-	union hv_arm64_pending_exception_event pending_exception_event;
-	union hv_arm64_pending_secure_exception_event pending_secure_exception_event;
 };
 
 #define HV_PARTITION_PROCESSOR_FEATURE_BANKS 1

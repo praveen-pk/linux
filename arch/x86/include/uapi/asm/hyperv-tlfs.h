@@ -3,7 +3,6 @@
 #define _UAPI_ASM_X86_HYPERV_TLFS_USER_H
 
 #include <linux/types.h>
-#include <asm-generic/hyperv-common-types.h>
 
 #define HV_PARTITION_PROCESSOR_FEATURE_BANKS 2
 
@@ -370,54 +369,6 @@ enum hv_x64_register_name {
 	HV_X64_REGISTER_CR_INTERCEPT_CR4_MASK			= 0x000E0002,
 	HV_X64_REGISTER_CR_INTERCEPT_IA32_MISC_ENABLE_MASK	= 0x000E0003,
 };
-union hv_x64_fp_register {
-	struct hv_u128 as_uint128;
-	struct {
-		__u64 mantissa;
-		__u64 biased_exponent : 15;
-		__u64 sign : 1;
-		__u64 reserved : 48;
-	} __packed;
-} __packed;
-
-union hv_x64_fp_control_status_register {
-	struct hv_u128 as_uint128;
-	struct {
-		__u16 fp_control;
-		__u16 fp_status;
-		__u8 fp_tag;
-		__u8 reserved;
-		__u16 last_fp_op;
-		union {
-			/* long mode */
-			__u64 last_fp_rip;
-			/* 32 bit mode */
-			struct {
-				__u32 last_fp_eip;
-				__u16 last_fp_cs;
-				__u16 padding;
-			} __packed;
-		};
-	} __packed;
-} __packed;
-
-union hv_x64_xmm_control_status_register {
-	struct hv_u128 as_uint128;
-	struct {
-		union {
-			/* long mode */
-			__u64 last_fp_rdp;
-			/* 32 bit mode */
-			struct {
-				__u32 last_fp_dp;
-				__u16 last_fp_ds;
-				__u16 padding;
-			} __packed;
-		};
-		__u32 xmm_status_control;
-		__u32 xmm_status_control_mask;
-	} __packed;
-} __packed;
 
 struct hv_x64_segment_register {
 	__u64 base;
@@ -512,28 +463,6 @@ union hv_x64_pending_virtualization_fault_event {
 	} __packed;
 };
 
-union hv_register_value {
-	struct hv_u128 reg128;
-	__u64 reg64;
-	__u32 reg32;
-	__u16 reg16;
-	__u8 reg8;
-	union hv_x64_fp_register fp;
-	union hv_x64_fp_control_status_register fp_control_status;
-	union hv_x64_xmm_control_status_register xmm_control_status;
-	struct hv_x64_segment_register segment;
-	struct hv_x64_table_register table;
-	union hv_explicit_suspend_register explicit_suspend;
-	union hv_intercept_suspend_register intercept_suspend;
-	union hv_dispatch_suspend_register dispatch_suspend;
-	union hv_x64_interrupt_state_register interrupt_state;
-	union hv_x64_pending_interruption_register pending_interruption;
-	union hv_x64_msr_npiep_config_contents npiep_config;
-	union hv_x64_pending_exception_event pending_exception_event;
-	union hv_x64_pending_virtualization_fault_event
-		pending_virtualization_fault_event;
-};
-
 union hv_x64_vp_execution_state {
 	__u16 as_uint16;
 	struct {
@@ -565,43 +494,6 @@ struct hv_x64_intercept_message_header {
 	struct hv_x64_segment_register cs_segment;
 	__u64 rip;
 	__u64 rflags;
-} __packed;
-
-#define HV_HYPERCALL_INTERCEPT_MAX_XMM_REGISTERS 6
-
-struct hv_x64_hypercall_intercept_message {
-	struct hv_x64_intercept_message_header header;
-	__u64 rax;
-	__u64 rbx;
-	__u64 rcx;
-	__u64 rdx;
-	__u64 r8;
-	__u64 rsi;
-	__u64 rdi;
-	struct hv_u128 xmmregisters[HV_HYPERCALL_INTERCEPT_MAX_XMM_REGISTERS];
-	struct {
-		__u32 isolated:1;
-		__u32 reserved:31;
-	} __packed;
-} __packed;
-
-union hv_x64_register_access_info {
-	union hv_register_value source_value;
-	__u32 destination_register;
-	__u64 source_address;
-	__u64 destination_address;
-};
-
-struct hv_x64_register_intercept_message {
-	struct hv_x64_intercept_message_header header;
-	struct {
-		__u8 is_memory_op:1;
-		__u8 reserved:7;
-	} __packed;
-	__u8 reserved8;
-	__u16 reserved16;
-	__u32 register_name;
-	union hv_x64_register_access_info access_info;
 } __packed;
 
 union hv_x64_memory_access_info {
@@ -895,80 +787,6 @@ union hv_x64_xsave_xfem_register {
 struct hv_vp_state_data_xsave {
 	__u64 flags;
 	union hv_x64_xsave_xfem_register states;
-} __packed;
-
-/* Bits for dirty mask of hv_vp_register_page */
-#define HV_X64_REGISTER_CLASS_GENERAL	0
-#define HV_X64_REGISTER_CLASS_IP	1
-#define HV_X64_REGISTER_CLASS_XMM	2
-#define HV_X64_REGISTER_CLASS_SEGMENT	3
-#define HV_X64_REGISTER_CLASS_FLAGS	4
-
-#define HV_VP_REGISTER_PAGE_VERSION_1	1u
-
-struct hv_vp_register_page {
-	__u16 version;
-	__u8 isvalid;
-	__u8 rsvdz;
-	__u32 dirty;
-	union {
-		struct {
-			__u64 rax;
-			__u64 rcx;
-			__u64 rdx;
-			__u64 rbx;
-			__u64 rsp;
-			__u64 rbp;
-			__u64 rsi;
-			__u64 rdi;
-			__u64 r8;
-			__u64 r9;
-			__u64 r10;
-			__u64 r11;
-			__u64 r12;
-			__u64 r13;
-			__u64 r14;
-			__u64 r15;
-		} __packed;
-
-		__u64 gp_registers[16];
-	};
-	__u64 rip;
-	__u64 rflags;
-	union {
-		struct {
-			struct hv_u128 xmm0;
-			struct hv_u128 xmm1;
-			struct hv_u128 xmm2;
-			struct hv_u128 xmm3;
-			struct hv_u128 xmm4;
-			struct hv_u128 xmm5;
-		} __packed;
-
-		struct hv_u128 xmm_registers[6];
-	};
-	union {
-		struct {
-			struct hv_x64_segment_register es;
-			struct hv_x64_segment_register cs;
-			struct hv_x64_segment_register ss;
-			struct hv_x64_segment_register ds;
-			struct hv_x64_segment_register fs;
-			struct hv_x64_segment_register gs;
-		} __packed;
-
-		struct hv_x64_segment_register segment_registers[6];
-	};
-	/* read only */
-	__u64 cr0;
-	__u64 cr3;
-	__u64 cr4;
-	__u64 cr8;
-	__u64 efer;
-	__u64 dr7;
-	union hv_x64_pending_interruption_register pending_interruption;
-	union hv_x64_interrupt_state_register interrupt_state;
-	__u64 instruction_emulation_hints;
 } __packed;
 
 #define HV_PARTITION_SYNTHETIC_PROCESSOR_FEATURES_BANKS 1
