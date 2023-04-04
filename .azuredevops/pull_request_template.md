@@ -18,4 +18,5 @@ Anything relevant for the changelog, otherwise N/A.
 
 Provide any references that may help the reviewers (documents, code etc)
 
+*Please review the dom0 PR guidelines [here](https://www.osgwiki.com/wiki/LSG/Distro/Linux_in_Dom0/guidelines).*
 *Please make sure patches are in "upstream-ready" state. Please check out this [link](https://www.kernel.org/doc/html/latest/process/submitting-patches.html) for guidance.*
