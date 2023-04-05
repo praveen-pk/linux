@@ -130,7 +130,7 @@ struct hv_synic_pages {
 	struct hv_synic_event_ring_page *synic_event_ring_page;
 };
 
-struct mshv {
+struct mshv_root {
 	struct hv_synic_pages __percpu *synic_pages;
 	struct {
 		spinlock_t lock;
@@ -255,7 +255,7 @@ static inline bool mshv_partition_isolation_type_snp(struct mshv_partition *part
 	return partition->isolation_type == HV_PARTITION_ISOLATION_TYPE_SNP;
 }
 
-extern struct mshv mshv;
+extern struct mshv_root mshv_root;
 
 #ifdef CONFIG_DEBUG_FS
 extern int __init mshv_debugfs_init(void);
