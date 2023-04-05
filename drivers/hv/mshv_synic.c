@@ -32,7 +32,7 @@ synic_event_ring_get_queued_port(u32 sint_index)
 	u32 message;
 	u8 tail;
 
-	spages = this_cpu_ptr(mshv.synic_pages);
+	spages = this_cpu_ptr(mshv_root.synic_pages);
 	event_ring_page = &spages->synic_event_ring_page;
 	synic_eventring_tail = (u8 **)this_cpu_ptr(hv_synic_eventring_tail);
 	tail = (*synic_eventring_tail)[sint_index];
@@ -400,7 +400,7 @@ unlock_out:
 
 void mshv_isr(void)
 {
-	struct hv_synic_pages *spages = this_cpu_ptr(mshv.synic_pages);
+	struct hv_synic_pages *spages = this_cpu_ptr(mshv_root.synic_pages);
 	struct hv_message_page **msg_page = &spages->synic_message_page;
 	struct hv_message *msg;
 	bool handled;
@@ -458,7 +458,7 @@ int mshv_synic_init(unsigned int cpu)
 	union hv_synic_sint sint;
 #endif
 	union hv_synic_scontrol sctrl;
-	struct hv_synic_pages *spages = this_cpu_ptr(mshv.synic_pages);
+	struct hv_synic_pages *spages = this_cpu_ptr(mshv_root.synic_pages);
 	struct hv_message_page **msg_page = &spages->synic_message_page;
 	struct hv_synic_event_flags_page **event_flags_page =
 			&spages->synic_event_flags_page;
@@ -554,7 +554,7 @@ int mshv_synic_cleanup(unsigned int cpu)
 	union hv_synic_siefp siefp;
 	union hv_synic_sirbp sirbp;
 	union hv_synic_scontrol sctrl;
-	struct hv_synic_pages *spages = this_cpu_ptr(mshv.synic_pages);
+	struct hv_synic_pages *spages = this_cpu_ptr(mshv_root.synic_pages);
 	struct hv_message_page **msg_page = &spages->synic_message_page;
 	struct hv_synic_event_flags_page **event_flags_page =
 		&spages->synic_event_flags_page;

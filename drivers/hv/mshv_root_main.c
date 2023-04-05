@@ -35,7 +35,7 @@
 #include "mshv_root.h"
 #include "vfio.h"
 
-struct mshv mshv = {};
+struct mshv_root mshv_root = {};
 
 enum hv_scheduler_type hv_scheduler_type;
 
@@ -1669,13 +1669,13 @@ static void drain_all_vps(const struct mshv_partition *partition)
 static void
 remove_partition(struct mshv_partition *partition)
 {
-	spin_lock(&mshv.partitions.lock);
+	spin_lock(&mshv_root.partitions.lock);
 	hlist_del_rcu(&partition->hnode);
 
-	if (!--mshv.partitions.count)
+	if (!--mshv_root.partitions.count)
 		hv_remove_mshv_irq();
 
-	spin_unlock(&mshv.partitions.lock);
+	spin_unlock(&mshv_root.partitions.lock);
 
 	synchronize_rcu();
 }
@@ -1766,7 +1766,7 @@ mshv_partition *mshv_partition_find(u64 partition_id)
 {
 	struct mshv_partition *p;
 
-	hash_for_each_possible_rcu(mshv.partitions.items, p, hnode, partition_id)
+	hash_for_each_possible_rcu(mshv_root.partitions.items, p, hnode, partition_id)
 		if (p->id == partition_id)
 			return p;
 
@@ -1797,20 +1797,20 @@ mshv_partition_release(struct inode *inode, struct file *filp)
 static int
 add_partition(struct mshv_partition *partition)
 {
-	spin_lock(&mshv.partitions.lock);
-	if (mshv.partitions.count >= MSHV_MAX_PARTITIONS) {
+	spin_lock(&mshv_root.partitions.lock);
+	if (mshv_root.partitions.count >= MSHV_MAX_PARTITIONS) {
 		pr_err("%s: too many partitions\n", __func__);
-		spin_unlock(&mshv.partitions.lock);
+		spin_unlock(&mshv_root.partitions.lock);
 		return -ENOSPC;
 	}
 
-	hash_add_rcu(mshv.partitions.items, &partition->hnode, partition->id);
+	hash_add_rcu(mshv_root.partitions.items, &partition->hnode, partition->id);
 
-	mshv.partitions.count++;
-	if (mshv.partitions.count == 1)
+	mshv_root.partitions.count++;
+	if (mshv_root.partitions.count == 1)
 		hv_setup_mshv_irq(mshv_isr);
 
-	spin_unlock(&mshv.partitions.lock);
+	spin_unlock(&mshv_root.partitions.lock);
 
 	return 0;
 }
@@ -2090,7 +2090,7 @@ int __init mshv_root_init(void)
 			pr_warn("%s: Continuing because param mshv_root.ignore_hv_version is set\n",
 				__func__);
 		} else {
-			pr_err("%s: Failing because version is not supported. Use param mshv.ignore_hv_version=1 to proceed anyway\n",
+			pr_err("%s: Failing because version is not supported. Use param mshv_root.ignore_hv_version=1 to proceed anyway\n",
 			       __func__);
 			return -ENODEV;
 		}
@@ -2103,8 +2103,8 @@ int __init mshv_root_init(void)
 	if (ret)
 		goto out;
 
-	mshv.synic_pages = alloc_percpu(struct hv_synic_pages);
-	if (!mshv.synic_pages) {
+	mshv_root.synic_pages = alloc_percpu(struct hv_synic_pages);
+	if (!mshv_root.synic_pages) {
 		pr_err("%s: failed to allocate percpu synic page\n", __func__);
 		ret = -ENOMEM;
 		goto root_sched_deinit;
@@ -2121,8 +2121,8 @@ int __init mshv_root_init(void)
 
 	mshv_cpuhp_online = ret;
 
-	spin_lock_init(&mshv.partitions.lock);
-	hash_init(mshv.partitions.items);
+	spin_lock_init(&mshv_root.partitions.lock);
+	hash_init(mshv_root.partitions.items);
 
 	if (mshv_irqfd_wq_init())
 		mshv_irqfd_wq_cleanup();
@@ -2136,7 +2136,7 @@ int __init mshv_root_init(void)
 	return 0;
 
 free_synic_pages:
-	free_percpu(mshv.synic_pages);
+	free_percpu(mshv_root.synic_pages);
 root_sched_deinit:
 	root_scheduler_deinit();
 out:
@@ -2154,7 +2154,7 @@ void __exit mshv_root_exit(void)
 	root_scheduler_deinit();
 
 	cpuhp_remove_state(mshv_cpuhp_online);
-	free_percpu(mshv.synic_pages);
+	free_percpu(mshv_root.synic_pages);
 
 	mshv_port_table_fini();
 
