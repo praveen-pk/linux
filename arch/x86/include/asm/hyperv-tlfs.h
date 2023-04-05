@@ -11,8 +11,6 @@
 
 #include <linux/types.h>
 #include <asm/page.h>
-#include <asm-generic/hyperv-common-types.h>
-#include <uapi/asm/hyperv-tlfs.h>
 /*
  * The below CPUID leaves are present if VersionAndFeatures.HypervisorPresent
  * is set by CPUID(HvCpuIdFunctionVersionAndFeatures).
@@ -636,12 +634,19 @@ union hv_msi_entry {
 	} __packed;
 };
 
-struct hv_input_register_intercept_result {
-	__u64 partition_id;
-	__u32 vp_index;
-	__u32 intercept_type; /* enum hv_intercept_type */
-	union hv_register_intercept_result_parameters parameters;
-} __packed;
+enum hv_interrupt_type {
+	HV_X64_INTERRUPT_TYPE_FIXED             = 0x0000,
+	HV_X64_INTERRUPT_TYPE_LOWESTPRIORITY    = 0x0001,
+	HV_X64_INTERRUPT_TYPE_SMI               = 0x0002,
+	HV_X64_INTERRUPT_TYPE_REMOTEREAD        = 0x0003,
+	HV_X64_INTERRUPT_TYPE_NMI               = 0x0004,
+	HV_X64_INTERRUPT_TYPE_INIT              = 0x0005,
+	HV_X64_INTERRUPT_TYPE_SIPI              = 0x0006,
+	HV_X64_INTERRUPT_TYPE_EXTINT            = 0x0007,
+	HV_X64_INTERRUPT_TYPE_LOCALINT0         = 0x0008,
+	HV_X64_INTERRUPT_TYPE_LOCALINT1         = 0x0009,
+	HV_X64_INTERRUPT_TYPE_MAXIMUM           = 0x000A
+};
 
 #include <asm-generic/hyperv-tlfs.h>
 
