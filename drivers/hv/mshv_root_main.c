@@ -1601,6 +1601,12 @@ static long mshv_partition_ioctl_import_isolated_pages(
 		goto out;
 	}
 
+	ret = hv_call_import_isolated_pages(partition->id, pages,
+					    args.num_pages, args.page_type,
+					    args.page_size,
+					    mshv_root_async_hypecall_handler,
+					    partition);
+
 	kvfree(pages);
 out:
 	return ret;

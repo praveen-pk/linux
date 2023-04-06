@@ -151,6 +151,12 @@ int hv_call_unmap_stat_page(enum hv_stats_object_type type,
 int hv_call_modify_spa_host_access(u64 partition_id, u64 *spa_list,
 				   u64 spa_list_size, u32 host_access,
 				   u32 flags, u8 acquire);
+int hv_call_import_isolated_pages(
+	u64 partition_id, u64 *pages, u64 num_pages,
+	enum hv_isolated_page_type page_type,
+	enum hv_isolated_page_size page_size,
+	void (*completion_handler)(void * /* data */, u64 * /* status */),
+	void *completion_data);
 
 struct mshv_partition *mshv_partition_find(u64 partition_id) __must_hold(RCU);
 

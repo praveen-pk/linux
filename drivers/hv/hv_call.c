@@ -43,6 +43,9 @@
 	((HV_HYP_PAGE_SIZE -                                                   \
 	  sizeof(struct hv_input_modify_sparse_spa_page_host_access)) /        \
 	 sizeof(u64))
+#define HV_ISOLATED_PAGE_BATCH_SIZE                                            \
+	((HV_HYP_PAGE_SIZE - sizeof(struct hv_input_import_isolated_pages)) /  \
+	 sizeof(u64))
 
 int hv_call_withdraw_memory(u64 count, int node, u64 partition_id)
 {
@@ -1340,3 +1343,64 @@ int hv_call_modify_spa_host_access(u64 partition_id, u64 *spa_list,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(hv_call_modify_spa_host_access);
+
+int hv_call_import_isolated_pages(
+	u64 partition_id, u64 *pages, u64 num_pages,
+	enum hv_isolated_page_type page_type,
+	enum hv_isolated_page_size page_size,
+	void (*completion_handler)(void * /* data */, u64 * /* status */),
+	void *completion_data)
+{
+	struct hv_input_import_isolated_pages *input_page;
+	u64 status;
+	unsigned long remaining = num_pages;
+	u64 completed;
+	int rep_count;
+	unsigned long irq_flags;
+	u64 *gpa = pages;
+
+	if (num_pages == 0)
+		return -EINVAL;
+
+	if (!completion_handler) {
+		pr_err("%s: Missing completion handler for async import isolated pages hypercall, page_type: %u!\n",
+		       __func__, page_type);
+		return -EINVAL;
+	}
+
+	while (remaining) {
+		rep_count = min(remaining, HV_ISOLATED_PAGE_BATCH_SIZE);
+
+		local_irq_save(irq_flags);
+		input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
+		input_page->partition_id = partition_id;
+		input_page->page_type = page_type;
+		input_page->page_size = page_size;
+		memcpy(input_page->page_number, gpa, rep_count * sizeof(*gpa));
+
+		status = hv_do_rep_hypercall(HVCALL_IMPORT_ISOLATED_PAGES,
+					     rep_count, 0, input_page, NULL);
+		local_irq_restore(irq_flags);
+
+		completed = hv_repcomp(status);
+
+		if (hv_result(status) == HV_STATUS_CALL_PENDING)
+			completion_handler(completion_data, &status);
+
+		if (!hv_result_success(status)) {
+			pr_err("%s: completed %llu out of %llu, %s\n", __func__,
+			       num_pages - remaining, num_pages,
+			       hv_status_to_string(status));
+			if (remaining < num_pages)
+				pr_err("%s: Partially succeeded; gpa host access may be in invalid state",
+				       __func__);
+			return hv_status_to_errno(status);
+		}
+
+		gpa += completed;
+		remaining -= completed;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(hv_call_import_isolated_pages);
