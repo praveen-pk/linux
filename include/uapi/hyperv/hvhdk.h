@@ -329,7 +329,7 @@ struct hv_vp_register_page {
 	__u8 rsvdz;
 	__u32 dirty;
 
-#if defined(CONFIG_X86_64)
+#if defined(__x86_64__)
 
 	union {
 		struct {
@@ -403,13 +403,13 @@ struct hv_vp_register_page {
 	union hv_x64_interrupt_state_register interrupt_state;
 	__u64 instruction_emulation_hints;
 
-#elif defined(CONFIG_ARM64)
+#elif defined(__ARM64__)
 	/* Not yet supported in ARM */
 #endif
 
 } __packed;
 
-#ifdef CONFIG_ARM64
+#if defined(__ARM64__)
 #define HV_PARTITION_PROCESSOR_FEATURES_BANKS 1
 #else
 #define HV_PARTITION_PROCESSOR_FEATURES_BANKS 2
@@ -417,7 +417,7 @@ struct hv_vp_register_page {
 
 union hv_partition_processor_features {
 	__u64 as_uint64[HV_PARTITION_PROCESSOR_FEATURES_BANKS];
-#ifdef CONFIG_ARM64
+#if defined(__ARM64__)
 	struct {
 		__u64 asid16 : 1;
 		__u64 tgran16 : 1;
@@ -469,7 +469,7 @@ union hv_partition_processor_features {
 		__u64 reserved : 17;
 	} __packed;
 #endif
-#ifdef CONFIG_X86_64
+#if defined(__x86_64__)
 	struct {
 		__u64 sse3_support:1;
 		__u64 lahf_sahf_support:1;
@@ -580,7 +580,7 @@ union hv_partition_processor_xsave_features {
 
 struct hv_partition_creation_properties {
 	union hv_partition_processor_features disabled_processor_features;
-#ifdef CONFIG_X86_64
+#if defined(__x86_64__)
 	union hv_partition_processor_xsave_features
 		disabled_processor_xsave_features;
 #endif
@@ -697,7 +697,7 @@ union hv_partition_synthetic_processor_features {
 	__u64 as_uint64[HV_PARTITION_SYNTHETIC_PROCESSOR_FEATURES_BANKS];
 
 	struct {
-#ifdef CONFIG_X86_64
+#if defined(__x86_64__)
 		/* Report a hypervisor is present. CPUID leaves
 		 * 0x40000000 and 0x40000001 are supported.
 		 */
@@ -756,7 +756,7 @@ union hv_partition_synthetic_processor_features {
 		 */
 		__u64 access_partition_reference_tsc:1;
 
-#ifdef CONFIG_X86_64
+#if defined(__x86_64__)
 
 		/* Partition has access to the guest idle reg. Corresponds to
 		 * access_guest_idle_reg privilege.
@@ -775,7 +775,7 @@ union hv_partition_synthetic_processor_features {
 		__u64 reserved_z13:1; /* Reserved for access_root_scheduler_reg. */
 		__u64 reserved_z14:1; /* Reserved for access_tsc_invariant_controls. */
 
-#ifdef CONFIG_X86_64
+#if defined(__x86_64__)
 
 		/* Extended GVA ranges for HvCallFlushVirtualAddressList hypercall.
 		 * Corresponds to privilege.
@@ -830,7 +830,7 @@ union hv_partition_synthetic_processor_features {
 		/* HvCallRestorePartitionTime is supported. */
 		__u64 restore_time:1;
 
-#ifdef CONFIG_X86_64
+#if defined(__x86_64__)
 
 		/* EnlightenedVmcs nested enlightenment is supported. */
 		__u64 enlightened_vmcs:1;
@@ -878,7 +878,7 @@ union hv_partition_isolation_properties {
 #define HV_PARTITION_ISOLATION_HOST_TYPE_HARDWARE   0x1
 #define HV_PARTITION_ISOLATION_HOST_TYPE_RESERVED   0x2
 
-#ifdef CONFIG_X86_64
+#ifdef __x86_64__
 
 struct hv_register_x64_cpuid_result_parameters {
 	struct {
@@ -1070,7 +1070,7 @@ struct hv_x64_apic_eoi_message {
 
 static inline int hv_get_interrupt_vector_from_payload(__u64 payload)
 {
-#ifdef CONFIG_X86_64
+#if defined(__x86_64__)
 	struct hv_x64_apic_eoi_message *eoi_msg =
 		(struct hv_x64_apic_eoi_message *)payload;
 
@@ -1198,7 +1198,7 @@ union hv_interrupt_control {
 		__u32 interrupt_type; /* enum hv_interrupt type */
 		__u32 level_triggered : 1;
 		__u32 logical_dest_mode : 1;
-#if defined(CONFIG_ARM64)
+#if defined(__ARM64__)
 		__u32 asserted : 1;
 		__u32 rsvd : 29;
 #else
@@ -1207,7 +1207,7 @@ union hv_interrupt_control {
 	} __packed;
 };
 
-#if defined(CONFIG_X86_64)
+#if defined(__x86_64__)
 
 struct hv_local_interrupt_controller_state {
 	/* HV_X64_INTERRUPT_CONTROLLER_STATE */
@@ -1265,7 +1265,7 @@ struct hv_synthetic_timers_state {
 	__u64 reserved[5];
 } __packed;
 
-#ifdef CONFIG_X86_64
+#if defined(__x86_64__)
 
 union hv_x64_vp_execution_state {
 	__u16 as_uint16;
@@ -1340,7 +1340,8 @@ struct hv_output_translate_virtual_address {
 	__u64 gpa_page;
 } __packed;
 
-#ifdef CONFIG_X86_64
+#if defined(__x86_64__)
+
 #define HV_SUPPORTS_REGISTER_INTERCEPT
 
 struct hv_input_register_intercept_result {
@@ -1436,7 +1437,7 @@ struct hv_input_post_message_direct {
 	__u32 padding2;
 } __packed;
 
-#if defined(CONFIG_X86_64)
+#if defined(__x86_64__)
 
 #define HV_SUPPORTS_VP_STATE
 
@@ -1509,7 +1510,7 @@ struct hv_input_set_vp_state {
 	union hv_input_set_vp_state_data data[];
 } __packed;
 
-#endif /* CONFIG_X86_64 */
+#endif /* __x86_64__ */
 
 /*
  * Dispatch state for the VP communicated by the hypervisor to the
