@@ -1612,6 +1612,22 @@ out:
 	return ret;
 }
 
+static long
+mshv_partition_ioctl_complete_isolated_import(struct mshv_partition *partition,
+					      void __user *user_args)
+{
+	union hv_partition_complete_isolated_import_data import_data;
+	long ret = 0;
+
+	if (copy_from_user(&import_data, user_args, sizeof(import_data))) {
+		ret = -EFAULT;
+		goto out;
+	}
+
+out:
+	return ret;
+}
+
 static long mshv_partition_snp_ioctl(unsigned int ioctl,
 				     struct mshv_partition *partition,
 				     unsigned long arg)
@@ -1632,6 +1648,10 @@ static long mshv_partition_snp_ioctl(unsigned int ioctl,
 		break;
 	case MSHV_IMPORT_ISOLATED_PAGES:
 		ret = mshv_partition_ioctl_import_isolated_pages(
+			partition, (void __user *)arg);
+		break;
+	case MSHV_COMPLETE_ISOLATED_IMPORT:
+		ret = mshv_partition_ioctl_complete_isolated_import(
 			partition, (void __user *)arg);
 		break;
 	default:
@@ -1716,6 +1736,7 @@ mshv_partition_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 #endif
 	case MSHV_MODIFY_GPA_HOST_ACCESS:
 	case MSHV_IMPORT_ISOLATED_PAGES:
+	case MSHV_COMPLETE_ISOLATED_IMPORT:
 		ret = mshv_partition_snp_ioctl(ioctl, partition, arg);
 		break;
 	default:

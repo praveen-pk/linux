@@ -193,6 +193,10 @@ struct mshv_import_isolated_pages {
 	__u64 page_number[];
 };
 
+struct mshv_complete_isolated_import {
+	union hv_partition_complete_isolated_import_data import_data;
+};
+
 #define MSHV_IOCTL 0xB8
 
 /* mshv device */
@@ -265,6 +269,10 @@ struct mshv_import_isolated_pages {
 
 /* ioctl for importing isolated pages */
 #define MSHV_IMPORT_ISOLATED_PAGES     _IOW(MSHV_IOCTL, 0x29, struct mshv_import_isolated_pages)
+
+/* ioctls related to SEV-SNP enabled guest */
+#define MSHV_COMPLETE_ISOLATED_IMPORT                                          \
+	_IOW(MSHV_IOCTL, 0x30, struct mshv_complete_isolated_import)
 
 /* register page mapping example:
  * struct hv_vp_register_page *regs = mmap(NULL,
