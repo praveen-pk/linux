@@ -286,6 +286,14 @@ union hv_hypervisor_version_info {
 #define HVCALL_COMPLETE_ISOLATED_IMPORT		0x00f1
 #define HVCALL_GET_VP_CPUID_VALUES		0x00f4
 
+/*
+ * Some macros - i.e. GENMASK_ULL and BIT_ULL - are not currently supported by
+ * userspace rust bindings generation tool.
+ * As the below are not currently needed in userspace, don't export them and
+ * avoid the issue altogether for now.
+ */
+#if defined(__KERNEL__)
+
 /* HV_HYPERCALL_INPUT */
 #define HV_HYPERCALL_RESULT_MASK	GENMASK_ULL(15, 0)
 #define HV_HYPERCALL_FAST_BIT		BIT(16)
@@ -296,6 +304,8 @@ union hv_hypervisor_version_info {
 #define HV_HYPERCALL_REP_COMP_MASK	GENMASK_ULL(43, 32)
 #define HV_HYPERCALL_REP_START_OFFSET	48
 #define HV_HYPERCALL_REP_START_MASK	GENMASK_ULL(59, 48)
+
+#endif /* __KERNEL__ */
 
 /* Define the number of synthetic interrupt sources. */
 #define HV_SYNIC_SINT_COUNT (16)

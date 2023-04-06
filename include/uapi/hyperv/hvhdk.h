@@ -1595,8 +1595,10 @@ struct hv_vp_signal_bitset_scheduler_message {
 #undef BITSET_BUFFER_SIZE
 } __packed;
 
+#if defined(__KERNEL__)
 static_assert(sizeof(struct hv_vp_signal_bitset_scheduler_message) <=
 	(sizeof(struct hv_message) - sizeof(struct hv_message_header)));
+#endif
 
 #define HV_MESSAGE_MAX_PARTITION_VP_PAIR_COUNT \
 	(((sizeof(struct hv_message) - sizeof(struct hv_message_header)) / \
@@ -1613,8 +1615,10 @@ struct hv_vp_signal_pair_scheduler_message {
 	__u8 reserved2[4];
 } __packed;
 
+#if defined(__KERNEL__)
 static_assert(sizeof(struct hv_vp_signal_pair_scheduler_message) ==
 	(sizeof(struct hv_message) - sizeof(struct hv_message_header)));
+#endif
 
 /* Input and output structures for HVCALL_DISPATCH_VP */
 #define HV_DISPATCH_VP_FLAG_CLEAR_INTERCEPT_SUSPEND 0x1
