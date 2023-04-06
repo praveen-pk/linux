@@ -843,7 +843,7 @@ union hv_partition_synthetic_processor_features {
 };
 
 #define HV_MAKE_COMPATIBILITY_VERSION(major_, minor_)	\
-	((u32)((major_) << 8 | (minor_)))
+	((__u32)((major_) << 8 | (minor_)))
 
 #define HV_COMPATIBILITY_19_H1		HV_MAKE_COMPATIBILITY_VERSION(0X6, 0X5)
 #define HV_COMPATIBILITY_20_H1		HV_MAKE_COMPATIBILITY_VERSION(0X6, 0X7)
@@ -1600,7 +1600,7 @@ static_assert(sizeof(struct hv_vp_signal_bitset_scheduler_message) <=
 
 #define HV_MESSAGE_MAX_PARTITION_VP_PAIR_COUNT \
 	(((sizeof(struct hv_message) - sizeof(struct hv_message_header)) / \
-	 (sizeof(u64 /* partition id */) + sizeof(u32 /* vp index */))) - 1)
+	 (sizeof(__u64 /* partition id */) + sizeof(__u32 /* vp index */))) - 1)
 
 struct hv_vp_signal_pair_scheduler_message {
 	__u32 overflow_count;

@@ -56,8 +56,8 @@ enum hv_status {
 #define HV_HYP_PAGE_MASK		(~(HV_HYP_PAGE_SIZE - 1))
 
 
-#define HV_PARTITION_ID_INVALID		((u64) 0)
-#define HV_PARTITION_ID_SELF		((u64)-1)
+#define HV_PARTITION_ID_INVALID		((__u64) 0)
+#define HV_PARTITION_ID_SELF		((__u64)-1)
 
 
 /* Hyper-V specific model specific registers (MSRs) */
@@ -169,21 +169,21 @@ enum hv_status {
  */
 union hv_hypervisor_version_info {
 	struct {
-		u32 build_number;
+		__u32 build_number;
 
-		u32 minor_version : 16;
-		u32 major_version : 16;
+		__u32 minor_version : 16;
+		__u32 major_version : 16;
 
-		u32 service_pack;
+		__u32 service_pack;
 
-		u32 service_number : 24;
-		u32 service_branch : 8;
+		__u32 service_number : 24;
+		__u32 service_branch : 8;
 	};
 	struct {
-		u32 eax;
-		u32 ebx;
-		u32 ecx;
-		u32 edx;
+		__u32 eax;
+		__u32 ebx;
+		__u32 ecx;
+		__u32 edx;
 	};
 };
 
@@ -208,8 +208,8 @@ union hv_hypervisor_version_info {
 #endif
 
 #define HV_MAX_VP_INDEX			(HV_MAXIMUM_PROCESSORS - 1)
-#define HV_VP_INDEX_SELF		((u32)-2)
-#define HV_ANY_VP			((u32)-1)
+#define HV_VP_INDEX_SELF		((__u32)-2)
+#define HV_ANY_VP			((__u32)-1)
 
 /* Declare the various hypercall operations. */
 /* HV_CALL_CODE */
