@@ -1488,6 +1488,111 @@ static void mshv_destroy_devices(struct mshv_partition *partition)
 	}
 }
 
+static int convert_gpa_list_to_spa(struct mshv_partition *partition,
+				   u64 *gpa_list, u64 gpa_list_size)
+{
+	int i;
+	struct mshv_mem_region *region;
+	u64 region_page_count, region_user_start, region_user_end, offset;
+
+	for (i = 0; i < gpa_list_size; i++) {
+		region = NULL;
+		hlist_for_each_entry(region, &partition->mem_regions, hnode) {
+			region_page_count = HVPFN_DOWN(region->size);
+			region_user_start = region->guest_pfn;
+			region_user_end = region->guest_pfn + region->size;
+
+			/* Check if the GPA lies in the region */
+			if (gpa_list[i] >= region_user_start &&
+			    gpa_list[i] < region_user_end)
+				break;
+		}
+
+		if (!region)
+			return -ERANGE;
+
+		offset = HVPFN_DOWN(gpa_list[i] - region_user_start);
+		if (offset >= region_page_count)
+			return -ERANGE;
+
+		gpa_list[i] = page_to_pfn(region->pages[offset]);
+	}
+
+	return 0;
+}
+
+static long mshv_partition_ioctl_modify_gpa_host_access(
+	struct mshv_partition *partition,
+	struct mshv_modify_gpa_host_access __user *user_args)
+{
+	long ret = 0;
+	struct mshv_modify_gpa_host_access args;
+	u64 *gpa_list = NULL;
+
+	if (!mshv_partition_isolation_type_snp(partition)) {
+		ret = -EOPNOTSUPP;
+		pr_err("%s: Ioctl not supported for non SEV-SNP enabled partition!\n", __func__);
+		goto out;
+	}
+
+	if (copy_from_user(&args, user_args, sizeof(args))) {
+		ret = -EFAULT;
+		goto out;
+	}
+
+	if (args.gpa_list_size == 0) {
+		ret = -EINVAL;
+		pr_err("%s: Empty list of GPAs is not supported!\n", __func__);
+		goto out;
+	}
+
+	gpa_list = vmemdup_user(user_args->gpa_list,
+				size_mul(sizeof(*gpa_list), args.gpa_list_size));
+	if (IS_ERR(gpa_list)) {
+		ret = PTR_ERR(gpa_list);
+		goto out;
+	}
+
+	/*
+	 * Since the corresponding hypercall only understands System Page
+	 * Address (SPA), thus we would need to convert the Guest Physical
+	 * Address (GPA) list to SPA list before invoking the hypercall
+	 * to modify host access.
+	 */
+	ret = convert_gpa_list_to_spa(partition, gpa_list, args.gpa_list_size);
+
+	kvfree(gpa_list);
+
+out:
+	return ret;
+}
+
+static long mshv_partition_snp_ioctl(unsigned int ioctl,
+				     struct mshv_partition *partition,
+				     unsigned long arg)
+{
+	long ret;
+
+	if (!mshv_partition_isolation_type_snp(partition)) {
+		ret = -EOPNOTSUPP;
+		pr_err("%s: Ioctl(%u) not supported for non SEV-SNP enabled partition ID: %llu!\n",
+		       __func__, ioctl, partition->id);
+		goto out;
+	}
+
+	switch (ioctl) {
+	case MSHV_MODIFY_GPA_HOST_ACCESS:
+		ret = mshv_partition_ioctl_modify_gpa_host_access(
+			partition, (void __user *)arg);
+		break;
+	default:
+		ret = -ENOTTY;
+	}
+
+out:
+	return ret;
+}
+
 static long
 mshv_partition_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 {
@@ -1560,6 +1665,9 @@ mshv_partition_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 			partition, (void __user *)arg);
 		break;		
 #endif
+	case MSHV_MODIFY_GPA_HOST_ACCESS:
+		ret = mshv_partition_snp_ioctl(ioctl, partition, arg);
+		break;
 	default:
 		ret = -ENOTTY;
 	}
