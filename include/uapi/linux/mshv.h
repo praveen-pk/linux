@@ -186,6 +186,13 @@ struct mshv_modify_gpa_host_access {
 	__u64 gpa_list[];
 };
 
+struct mshv_import_isolated_pages {
+	enum hv_isolated_page_type page_type;
+	enum hv_isolated_page_size page_size;
+	__u64 num_pages;
+	__u64 page_number[];
+};
+
 #define MSHV_IOCTL 0xB8
 
 /* mshv device */
@@ -255,6 +262,9 @@ struct mshv_modify_gpa_host_access {
 
 /* ioctls for changing gpa host visibility */
 #define MSHV_MODIFY_GPA_HOST_ACCESS    _IOW(MSHV_IOCTL, 0x28, struct mshv_modify_gpa_host_access)
+
+/* ioctl for importing isolated pages */
+#define MSHV_IMPORT_ISOLATED_PAGES     _IOW(MSHV_IOCTL, 0x29, struct mshv_import_isolated_pages)
 
 /* register page mapping example:
  * struct hv_vp_register_page *regs = mmap(NULL,

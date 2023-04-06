@@ -1574,6 +1574,38 @@ out:
 	return ret;
 }
 
+static long mshv_partition_ioctl_import_isolated_pages(
+	struct mshv_partition *partition,
+	struct mshv_import_isolated_pages __user *user_args)
+{
+	long ret = 0;
+	struct mshv_import_isolated_pages args;
+	u64 *pages = NULL;
+
+	if (copy_from_user(&args, user_args, sizeof(args))) {
+		ret = -EFAULT;
+		goto out;
+	}
+
+	if (args.num_pages == 0) {
+		ret = -EINVAL;
+		pr_err("%s: Empty list of isolated pages is not supported!\n", __func__);
+		goto out;
+	}
+
+	pages = vmemdup_user(user_args->page_number,
+			     size_mul(sizeof(*pages), args.num_pages));
+
+	if (IS_ERR(pages)) {
+		ret = PTR_ERR(pages);
+		goto out;
+	}
+
+	kvfree(pages);
+out:
+	return ret;
+}
+
 static long mshv_partition_snp_ioctl(unsigned int ioctl,
 				     struct mshv_partition *partition,
 				     unsigned long arg)
@@ -1590,6 +1622,10 @@ static long mshv_partition_snp_ioctl(unsigned int ioctl,
 	switch (ioctl) {
 	case MSHV_MODIFY_GPA_HOST_ACCESS:
 		ret = mshv_partition_ioctl_modify_gpa_host_access(
+			partition, (void __user *)arg);
+		break;
+	case MSHV_IMPORT_ISOLATED_PAGES:
+		ret = mshv_partition_ioctl_import_isolated_pages(
 			partition, (void __user *)arg);
 		break;
 	default:
@@ -1673,6 +1709,7 @@ mshv_partition_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 		break;		
 #endif
 	case MSHV_MODIFY_GPA_HOST_ACCESS:
+	case MSHV_IMPORT_ISOLATED_PAGES:
 		ret = mshv_partition_snp_ioctl(ioctl, partition, arg);
 		break;
 	default:
