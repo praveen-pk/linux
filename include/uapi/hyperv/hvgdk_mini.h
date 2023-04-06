@@ -638,11 +638,11 @@ struct hv_nested_enlightenments_control {
 	struct {
 		__u32 directhypercall : 1;
 		__u32 reserved : 31;
-	} features;
+	} __packed features;
 	struct {
 		__u32 inter_partition_comm : 1;
 		__u32 reserved : 31;
-	} hypercall_controls;
+	} __packed hypercall_controls;
 } __packed;
 
 /* Define virtual processor assist page structure. */

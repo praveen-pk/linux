@@ -878,48 +878,9 @@ union hv_partition_isolation_properties {
 #define HV_PARTITION_ISOLATION_HOST_TYPE_HARDWARE   0x1
 #define HV_PARTITION_ISOLATION_HOST_TYPE_RESERVED   0x2
 
-#ifdef __x86_64__
-
-struct hv_register_x64_cpuid_result_parameters {
-	struct {
-		__u32 eax;
-		__u32 ecx;
-		__u8 subleaf_specific;
-		__u8 always_override;
-		__u16 padding;
-	} __packed input;
-	struct {
-		__u32 eax;
-		__u32 eax_mask;
-		__u32 ebx;
-		__u32 ebx_mask;
-		__u32 ecx;
-		__u32 ecx_mask;
-		__u32 edx;
-		__u32 edx_mask;
-	} __packed result;
-} __packed;
-
-enum hv_unimplemented_msr_action {
-	HV_UNIMPLEMENTED_MSR_ACTION_FAULT = 0,
-	HV_UNIMPLEMENTED_MSR_ACTION_IGNORE_WRITE_READ_ZERO = 1,
-	HV_UNIMPLEMENTED_MSR_ACTION_COUNT = 2,
-};
-
-struct hv_register_x64_msr_result_parameters {
-	__u32 msr_index;
-	__u32 access_type;
-	__u32 action; /* enum hv_unimplemented_msr_action */
-} __packed;
-
-union hv_register_intercept_result_parameters {
-	struct hv_register_x64_cpuid_result_parameters cpuid;
-	struct hv_register_x64_msr_result_parameters msr;
-} __packed;
-
-#endif
-
+/* Note: Exo partition is enabled by default */
 #define HV_PARTITION_CREATION_FLAG_EXO_PARTITION                    BIT(8)
+#define HV_PARTITION_CREATION_FLAG_LAPIC_ENABLED                    BIT(13)
 #define HV_PARTITION_CREATION_FLAG_INTERCEPT_MESSAGE_PAGE_ENABLED   BIT(19)
 
 struct hv_input_create_partition {
@@ -1001,7 +962,7 @@ union hv_get_vp_cpuid_values_flags {
 		__u32 use_vp_xfem_xss: 1;
 		__u32 apply_registered_values: 1;
 		__u32 reserved: 30;
-	};
+	} __packed;
 } __packed;
 
 struct hv_input_get_vp_cpuid_values {
@@ -1021,8 +982,84 @@ union hv_output_get_vp_cpuid_values {
 		__u32 ebx;
 		__u32 ecx;
 		__u32 edx;
-	};
-} __packed;
+	} __packed;
+};
+
+/*
+ * Request data read access.
+ */
+#define HV_TRANSLATE_GVA_VALIDATE_READ       (0x0001)
+
+/*
+ * Request data write access.
+ */
+#define HV_TRANSLATE_GVA_VALIDATE_WRITE      (0x0002)
+
+/*
+ * Request instruction fetch access.
+ */
+#define HV_TRANSLATE_GVA_VALIDATE_EXECUTE    (0x0004)
+
+#if defined(__x86_64__)
+
+/*
+ * Don't enforce any checks related to access mode (supervisor vs. user; SMEP and SMAP are treated
+ * as disabled).
+ */
+#define HV_TRANSLATE_GVA_PRIVILEGE_EXEMPT    (0x0008)
+
+#endif
+
+#define HV_TRANSLATE_GVA_SET_PAGE_TABLE_BITS (0x0010)
+#define HV_TRANSLATE_GVA_TLB_FLUSH_INHIBIT   (0x0020)
+
+/*
+ * Treat the access as a supervisor mode access irrespective of current mode.
+ */
+#define HV_TRANSLATE_GVA_SUPERVISOR_ACCESS   (0x0040)
+
+/*
+ * Treat the access as a user mode access irrespective of current mode.
+ */
+#define HV_TRANSLATE_GVA_USER_ACCESS         (0x0080)
+
+#if defined(__x86_64__)
+
+/*
+ * Enforce the SMAP restriction on supervisor data access to user mode addresses if CR4.SMAP=1
+ * irrespective of current EFLAGS.AC i.e. the behavior for "implicit supervisor-mode accesses"
+ * (e.g. to the GDT, etc.) and when EFLAGS.AC=0. Does nothing if CR4.SMAP=0.
+ */
+#define HV_TRANSLATE_GVA_ENFORCE_SMAP        (0x0100)
+
+/*
+ * Don't enforce the SMAP restriction on supervisor data access to user mode addresses irrespective
+ * of current EFLAGS.AC i.e. the behavior when EFLAGS.AC=1.
+ */
+#define HV_TRANSLATE_GVA_OVERRIDE_SMAP       (0x0200)
+
+/*
+ * Treat the access as a shadow stack access.
+ */
+#define HV_TRANSLATE_GVA_SHADOW_STACK        (0x0400)
+
+#else
+
+/*
+ * Restrict supervisor data access to user mode addresses irrespective of current PSTATE.PAN i.e.
+ * the behavior when PSTATE.PAN=1.
+ */
+#define HV_TRANSLATE_GVA_PAN_SET             (0x0100)
+
+/*
+ * Don't restrict supervisor data access to user mode addresses irrespective of current PSTATE.PAN
+ * i.e. the behavior when PSTATE.PAN=0.
+ */
+#define HV_TRANSLATE_GVA_PAN_CLEAR           (0x0200)
+
+#endif
+
+#define HV_TRANSLATE_GVA_INPUT_VTL_MASK      (0xFF00000000000000UI64)
 
 enum hv_translate_gva_result_code {
 	HV_TRANSLATE_GVA_SUCCESS			= 0,
@@ -1243,7 +1280,7 @@ struct hv_stimer_state {
 		// Indicates if there is an undelivered timer expiry message.
 		__u32 undelivered_msg_pending:1;
 		__u32 reserved:31;
-	} flags;
+	} __packed flags;
 
 	__u32 resvd;
 
@@ -1295,6 +1332,171 @@ struct hv_x64_intercept_message_header {
 	__u64 rflags;
 } __packed;
 
+#define HV_HYPERCALL_INTERCEPT_MAX_XMM_REGISTERS 6
+
+struct hv_x64_hypercall_intercept_message {
+	struct hv_x64_intercept_message_header header;
+	__u64 rax;
+	__u64 rbx;
+	__u64 rcx;
+	__u64 rdx;
+	__u64 r8;
+	__u64 rsi;
+	__u64 rdi;
+	struct hv_u128 xmmregisters[HV_HYPERCALL_INTERCEPT_MAX_XMM_REGISTERS];
+	struct {
+		__u32 isolated:1;
+		__u32 reserved:31;
+	} __packed;
+} __packed;
+
+union hv_x64_register_access_info {
+	union hv_register_value source_value;
+	__u32 destination_register;
+	__u64 source_address;
+	__u64 destination_address;
+};
+
+struct hv_x64_register_intercept_message {
+	struct hv_x64_intercept_message_header header;
+	struct {
+		__u8 is_memory_op:1;
+		__u8 reserved:7;
+	} __packed;
+	__u8 reserved8;
+	__u16 reserved16;
+	__u32 register_name;
+	union hv_x64_register_access_info access_info;
+} __packed;
+
+union hv_x64_memory_access_info {
+	__u8 as_uint8;
+	struct {
+		__u8 gva_valid:1;
+		__u8 gva_gpa_valid:1;
+		__u8 hypercall_output_pending:1;
+		__u8 tlb_locked_no_overlay:1;
+		__u8 reserved:4;
+	} __packed;
+};
+
+union hv_x64_io_port_access_info {
+	__u8 as_uint8;
+	struct {
+		__u8 access_size:3;
+		__u8 string_op:1;
+		__u8 rep_prefix:1;
+		__u8 reserved:3;
+	} __packed;
+};
+
+union hv_x64_exception_info {
+	__u8 as_uint8;
+	struct {
+		__u8 error_code_valid:1;
+		__u8 software_exception:1;
+		__u8 reserved:6;
+	} __packed;
+};
+
+struct hv_x64_memory_intercept_message {
+	struct hv_x64_intercept_message_header header;
+	__u32 cache_type; /* enum hv_cache_type */
+	__u8 instruction_byte_count;
+	union hv_x64_memory_access_info memory_access_info;
+	__u8 tpr_priority;
+	__u8 reserved1;
+	__u64 guest_virtual_address;
+	__u64 guest_physical_address;
+	__u8 instruction_bytes[16];
+} __packed;
+
+struct hv_x64_cpuid_intercept_message {
+	struct hv_x64_intercept_message_header header;
+	__u64 rax;
+	__u64 rcx;
+	__u64 rdx;
+	__u64 rbx;
+	__u64 default_result_rax;
+	__u64 default_result_rcx;
+	__u64 default_result_rdx;
+	__u64 default_result_rbx;
+} __packed;
+
+struct hv_x64_msr_intercept_message {
+	struct hv_x64_intercept_message_header header;
+	__u32 msr_number;
+	__u32 reserved;
+	__u64 rdx;
+	__u64 rax;
+} __packed;
+
+struct hv_x64_io_port_intercept_message {
+	struct hv_x64_intercept_message_header header;
+	__u16 port_number;
+	union hv_x64_io_port_access_info access_info;
+	__u8 instruction_byte_count;
+	__u32 reserved;
+	__u64 rax;
+	__u8 instruction_bytes[16];
+	struct hv_x64_segment_register ds_segment;
+	struct hv_x64_segment_register es_segment;
+	__u64 rcx;
+	__u64 rsi;
+	__u64 rdi;
+} __packed;
+
+struct hv_x64_exception_intercept_message {
+	struct hv_x64_intercept_message_header header;
+	__u16 exception_vector;
+	union hv_x64_exception_info exception_info;
+	__u8 instruction_byte_count;
+	__u32 error_code;
+	__u64 exception_parameter;
+	__u64 reserved;
+	__u8 instruction_bytes[16];
+	struct hv_x64_segment_register ds_segment;
+	struct hv_x64_segment_register ss_segment;
+	__u64 rax;
+	__u64 rcx;
+	__u64 rdx;
+	__u64 rbx;
+	__u64 rsp;
+	__u64 rbp;
+	__u64 rsi;
+	__u64 rdi;
+	__u64 r8;
+	__u64 r9;
+	__u64 r10;
+	__u64 r11;
+	__u64 r12;
+	__u64 r13;
+	__u64 r14;
+	__u64 r15;
+} __packed;
+
+struct hv_x64_invalid_vp_register_message {
+	__u32 vp_index;
+	__u32 reserved;
+} __packed;
+
+struct hv_x64_unrecoverable_exception_message {
+	struct hv_x64_intercept_message_header header;
+} __packed;
+
+#define HV_UNSUPPORTED_FEATURE_INTERCEPT	1
+#define HV_UNSUPPORTED_FEATURE_TASK_SWITCH_TSS	2
+
+struct hv_x64_unsupported_feature_message {
+	__u32 vp_index;
+	__u32 feature_code;
+	__u64 feature_parameter;
+} __packed;
+
+struct hv_x64_halt_message {
+	struct hv_x64_intercept_message_header header;
+} __packed;
+
 #define HV_X64_PENDING_INTERRUPT	0
 #define HV_X64_PENDING_NMI		2
 #define HV_X64_PENDING_EXCEPTION	3
@@ -1318,7 +1520,38 @@ struct hv_x64_sipi_intercept_message {
 	__u32 interrupt_vector;
 } __packed;
 
-#endif
+struct hv_register_x64_cpuid_result_parameters {
+	struct {
+		__u32 eax;
+		__u32 ecx;
+		__u8 subleaf_specific;
+		__u8 always_override;
+		__u16 padding;
+	} __packed input;
+	struct {
+		__u32 eax;
+		__u32 eax_mask;
+		__u32 ebx;
+		__u32 ebx_mask;
+		__u32 ecx;
+		__u32 ecx_mask;
+		__u32 edx;
+		__u32 edx_mask;
+	} __packed result;
+} __packed;
+
+struct hv_register_x64_msr_result_parameters {
+	__u32 msr_index;
+	__u32 access_type;
+	__u32 action; /* enum hv_unimplemented_msr_action */
+} __packed;
+
+union hv_register_intercept_result_parameters {
+	struct hv_register_x64_cpuid_result_parameters cpuid;
+	struct hv_register_x64_msr_result_parameters msr;
+} __packed;
+
+#endif /* __x86_64__ */
 
 struct hv_async_completion_message_payload {
 	__u64 partition_id;
@@ -1339,6 +1572,16 @@ struct hv_output_translate_virtual_address {
 	union hv_translate_gva_result translation_result;
 	__u64 gpa_page;
 } __packed;
+
+enum hv_cache_type {
+	HV_CACHE_TYPE_UNCACHED		= 0,
+	HV_CACHE_TYPE_WRITE_COMBINING	= 1,
+	HV_CACHE_TYPE_WRITE_THROUGH	= 4,
+#if defined(__x86_64__)
+	HV_CACHE_TYPE_WRITE_PROTECTED	= 5,
+#endif
+	HV_CACHE_TYPE_WRITE_BACK	= 6,
+};
 
 #if defined(__x86_64__)
 
@@ -1403,7 +1646,7 @@ union hv_input_disconnect_port {
 		union hv_connection_id connection_id;
 		__u32 is_doorbell: 1;
 		__u32 reserved: 31;
-	};
+	} __packed;
 } __packed;
 
 union hv_input_notify_port_ring_empty {
