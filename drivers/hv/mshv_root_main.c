@@ -1624,6 +1624,9 @@ mshv_partition_ioctl_complete_isolated_import(struct mshv_partition *partition,
 		goto out;
 	}
 
+	ret = hv_call_complete_isolated_import(
+		partition->id, &import_data, mshv_root_async_hypecall_handler,
+		partition);
 out:
 	return ret;
 }

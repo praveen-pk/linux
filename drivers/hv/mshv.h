@@ -157,6 +157,11 @@ int hv_call_import_isolated_pages(
 	enum hv_isolated_page_size page_size,
 	void (*completion_handler)(void * /* data */, u64 * /* status */),
 	void *completion_data);
+int hv_call_complete_isolated_import(
+	u64 partition_id,
+	union hv_partition_complete_isolated_import_data *import_data,
+	void (*completion_handler)(void * /* data */, u64 * /* status */),
+	void *completion_data);
 
 struct mshv_partition *mshv_partition_find(u64 partition_id) __must_hold(RCU);
 

@@ -1404,3 +1404,41 @@ int hv_call_import_isolated_pages(
 	return 0;
 }
 EXPORT_SYMBOL_GPL(hv_call_import_isolated_pages);
+
+int hv_call_complete_isolated_import(
+	u64 partition_id,
+	union hv_partition_complete_isolated_import_data *import_data,
+	void (*completion_handler)(void * /* data */, u64 * /* status */),
+	void *completion_data)
+{
+	u64 status;
+	unsigned long flags;
+	struct hv_input_complete_isolated_import *in;
+
+	if (!completion_handler) {
+		pr_err("%s: Missing completion handler for async complete isolated import hypercall!\n",
+		       __func__);
+		return -EINVAL;
+	}
+
+	local_irq_save(flags);
+	in = *this_cpu_ptr(hyperv_pcpu_input_arg);
+
+	in->partition_id = partition_id;
+	memcpy(&in->import_data, import_data, sizeof(*import_data));
+
+	status = hv_do_hypercall(HVCALL_COMPLETE_ISOLATED_IMPORT, in, NULL);
+	local_irq_restore(flags);
+
+	if (hv_result(status) == HV_STATUS_CALL_PENDING)
+		completion_handler(partition_id, &status);
+
+	if (!hv_result_success(status)) {
+		pr_err("%s: status=%s, partition_id=%llu\n", __func__,
+		       hv_status_to_string(status), partition_id);
+		return hv_status_to_errno(status);
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(hv_call_complete_isolated_import);
