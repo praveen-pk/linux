@@ -1913,4 +1913,18 @@ struct hv_output_dispatch_vp {
 	__u32 dispatch_event; /* enum hv_vp_dispatch_event */
 } __packed;
 
+struct hv_input_modify_sparse_spa_page_host_access {
+	__u32 host_access : 2;
+	__u32 reserved : 30;
+	__u32 flags;
+	__u64 partition_id;
+	__u64 spa_page_list[];
+} __packed;
+
+/* hv_input_modify_sparse_spa_page_host_access flags */
+#define HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_EXCLUSIVE  0x1
+#define HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_SHARED     0x2
+#define HV_MODIFY_SPA_PAGE_HOST_ACCESS_LARGE_PAGE      0x4
+#define HV_MODIFY_SPA_PAGE_HOST_ACCESS_HUGE_PAGE       0x8
+
 #endif /* _UAPI_HV_HVHDK_H */

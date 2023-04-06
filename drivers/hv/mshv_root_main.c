@@ -1560,9 +1560,16 @@ static long mshv_partition_ioctl_modify_gpa_host_access(
 	 * to modify host access.
 	 */
 	ret = convert_gpa_list_to_spa(partition, gpa_list, args.gpa_list_size);
+	if (ret < 0)
+		goto clear_gpa_list;
 
+	ret = hv_call_modify_spa_host_access(partition->id, gpa_list,
+					     args.gpa_list_size,
+					     args.host_access, args.flags,
+					     args.acquire);
+
+clear_gpa_list:
 	kvfree(gpa_list);
-
 out:
 	return ret;
 }

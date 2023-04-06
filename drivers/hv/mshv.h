@@ -148,6 +148,9 @@ int hv_call_map_stat_page(enum hv_stats_object_type type,
 			  void **addr);
 int hv_call_unmap_stat_page(enum hv_stats_object_type type,
 			    const union hv_stats_object_identity *identity);
+int hv_call_modify_spa_host_access(u64 partition_id, u64 *spa_list,
+				   u64 spa_list_size, u32 host_access,
+				   u32 flags, u8 acquire);
 
 struct mshv_partition *mshv_partition_find(u64 partition_id) __must_hold(RCU);
 

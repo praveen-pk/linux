@@ -39,6 +39,10 @@
 #define HV_GET_GPA_ACCESS_STATES_BATCH_SIZE	\
 	((HV_HYP_PAGE_SIZE - sizeof(union hv_gpa_page_access_state)) \
 		/ sizeof(union hv_gpa_page_access_state))
+#define HV_MODIFY_SPARSE_SPA_PAGE_HOST_ACCESS_MAX_PAGE_COUNT                   \
+	((HV_HYP_PAGE_SIZE -                                                   \
+	  sizeof(struct hv_input_modify_sparse_spa_page_host_access)) /        \
+	 sizeof(u64))
 
 int hv_call_withdraw_memory(u64 count, int node, u64 partition_id)
 {
@@ -1275,3 +1279,64 @@ int hv_call_unmap_stat_page(enum hv_stats_object_type type,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(hv_call_unmap_stat_page);
+
+int hv_call_modify_spa_host_access(u64 partition_id, u64 *spa_list,
+				   u64 spa_list_size, u32 host_access,
+				   u32 flags, u8 acquire)
+{
+	struct hv_input_modify_sparse_spa_page_host_access *input_page;
+	u64 status;
+	unsigned long remaining = spa_list_size;
+	u64 completed;
+	int rep_count;
+	unsigned long irq_flags;
+	u16 code = acquire ? HVCALL_ACQUIRE_SPARSE_SPA_PAGE_HOST_ACCESS :
+			     HVCALL_RELEASE_SPARSE_SPA_PAGE_HOST_ACCESS;
+	u64 *spa = spa_list;
+
+	if (spa_list_size == 0)
+		return -EINVAL;
+
+	while (remaining) {
+		rep_count = min(
+			remaining,
+			HV_MODIFY_SPARSE_SPA_PAGE_HOST_ACCESS_MAX_PAGE_COUNT);
+
+		local_irq_save(irq_flags);
+		input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
+		/*
+		 * This is required to make sure that reserved field is set to
+		 * zero, because MSHV has a check to make sure reserved bits are
+		 * set to zero.
+		 */
+		memset(input_page, 0, sizeof(*input_page));
+		/* Only set the partition id if you are making the pages exclusive */
+		if (flags & HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_EXCLUSIVE)
+			input_page->partition_id = partition_id;
+		input_page->flags = flags;
+		input_page->host_access = host_access;
+		memcpy(input_page->spa_page_list, spa,
+		       rep_count * sizeof(*spa));
+
+		status = hv_do_rep_hypercall(code, rep_count, 0, input_page,
+					     NULL);
+		local_irq_restore(irq_flags);
+
+		if (!hv_result_success(status)) {
+			pr_err("%s: completed %llu out of %llu, %s\n", __func__,
+			       spa_list_size - remaining, spa_list_size,
+			       hv_status_to_string(status));
+			if (remaining < spa_list_size)
+				pr_err("%s: Partially succeeded; spa host access may be in invalid state",
+				       __func__);
+			return hv_status_to_errno(status);
+		}
+
+		completed = hv_repcomp(status);
+		spa += completed;
+		remaining -= completed;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(hv_call_modify_spa_host_access);
