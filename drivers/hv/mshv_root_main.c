@@ -965,7 +965,7 @@ mshv_partition_ioctl_get_property(struct mshv_partition *partition,
 }
 
 static void
-mshv_root_async_hypecall_handler(void *_partition, u64 *status)
+mshv_root_async_hypercall_handler(void *_partition, u64 *status)
 {
 	struct mshv_partition *partition;
 
@@ -993,7 +993,7 @@ mshv_partition_ioctl_set_property(struct mshv_partition *partition,
 			partition->id,
 			args.property_code,
 			args.property_value,
-			mshv_root_async_hypecall_handler,
+			mshv_root_async_hypercall_handler,
 			partition);
 }
 
@@ -1604,7 +1604,7 @@ static long mshv_partition_ioctl_import_isolated_pages(
 	ret = hv_call_import_isolated_pages(partition->id, pages,
 					    args.num_pages, args.page_type,
 					    args.page_size,
-					    mshv_root_async_hypecall_handler,
+					    mshv_root_async_hypercall_handler,
 					    partition);
 
 	kvfree(pages);
@@ -1625,7 +1625,7 @@ mshv_partition_ioctl_complete_isolated_import(struct mshv_partition *partition,
 	}
 
 	ret = hv_call_complete_isolated_import(
-		partition->id, &import_data, mshv_root_async_hypecall_handler,
+		partition->id, &import_data, mshv_root_async_hypercall_handler,
 		partition);
 out:
 	return ret;
@@ -1871,8 +1871,9 @@ destroy_partition(struct mshv_partition *partition)
 		WARN_ON(hv_call_set_partition_property(
 			partition->id, HV_PARTITION_PROPERTY_ISOLATION_STATE,
 			HV_PARTITION_ISOLATION_INSECURE_DIRTY,
-			mshv_root_async_hypecall_handler,
+			mshv_root_async_hypercall_handler,
 			partition));
+
 	}
 
 	/*
@@ -2042,8 +2043,9 @@ __mshv_ioctl_create_partition(void __user *user_arg)
 				partition->id,
 				HV_PARTITION_PROPERTY_SYNTHETIC_PROC_FEATURES,
 				args.synthetic_processor_features.as_uint64[0],
-				mshv_root_async_hypecall_handler,
+				mshv_root_async_hypercall_handler,
 				partition);
+
 	if (ret)
 		goto remove_partition;
 
