@@ -9,13 +9,23 @@
 
 #define HVGDK_H_VERSION			(25125)
 
+#if defined(__x86_64__)
+
+enum hv_unimplemented_msr_action {
+	HV_UNIMPLEMENTED_MSR_ACTION_FAULT = 0,
+	HV_UNIMPLEMENTED_MSR_ACTION_IGNORE_WRITE_READ_ZERO = 1,
+	HV_UNIMPLEMENTED_MSR_ACTION_COUNT = 2,
+};
+
+#endif
+
 /* Define connection identifier type. */
 union hv_connection_id {
 	__u32 asu32;
 	struct {
 		__u32 id:24;
 		__u32 reserved:8;
-	} u;
+	} __packed u;
 };
 
 struct hv_input_unmap_gpa_pages {

@@ -56,13 +56,13 @@ enum hv_status {
 #define HV_HYP_PAGE_MASK		(~(HV_HYP_PAGE_SIZE - 1))
 
 
-#define HV_PARTITION_ID_INVALID		((u64) 0)
-#define HV_PARTITION_ID_SELF		((u64)-1)
+#define HV_PARTITION_ID_INVALID		((__u64) 0)
+#define HV_PARTITION_ID_SELF		((__u64)-1)
 
 
 /* Hyper-V specific model specific registers (MSRs) */
 
-#ifdef CONFIG_X86_64
+#if defined(__x86_64__)
 /* HV_X64_SYNTHETIC_MSR */
 
 /* MSR used to identify the guest OS. */
@@ -161,7 +161,7 @@ enum hv_status {
 /* TSC invariant control */
 #define HV_X64_MSR_TSC_INVARIANT_CONTROL	0x40000118
 
-#endif /* CONFIG_X86_64 */
+#endif /* __x86_64__ */
 
 /*
  * Version info reported by hypervisor
@@ -169,21 +169,21 @@ enum hv_status {
  */
 union hv_hypervisor_version_info {
 	struct {
-		u32 build_number;
+		__u32 build_number;
 
-		u32 minor_version : 16;
-		u32 major_version : 16;
+		__u32 minor_version : 16;
+		__u32 major_version : 16;
 
-		u32 service_pack;
+		__u32 service_pack;
 
-		u32 service_number : 24;
-		u32 service_branch : 8;
+		__u32 service_number : 24;
+		__u32 service_branch : 8;
 	};
 	struct {
-		u32 eax;
-		u32 ebx;
-		u32 ecx;
-		u32 edx;
+		__u32 eax;
+		__u32 ebx;
+		__u32 ecx;
+		__u32 edx;
 	};
 };
 
@@ -197,7 +197,7 @@ union hv_hypervisor_version_info {
 #define HV_DEPRECATING_AEOI_RECOMMENDED		BIT(9)
 
 
-#if defined(CONFIG_X86_64)
+#if defined(__x86_64__)
 
 #define HV_MAXIMUM_PROCESSORS       2048
 
@@ -208,8 +208,8 @@ union hv_hypervisor_version_info {
 #endif
 
 #define HV_MAX_VP_INDEX			(HV_MAXIMUM_PROCESSORS - 1)
-#define HV_VP_INDEX_SELF		((u32)-2)
-#define HV_ANY_VP			((u32)-1)
+#define HV_VP_INDEX_SELF		((__u32)-2)
+#define HV_ANY_VP			((__u32)-1)
 
 /* Declare the various hypercall operations. */
 /* HV_CALL_CODE */
@@ -286,6 +286,14 @@ union hv_hypervisor_version_info {
 #define HVCALL_COMPLETE_ISOLATED_IMPORT		0x00f1
 #define HVCALL_GET_VP_CPUID_VALUES		0x00f4
 
+/*
+ * Some macros - i.e. GENMASK_ULL and BIT_ULL - are not currently supported by
+ * userspace rust bindings generation tool.
+ * As the below are not currently needed in userspace, don't export them and
+ * avoid the issue altogether for now.
+ */
+#if defined(__KERNEL__)
+
 /* HV_HYPERCALL_INPUT */
 #define HV_HYPERCALL_RESULT_MASK	GENMASK_ULL(15, 0)
 #define HV_HYPERCALL_FAST_BIT		BIT(16)
@@ -296,6 +304,8 @@ union hv_hypervisor_version_info {
 #define HV_HYPERCALL_REP_COMP_MASK	GENMASK_ULL(43, 32)
 #define HV_HYPERCALL_REP_START_OFFSET	48
 #define HV_HYPERCALL_REP_START_MASK	GENMASK_ULL(59, 48)
+
+#endif /* __KERNEL__ */
 
 /* Define the number of synthetic interrupt sources. */
 #define HV_SYNIC_SINT_COUNT (16)
@@ -314,7 +324,7 @@ union hv_hypervisor_version_info {
 #define HV_INTERRUPT_VECTOR_NONE 0xFFFFFFFF
 
 enum hv_interrupt_type {
-#if defined(CONFIG_ARM64)
+#if defined(__ARM64__)
 	HV_ARM64_INTERRUPT_TYPE_FIXED		= 0x0000,
 	HV_ARM64_INTERRUPT_TYPE_MAXIMUM		= 0x0008,
 #else
@@ -350,7 +360,7 @@ union hv_synic_sint {
 
 static inline bool hv_should_clear_interrupt(enum hv_interrupt_type type)
 {
-#if defined(CONFIG_ARM64)
+#if defined(__ARM64__)
 	return false;
 #else
 	return type == HV_X64_INTERRUPT_TYPE_EXTINT;
@@ -603,7 +613,7 @@ union hv_input_vtl {
 } __packed;
 
 /* Note: not in hvgdk_mini.h */
-#ifdef CONFIG_X86_64
+#if defined(__x86_64__)
 #define HV_SUPPORTS_REGISTER_DELIVERABILITY_NOTIFICATIONS
 #endif
 
@@ -628,11 +638,11 @@ struct hv_nested_enlightenments_control {
 	struct {
 		__u32 directhypercall : 1;
 		__u32 reserved : 31;
-	} features;
+	} __packed features;
 	struct {
 		__u32 inter_partition_comm : 1;
 		__u32 reserved : 31;
-	} hypercall_controls;
+	} __packed hypercall_controls;
 } __packed;
 
 /* Define virtual processor assist page structure. */
@@ -818,7 +828,7 @@ enum hv_register_name {
 
 	HV_REGISTER_ISOLATION_CAPABILITIES	= 0x000D0100,
 
-#ifdef CONFIG_X86_64
+#if defined(__x86_64__)
 	/* Pending Interruption Register */
 	HV_REGISTER_PENDING_INTERRUPTION		= 0x00010002,
 
@@ -1073,7 +1083,7 @@ enum hv_register_name {
 	HV_X64_REGISTER_CR_INTERCEPT_CR4_MASK			= 0x000E0002,
 	HV_X64_REGISTER_CR_INTERCEPT_IA32_MISC_ENABLE_MASK	= 0x000E0003,
 
-#elif defined(CONFIG_ARM64)
+#elif defined(__ARM64__)
 	/* TODO */
 #endif
 };
@@ -1083,7 +1093,7 @@ enum hv_register_name {
  * Arch compatibility regs for use with hv_set/get_register
  * NOTE: not really in hyperv headers
  */
-#ifdef CONFIG_X86_64
+#if defined(__x86_64__)
 
 /*
  * To support non-arch-specific code calling hv_set/get_register:
@@ -1119,7 +1129,7 @@ enum hv_register_name {
 /* x86 supports nested virtualization */
 #define HV_SUPPORTS_NESTED
 
-#else /* CONFIG_X86_64 */
+#else /* __x86_64__ */
 
 #define HV_SYN_REG_VP_INDEX		(HV_REGISTER_VP_INDEX)
 #define HV_SYN_REG_TIME_REF_COUNT	(HV_REGISTER_TIME_REF_COUNT)
@@ -1178,7 +1188,7 @@ union hv_x64_interrupt_state_register {
 	} __packed;
 };
 
-#if !defined(CONFIG_ARM64)
+#if !defined(__ARM64__)
 
 union hv_x64_pending_exception_event {
 	__u64 as_uint64[2];
@@ -1223,7 +1233,7 @@ union hv_x64_pending_interruption_register {
 	} __packed;
 };
 
-#else /* !defined(CONFIG_ARM64) */
+#else /* !defined(__ARM64__) */
 
 #define HV_ARM64_PENDING_EVENT_HEADER \
 	__u8 event_pending : 1; \
@@ -1263,7 +1273,7 @@ union hv_arm64_pending_interruption_register {
 	};
 };
 
-#endif /* defined(CONFIG_ARM64) */
+#endif /* defined(__ARM64__) */
 
 union hv_register_value {
 	struct hv_u128 reg128;
@@ -1272,7 +1282,7 @@ union hv_register_value {
 	__u16 reg16;
 	__u8 reg8;
 
-#if defined(CONFIG_X86_64)
+#if defined(__x86_64__)
 	union hv_x64_fp_register fp;
 	union hv_x64_fp_control_status_register fp_control_status;
 	union hv_x64_xmm_control_status_register xmm_control_status;
@@ -1282,14 +1292,14 @@ union hv_register_value {
 	union hv_explicit_suspend_register explicit_suspend;
 	union hv_intercept_suspend_register intercept_suspend;
 	union hv_dispatch_suspend_register dispatch_suspend;
-#if defined(CONFIG_X86_64)
+#if defined(__x86_64__)
 	union hv_x64_interrupt_state_register interrupt_state;
 	union hv_x64_pending_interruption_register pending_interruption;
 	union hv_x64_msr_npiep_config_contents npiep_config;
 	union hv_x64_pending_exception_event pending_exception_event;
 	union hv_x64_pending_virtualization_fault_event
 		pending_virtualization_fault_event;
-#elif defined(CONFIG_ARM64)
+#elif defined(__ARM64__)
 	union hv_arm64_pending_interruption_register pending_interruption;
 	union hv_arm64_interrupt_state_register interrupt_state;
 	union hv_arm64_pending_synthetic_exception_event
@@ -1323,7 +1333,7 @@ struct hv_input_set_vp_registers {
 } __packed;
 
 enum hv_intercept_type {
-#if defined(CONFIG_X86_64)
+#if defined(__x86_64__)
 	HV_INTERCEPT_TYPE_X64_IO_PORT			= 0X00000000,
 	HV_INTERCEPT_TYPE_X64_MSR			= 0X00000001,
 	HV_INTERCEPT_TYPE_X64_CPUID			= 0X00000002,
@@ -1331,12 +1341,12 @@ enum hv_intercept_type {
 	HV_INTERCEPT_TYPE_EXCEPTION			= 0X00000003,
 	HV_INTERCEPT_TYPE_REGISTER			= 0X00000004,
 	HV_INTERCEPT_TYPE_MMIO				= 0X00000005,
-#if defined(CONFIG_X86_64)
+#if defined(__x86_64__)
 	HV_INTERCEPT_TYPE_X64_GLOBAL_CPUID		= 0X00000006,
 	HV_INTERCEPT_TYPE_X64_APIC_SMI			= 0X00000007,
 #endif
 	HV_INTERCEPT_TYPE_HYPERCALL			= 0X00000008,
-#if defined(CONFIG_X86_64)
+#if defined(__x86_64__)
 	HV_INTERCEPT_TYPE_X64_APIC_INIT_SIPI		= 0X00000009,
 	HV_INTERCEPT_MC_UPDATE_PATCH_LEVEL_MSR_READ	= 0X0000000A,
 	HV_INTERCEPT_TYPE_X64_APIC_WRITE		= 0X0000000B,
@@ -1349,7 +1359,7 @@ enum hv_intercept_type {
 union hv_intercept_parameters {
 	/*  HV_INTERCEPT_PARAMETERS is defined to be an 8-byte field. */
 	__u64 as_uint64;
-#if defined(CONFIG_X86_64)
+#if defined(__x86_64__)
 	/* HV_INTERCEPT_TYPE_X64_IO_PORT */
 	__u16 io_port;
 	/* HV_INTERCEPT_TYPE_X64_CPUID */
