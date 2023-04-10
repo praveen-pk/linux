@@ -29,6 +29,7 @@
 #include <linux/random.h>
 #include <linux/nospec.h>
 #include <asm/mshyperv.h>
+#include <linux/hyperv.h>
 
 #include "mshv_eventfd.h"
 #include "mshv.h"
@@ -556,7 +557,7 @@ mshv_vp_ioctl_get_set_state_pfn(struct mshv_vp *vp,
 		return -EFAULT;
 
 	/* Pin user pages so hypervisor can copy directly to them */
-	page_count = args->buf_size >> HV_HYP_PAGE_SHIFT;
+	page_count = HVPFN_DOWN(args->buf_size);
 	pages = kcalloc(page_count, sizeof(struct page *), GFP_KERNEL);
 	if (!pages)
 		return -ENOMEM;
@@ -1021,14 +1022,14 @@ mshv_partition_ioctl_map_memory(struct mshv_partition *partition,
 		return -EINVAL;
 
 	/* Reject overlapping regions */
-	page_count = mem.size >> HV_HYP_PAGE_SHIFT;
+	page_count = HVPFN_DOWN(mem.size);
 	user_start = mem.userspace_addr;
 	user_end = mem.userspace_addr + mem.size;
 	gpfn_start = mem.guest_pfn;
 	gpfn_end = mem.guest_pfn + page_count;
 
 	hlist_for_each_entry(region, &partition->mem_regions, hnode) {
-		region_page_count = region->size >> HV_HYP_PAGE_SHIFT;
+		region_page_count = HVPFN_DOWN(region->size);
 		region_user_start = region->userspace_addr;
 		region_user_end = region->userspace_addr + region->size;
 		region_gpfn_start = region->guest_pfn;
@@ -1119,7 +1120,7 @@ mshv_partition_ioctl_unmap_memory(struct mshv_partition *partition,
 		return -EINVAL;
 
 	hlist_del(&region->hnode);
-	page_count = region->size >> HV_HYP_PAGE_SHIFT;
+	page_count = HVPFN_DOWN(region->size);
 	ret = hv_call_unmap_gpa_pages(partition->id, region->guest_pfn,
 				      page_count, 0);
 	if (ret)
@@ -1917,7 +1918,7 @@ destroy_partition(struct mshv_partition *partition)
 	/* Remove regions and unpin the pages */
 	hlist_for_each_entry_safe(region, n, &partition->mem_regions, hnode) {
 		hlist_del(&region->hnode);
-		page_count = region->size >> HV_HYP_PAGE_SHIFT;
+		page_count = HVPFN_DOWN(region->size);
 		unpin_user_pages(&region->pages[0], page_count);
 		vfree(region);
 	}
