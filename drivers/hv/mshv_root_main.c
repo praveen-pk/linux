@@ -1798,11 +1798,6 @@ static int
 add_partition(struct mshv_partition *partition)
 {
 	spin_lock(&mshv_root.partitions.lock);
-	if (mshv_root.partitions.count >= MSHV_MAX_PARTITIONS) {
-		pr_err("%s: too many partitions\n", __func__);
-		spin_unlock(&mshv_root.partitions.lock);
-		return -ENOSPC;
-	}
 
 	hash_add_rcu(mshv_root.partitions.items, &partition->hnode, partition->id);
 
