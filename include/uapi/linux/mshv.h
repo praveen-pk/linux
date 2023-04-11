@@ -241,6 +241,8 @@ struct mshv_complete_isolated_import {
 #define MSHV_GET_VP_CPUID_VALUES \
 	_IOWR(MSHV_IOCTL, 0x1B, struct mshv_get_vp_cpuid_values)
 
+#define MSHV_READ_GPA		_IOWR(MSHV_IOCTL, 0x32, struct mshv_read_write_gpa)
+#define MSHV_WRITE_GPA		_IOW(MSHV_IOCTL, 0x33, struct mshv_read_write_gpa)
 /* vtl device */
 #define MSHV_CREATE_VTL			_IOR(MSHV_IOCTL, 0x1D, char)
 #define MSHV_VTL_ADD_VTL0_MEMORY	_IOW(MSHV_IOCTL, 0x21, struct mshv_ram_disposition)
@@ -322,6 +324,13 @@ struct mshv_device_attr {
 	__u32	group;		/* device-defined */
 	__u64	attr;		/* group-defined */
 	__u64	addr;		/* userspace address of attr data */
+};
+
+struct mshv_read_write_gpa {
+	__u64 base_gpa;
+	__u32 byte_count;
+	__u32 flags;
+	__u8 data[HV_READ_WRITE_GPA_MAX_SIZE];
 };
 
 #endif
