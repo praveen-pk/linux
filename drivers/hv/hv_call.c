@@ -1440,3 +1440,94 @@ int hv_call_complete_isolated_import(
 	return 0;
 }
 EXPORT_SYMBOL_GPL(hv_call_complete_isolated_import);
+
+int hv_call_read_gpa(
+		u32 vp_index,
+		u64 partition_id,
+		union hv_access_gpa_control_flags flags,
+		u64 gpa_base,
+		u8 *data,
+		u32 bytes_count,
+		union hv_access_gpa_result *result)
+{
+	u64 status;
+	unsigned long irq_flags;
+	struct hv_input_read_gpa *input;
+	struct hv_output_read_gpa *output;
+
+	local_irq_save(irq_flags);
+
+	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
+	output = *this_cpu_ptr(hyperv_pcpu_output_arg);
+
+	memset(input, 0, sizeof(*input));
+	memset(output, 0, sizeof(*output));
+
+	input->partition_id = partition_id;
+	input->vp_index = vp_index;
+	input->control_flags = flags;
+	input->base_gpa = gpa_base;
+	input->byte_count = bytes_count;
+
+	status = hv_do_hypercall(HVCALL_READ_GPA, input, output);
+
+	if (!hv_result_success(status)) {
+		pr_err("%s: %s\n", __func__, hv_status_to_string(status));
+		goto out;
+	}
+
+	*result = output->access_result;
+
+	memcpy(data, output->data, bytes_count);
+
+out:
+	local_irq_restore(irq_flags);
+
+	return hv_status_to_errno(status);
+}
+EXPORT_SYMBOL_GPL(hv_call_read_gpa);
+
+int hv_call_write_gpa(
+		u32 vp_index,
+		u64 partition_id,
+		union hv_access_gpa_control_flags flags,
+		u64 gpa_base,
+		u8 *data,
+		u32 bytes_count,
+		union hv_access_gpa_result *result)
+{
+	u64 status;
+	unsigned long irq_flags;
+	struct hv_input_write_gpa *input;
+	struct hv_output_write_gpa *output;
+
+	local_irq_save(irq_flags);
+
+	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
+	output = *this_cpu_ptr(hyperv_pcpu_output_arg);
+
+	memset(input, 0, sizeof(*input));
+	memset(output, 0, sizeof(*output));
+
+	input->partition_id = partition_id;
+	input->vp_index = vp_index;
+	input->control_flags = flags;
+	input->base_gpa = gpa_base;
+	input->byte_count = bytes_count;
+	memcpy(input->data, data, bytes_count);
+
+	status = hv_do_hypercall(HVCALL_WRITE_GPA, input, output);
+
+	if (!hv_result_success(status)) {
+		pr_err("%s: %s\n", __func__, hv_status_to_string(status));
+		goto out;
+	}
+
+	*result = output->access_result;
+
+out:
+	local_irq_restore(irq_flags);
+
+	return hv_status_to_errno(status);
+}
+EXPORT_SYMBOL_GPL(hv_call_write_gpa);
