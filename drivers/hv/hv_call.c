@@ -273,11 +273,9 @@ int hv_call_map_gpa_pages(
 		gpa_target += completed;
 	}
 
-	if (ret && remaining < page_count) {
+	if (ret && remaining < page_count)
 		pr_err("%s: Partially succeeded; mapped regions may be in invalid state",
 		       __func__);
-		ret = -EBADFD;
-	}
 
 	return ret;
 }
@@ -290,7 +288,6 @@ int hv_call_unmap_gpa_pages(
 {
 	struct hv_input_unmap_gpa_pages *input_page;
 	u64 status;
-	int ret = 0;
 	u32 completed = 0;
 	unsigned long remaining = page_count;
 	int rep_count;
@@ -311,25 +308,20 @@ int hv_call_unmap_gpa_pages(
 
 		completed = hv_repcomp(status);
 		if (!hv_result_success(status)) {
-			pr_err("%s: completed %llu out of %llu, %s\n",
-			       __func__,
+			pr_err("%s: completed %llu out of %llu, %s\n", __func__,
 			       page_count - remaining, page_count,
 			       hv_status_to_string(status));
-			ret = hv_status_to_errno(status);
-			break;
+			if (remaining < page_count)
+				pr_err("%s: Partially succeeded; unmapped regions may be in invalid state",
+				       __func__);
+			return hv_status_to_errno(status);
 		}
 
 		remaining -= completed;
 		gpa_target += completed;
 	}
 
-	if (ret && remaining < page_count) {
-		pr_err("%s: Partially succeeded; mapped regions may be in invalid state",
-		       __func__);
-		ret = -EBADFD;
-	}
-
-	return ret;
+	return 0;
 }
 EXPORT_SYMBOL_GPL(hv_call_unmap_gpa_pages);
 
