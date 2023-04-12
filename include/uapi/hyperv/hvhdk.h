@@ -1520,6 +1520,35 @@ struct hv_x64_sipi_intercept_message {
 	__u32 interrupt_vector;
 } __packed;
 
+union hv_gpa_page_range {
+	__u64 address_space;
+	struct {
+		__u64 additional_pages : 11;
+		__u64 largepage : 1;
+		__u64 basepfn : 52;
+	} page;
+	struct {
+		__u64 reserved : 12;
+		__u64 page_size : 1;
+		__u64 reserved1 : 8;
+		__u64 base_large_pfn : 43;
+	};
+};
+
+#define HV_GPA_ATTRIBUTE_INTERCEPT_MAX_RANGES 29
+
+struct hv_x64_gpa_attribute_intercept_message {
+	__u32 vp_index;
+	struct {
+		__u32 range_count : 5;
+		__u32 adjust : 1;
+		__u32 host_visibility : 2;
+		__u32 memory_type : 6;
+		__u32 reserved : 18;
+	} __packed;
+	union hv_gpa_page_range ranges[HV_GPA_ATTRIBUTE_INTERCEPT_MAX_RANGES];
+} __packed;
+
 struct hv_register_x64_cpuid_result_parameters {
 	struct {
 		__u32 eax;
