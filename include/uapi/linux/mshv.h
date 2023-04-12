@@ -239,7 +239,7 @@ struct mshv_complete_isolated_import {
 #define MSHV_REGISTER_DELIVERABILITY_NOTIFICATIONS \
 	_IOW(MSHV_IOCTL, 0x1A, struct mshv_register_deliverabilty_notifications)
 #define MSHV_GET_VP_CPUID_VALUES \
-        _IOWR(MSHV_IOCTL, 0x1B, struct mshv_get_vp_cpuid_values)	
+	_IOWR(MSHV_IOCTL, 0x1B, struct mshv_get_vp_cpuid_values)
 
 /* vtl device */
 #define MSHV_CREATE_VTL			_IOR(MSHV_IOCTL, 0x1D, char)
