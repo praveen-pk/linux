@@ -241,6 +241,7 @@ struct hv_output_withdraw_memory {
 #define HV_MAP_GPA_USER_EXECUTABLE      0x8
 #define HV_MAP_GPA_EXECUTABLE           0xC
 #define HV_MAP_GPA_PERMISSIONS_MASK     0xF
+#define HV_MAP_GPA_ADJUSTABLE           0x8000
 
 struct hv_input_map_gpa_pages {
 	__u64 target_partition_id;
