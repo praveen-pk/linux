@@ -415,6 +415,7 @@ enum hv_message_type {
 	/* Memory access messages. */
 	HVMSG_UNMAPPED_GPA			= 0x80000000,
 	HVMSG_GPA_INTERCEPT			= 0x80000001,
+	HVMSG_UNACCEPTED_GPA			= 0x80000003,
 
 	/* Timer notification messages. */
 	HVMSG_TIMER_EXPIRED			= 0x80000010,
