@@ -96,10 +96,9 @@ int hv_call_get_partition_property(
 		u64 property_code,
 		u64 *property_value);
 int hv_call_set_partition_property(
-		u64 partition_id,
-		u64 property_code,
-		u64 property_value,
-		void (*completion_handler)(u64/* partition_id */, u64 */* status */));
+	u64 partition_id, u64 property_code, u64 property_value,
+	void (*completion_handler)(void * /* data */, u64 * /* status */),
+	void *completion_data);
 int hv_call_translate_virtual_address(
 		u32 vp_index,
 		u64 partition_id,
