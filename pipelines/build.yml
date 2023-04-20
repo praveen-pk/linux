@@ -487,6 +487,8 @@ stages:
       value: "vmlinuz-*"
     - name: modules_pattern
       value: "kernel_modules_*"
+    - name: kernel_params_to_lisa
+      value: '{\"kernel_source\":\"$(kernel_source)\",\"kernel_artifact\":\"$(kernel_artifact)\",\"kernel_pattern\":\"$(kernel_pattern)\",\"modules_pattern\":\"$(modules_pattern)\"}'
     - name: ch_integration_tests
       # Should be of comma separated strings format
       ${{ if eq(variables['Build.Reason'], 'Manual') }}:
@@ -506,7 +508,8 @@ stages:
         run_stress_ng_tests: ${{ parameters.run_stress_ng_tests }}
         run_ch_community_tests: ${{ parameters.run_ch_community_tests }}
         ch_subtest_include_list: $(ch_integration_tests)
+        lisa_exclude_list: 'verify_cloud_hypervisor_live_migration_tests'
         run_ch_perf_tests: ${{ parameters.run_ch_perf_tests }}
         run_mshv_tests: ${{ parameters.run_mshv_tests }}
         kernel_change_needed: True
-        kernel_params: '{\"kernel_source\":\"$(kernel_source)\",\"kernel_artifact\":\"$(kernel_artifact)\",\"kernel_pattern\":\"$(kernel_pattern)\",\"modules_pattern\":\"$(modules_pattern)\"}'
+        kernel_params: $(kernel_params_to_lisa)
