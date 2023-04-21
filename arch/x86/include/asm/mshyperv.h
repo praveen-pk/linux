@@ -41,7 +41,7 @@ extern u64 hv_current_partition_id;
 int hv_call_add_logical_proc(int node, u32 lp_index, u32 acpi_id);
 int hv_call_notify_all_processors_started(void);
 
-static inline u64 hv_do_hypercall(u64 control, void *input, void *output)
+static inline u64 hv_do_hypercall(u64 control, const void *input, void *output)
 {
 	u64 input_address = input ? virt_to_phys(input) : 0;
 	u64 output_address = output ? virt_to_phys(output) : 0;
@@ -80,7 +80,7 @@ static inline u64 hv_do_hypercall(u64 control, void *input, void *output)
 }
 
 /* Hypercall to the L0 hypervisor */
-static inline u64 hv_do_nested_hypercall(u64 control, void *input, void *output)
+static inline u64 hv_do_nested_hypercall(u64 control, const void *input, void *output)
 {
 	return hv_do_hypercall(control | HV_HYPERCALL_NESTED, input, output);
 }
