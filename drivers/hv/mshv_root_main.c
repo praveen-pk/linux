@@ -965,12 +965,9 @@ mshv_partition_ioctl_get_property(struct mshv_partition *partition,
 	return 0;
 }
 
-static void
-mshv_root_async_hypercall_handler(void *_partition, u64 *status)
+static void mshv_root_async_hypercall_handler(void *data, u64 *status)
 {
-	struct mshv_partition *partition;
-
-	partition = (struct mshv_partition *)_partition;
+	struct mshv_partition *partition = data;
 
 	wait_for_completion(&partition->async_hypercall);
 	reinit_completion(&partition->async_hypercall);
