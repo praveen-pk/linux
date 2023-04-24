@@ -233,6 +233,9 @@ int hv_call_map_gpa_pages(
 	unsigned long irq_flags;
 	int ret = 0;
 
+	if (page_count == 0)
+		return -EINVAL;
+
 	while (remaining) {
 
 		rep_count = min(remaining, HV_MAP_GPA_BATCH_SIZE);
@@ -292,6 +295,9 @@ int hv_call_unmap_gpa_pages(
 	unsigned long remaining = page_count;
 	int rep_count;
 	unsigned long irq_flags;
+
+	if (page_count == 0)
+		return -EINVAL;
 
 	while (remaining) {
 		local_irq_save(irq_flags);
