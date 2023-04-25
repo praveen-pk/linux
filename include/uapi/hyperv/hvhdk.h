@@ -1913,4 +1913,40 @@ struct hv_output_dispatch_vp {
 	__u32 dispatch_event; /* enum hv_vp_dispatch_event */
 } __packed;
 
+struct hv_input_modify_sparse_spa_page_host_access {
+	__u32 host_access : 2;
+	__u32 reserved : 30;
+	__u32 flags;
+	__u64 partition_id;
+	__u64 spa_page_list[];
+} __packed;
+
+/* hv_input_modify_sparse_spa_page_host_access flags */
+#define HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_EXCLUSIVE  0x1
+#define HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_SHARED     0x2
+#define HV_MODIFY_SPA_PAGE_HOST_ACCESS_LARGE_PAGE      0x4
+#define HV_MODIFY_SPA_PAGE_HOST_ACCESS_HUGE_PAGE       0x8
+
+enum hv_isolated_page_type {
+	HV_ISOLATED_PAGE_TYPE_NORMAL = 0,
+	HV_ISOLATED_PAGE_TYPE_VMSA = 1,
+	HV_ISOLATED_PAGE_TYPE_ZERO = 2,
+	HV_ISOLATED_PAGE_TYPE_UNMEASURED = 3,
+	HV_ISOLATED_PAGE_TYPE_SECRETS = 4,
+	HV_ISOLATED_PAGE_TYPE_CPUID = 5,
+	HV_ISOLATED_PAGE_TYPE_COUNT = 6
+};
+
+enum hv_isolated_page_size {
+	HV_ISOLATED_PAGE_SIZE_4KB = 0,
+	HV_ISOLATED_PAGE_SIZE_2MB = 1
+};
+
+struct hv_input_import_isolated_pages {
+	__u64 partition_id;
+	__u32 page_type; /* enum hv_isolated_page_type */
+	__u32 page_size; /* enum hv_isolated_page_size */
+	__u64 page_number[];
+} __packed;
+
 #endif /* _UAPI_HV_HVHDK_H */

@@ -29,6 +29,7 @@
 #include <linux/random.h>
 #include <linux/nospec.h>
 #include <asm/mshyperv.h>
+#include <linux/hyperv.h>
 
 #include "mshv_eventfd.h"
 #include "mshv.h"
@@ -556,7 +557,7 @@ mshv_vp_ioctl_get_set_state_pfn(struct mshv_vp *vp,
 		return -EFAULT;
 
 	/* Pin user pages so hypervisor can copy directly to them */
-	page_count = args->buf_size >> HV_HYP_PAGE_SHIFT;
+	page_count = HVPFN_DOWN(args->buf_size);
 	pages = kcalloc(page_count, sizeof(struct page *), GFP_KERNEL);
 	if (!pages)
 		return -ENOMEM;
@@ -964,12 +965,9 @@ mshv_partition_ioctl_get_property(struct mshv_partition *partition,
 	return 0;
 }
 
-static void
-mshv_root_async_hypecall_handler(void *_partition, u64 *status)
+static void mshv_root_async_hypercall_handler(void *data, u64 *status)
 {
-	struct mshv_partition *partition;
-
-	partition = (struct mshv_partition *)_partition;
+	struct mshv_partition *partition = data;
 
 	wait_for_completion(&partition->async_hypercall);
 	reinit_completion(&partition->async_hypercall);
@@ -993,7 +991,7 @@ mshv_partition_ioctl_set_property(struct mshv_partition *partition,
 			partition->id,
 			args.property_code,
 			args.property_value,
-			mshv_root_async_hypecall_handler,
+			mshv_root_async_hypercall_handler,
 			partition);
 }
 
@@ -1021,14 +1019,14 @@ mshv_partition_ioctl_map_memory(struct mshv_partition *partition,
 		return -EINVAL;
 
 	/* Reject overlapping regions */
-	page_count = mem.size >> HV_HYP_PAGE_SHIFT;
+	page_count = HVPFN_DOWN(mem.size);
 	user_start = mem.userspace_addr;
 	user_end = mem.userspace_addr + mem.size;
 	gpfn_start = mem.guest_pfn;
 	gpfn_end = mem.guest_pfn + page_count;
 
 	hlist_for_each_entry(region, &partition->mem_regions, hnode) {
-		region_page_count = region->size >> HV_HYP_PAGE_SHIFT;
+		region_page_count = HVPFN_DOWN(region->size);
 		region_user_start = region->userspace_addr;
 		region_user_end = region->userspace_addr + region->size;
 		region_gpfn_start = region->guest_pfn;
@@ -1119,7 +1117,7 @@ mshv_partition_ioctl_unmap_memory(struct mshv_partition *partition,
 		return -EINVAL;
 
 	hlist_del(&region->hnode);
-	page_count = region->size >> HV_HYP_PAGE_SHIFT;
+	page_count = HVPFN_DOWN(region->size);
 	ret = hv_call_unmap_gpa_pages(partition->id, region->guest_pfn,
 				      page_count, 0);
 	if (ret)
@@ -1488,6 +1486,183 @@ static void mshv_destroy_devices(struct mshv_partition *partition)
 	}
 }
 
+static int convert_gpa_list_to_spa(struct mshv_partition *partition,
+				   u64 *gpa_list, u64 gpa_list_size)
+{
+	int i;
+	struct mshv_mem_region *region;
+	u64 region_page_count, region_user_start, region_user_end, offset;
+
+	for (i = 0; i < gpa_list_size; i++) {
+		region = NULL;
+		hlist_for_each_entry(region, &partition->mem_regions, hnode) {
+			region_page_count = HVPFN_DOWN(region->size);
+			region_user_start = region->guest_pfn;
+			region_user_end = region->guest_pfn + region->size;
+
+			/* Check if the GPA lies in the region */
+			if (gpa_list[i] >= region_user_start &&
+			    gpa_list[i] < region_user_end)
+				break;
+		}
+
+		if (!region)
+			return -ERANGE;
+
+		offset = HVPFN_DOWN(gpa_list[i] - region_user_start);
+		if (offset >= region_page_count)
+			return -ERANGE;
+
+		gpa_list[i] = page_to_pfn(region->pages[offset]);
+	}
+
+	return 0;
+}
+
+static long mshv_partition_ioctl_modify_gpa_host_access(
+	struct mshv_partition *partition,
+	struct mshv_modify_gpa_host_access __user *user_args)
+{
+	long ret = 0;
+	struct mshv_modify_gpa_host_access args;
+	u64 *gpa_list = NULL;
+
+	if (!mshv_partition_isolation_type_snp(partition)) {
+		ret = -EOPNOTSUPP;
+		pr_err("%s: Ioctl not supported for non SEV-SNP enabled partition!\n", __func__);
+		goto out;
+	}
+
+	if (copy_from_user(&args, user_args, sizeof(args))) {
+		ret = -EFAULT;
+		goto out;
+	}
+
+	if (args.gpa_list_size == 0) {
+		ret = -EINVAL;
+		pr_err("%s: Empty list of GPAs is not supported!\n", __func__);
+		goto out;
+	}
+
+	gpa_list = vmemdup_user(user_args->gpa_list,
+				size_mul(sizeof(*gpa_list), args.gpa_list_size));
+	if (IS_ERR(gpa_list)) {
+		ret = PTR_ERR(gpa_list);
+		goto out;
+	}
+
+	/*
+	 * Since the corresponding hypercall only understands System Page
+	 * Address (SPA), thus we would need to convert the Guest Physical
+	 * Address (GPA) list to SPA list before invoking the hypercall
+	 * to modify host access.
+	 */
+	ret = convert_gpa_list_to_spa(partition, gpa_list, args.gpa_list_size);
+	if (ret < 0)
+		goto clear_gpa_list;
+
+	ret = hv_call_modify_spa_host_access(partition->id, gpa_list,
+					     args.gpa_list_size,
+					     args.host_access, args.flags,
+					     args.acquire);
+
+clear_gpa_list:
+	kvfree(gpa_list);
+out:
+	return ret;
+}
+
+static long mshv_partition_ioctl_import_isolated_pages(
+	struct mshv_partition *partition,
+	struct mshv_import_isolated_pages __user *user_args)
+{
+	long ret = 0;
+	struct mshv_import_isolated_pages args;
+	u64 *pages = NULL;
+
+	if (copy_from_user(&args, user_args, sizeof(args))) {
+		ret = -EFAULT;
+		goto out;
+	}
+
+	if (args.num_pages == 0) {
+		ret = -EINVAL;
+		pr_err("%s: Empty list of isolated pages is not supported!\n", __func__);
+		goto out;
+	}
+
+	pages = vmemdup_user(user_args->page_number,
+			     size_mul(sizeof(*pages), args.num_pages));
+
+	if (IS_ERR(pages)) {
+		ret = PTR_ERR(pages);
+		goto out;
+	}
+
+	ret = hv_call_import_isolated_pages(partition->id, pages,
+					    args.num_pages, args.page_type,
+					    args.page_size,
+					    mshv_root_async_hypercall_handler,
+					    partition);
+
+	kvfree(pages);
+out:
+	return ret;
+}
+
+static long
+mshv_partition_ioctl_complete_isolated_import(struct mshv_partition *partition,
+					      void __user *user_args)
+{
+	union hv_partition_complete_isolated_import_data import_data;
+	long ret = 0;
+
+	if (copy_from_user(&import_data, user_args, sizeof(import_data))) {
+		ret = -EFAULT;
+		goto out;
+	}
+
+	ret = hv_call_complete_isolated_import(
+		partition->id, &import_data, mshv_root_async_hypercall_handler,
+		partition);
+out:
+	return ret;
+}
+
+static long mshv_partition_snp_ioctl(unsigned int ioctl,
+				     struct mshv_partition *partition,
+				     unsigned long arg)
+{
+	long ret;
+
+	if (!mshv_partition_isolation_type_snp(partition)) {
+		ret = -EOPNOTSUPP;
+		pr_err("%s: Ioctl(%u) not supported for non SEV-SNP enabled partition ID: %llu!\n",
+		       __func__, ioctl, partition->id);
+		goto out;
+	}
+
+	switch (ioctl) {
+	case MSHV_MODIFY_GPA_HOST_ACCESS:
+		ret = mshv_partition_ioctl_modify_gpa_host_access(
+			partition, (void __user *)arg);
+		break;
+	case MSHV_IMPORT_ISOLATED_PAGES:
+		ret = mshv_partition_ioctl_import_isolated_pages(
+			partition, (void __user *)arg);
+		break;
+	case MSHV_COMPLETE_ISOLATED_IMPORT:
+		ret = mshv_partition_ioctl_complete_isolated_import(
+			partition, (void __user *)arg);
+		break;
+	default:
+		ret = -ENOTTY;
+	}
+
+out:
+	return ret;
+}
+
 static long
 mshv_partition_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 {
@@ -1560,6 +1735,11 @@ mshv_partition_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 			partition, (void __user *)arg);
 		break;		
 #endif
+	case MSHV_MODIFY_GPA_HOST_ACCESS:
+	case MSHV_IMPORT_ISOLATED_PAGES:
+	case MSHV_COMPLETE_ISOLATED_IMPORT:
+		ret = mshv_partition_snp_ioctl(ioctl, partition, arg);
+		break;
 	default:
 		ret = -ENOTTY;
 	}
@@ -1689,8 +1869,9 @@ destroy_partition(struct mshv_partition *partition)
 		WARN_ON(hv_call_set_partition_property(
 			partition->id, HV_PARTITION_PROPERTY_ISOLATION_STATE,
 			HV_PARTITION_ISOLATION_INSECURE_DIRTY,
-			mshv_root_async_hypecall_handler,
+			mshv_root_async_hypercall_handler,
 			partition));
+
 	}
 
 	/*
@@ -1734,7 +1915,7 @@ destroy_partition(struct mshv_partition *partition)
 	/* Remove regions and unpin the pages */
 	hlist_for_each_entry_safe(region, n, &partition->mem_regions, hnode) {
 		hlist_del(&region->hnode);
-		page_count = region->size >> HV_HYP_PAGE_SHIFT;
+		page_count = HVPFN_DOWN(region->size);
 		unpin_user_pages(&region->pages[0], page_count);
 		vfree(region);
 	}
@@ -1860,8 +2041,9 @@ __mshv_ioctl_create_partition(void __user *user_arg)
 				partition->id,
 				HV_PARTITION_PROPERTY_SYNTHETIC_PROC_FEATURES,
 				args.synthetic_processor_features.as_uint64[0],
-				mshv_root_async_hypecall_handler,
+				mshv_root_async_hypercall_handler,
 				partition);
+
 	if (ret)
 		goto remove_partition;
 

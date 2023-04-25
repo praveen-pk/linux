@@ -39,6 +39,13 @@
 #define HV_GET_GPA_ACCESS_STATES_BATCH_SIZE	\
 	((HV_HYP_PAGE_SIZE - sizeof(union hv_gpa_page_access_state)) \
 		/ sizeof(union hv_gpa_page_access_state))
+#define HV_MODIFY_SPARSE_SPA_PAGE_HOST_ACCESS_MAX_PAGE_COUNT                   \
+	((HV_HYP_PAGE_SIZE -                                                   \
+	  sizeof(struct hv_input_modify_sparse_spa_page_host_access)) /        \
+	 sizeof(u64))
+#define HV_ISOLATED_PAGE_BATCH_SIZE                                            \
+	((HV_HYP_PAGE_SIZE - sizeof(struct hv_input_import_isolated_pages)) /  \
+	 sizeof(u64))
 
 int hv_call_withdraw_memory(u64 count, int node, u64 partition_id)
 {
@@ -226,6 +233,9 @@ int hv_call_map_gpa_pages(
 	unsigned long irq_flags;
 	int ret = 0;
 
+	if (page_count == 0)
+		return -EINVAL;
+
 	while (remaining) {
 
 		rep_count = min(remaining, HV_MAP_GPA_BATCH_SIZE);
@@ -266,11 +276,9 @@ int hv_call_map_gpa_pages(
 		gpa_target += completed;
 	}
 
-	if (ret && remaining < page_count) {
+	if (ret && remaining < page_count)
 		pr_err("%s: Partially succeeded; mapped regions may be in invalid state",
 		       __func__);
-		ret = -EBADFD;
-	}
 
 	return ret;
 }
@@ -283,11 +291,13 @@ int hv_call_unmap_gpa_pages(
 {
 	struct hv_input_unmap_gpa_pages *input_page;
 	u64 status;
-	int ret = 0;
 	u32 completed = 0;
 	unsigned long remaining = page_count;
 	int rep_count;
 	unsigned long irq_flags;
+
+	if (page_count == 0)
+		return -EINVAL;
 
 	while (remaining) {
 		local_irq_save(irq_flags);
@@ -304,25 +314,20 @@ int hv_call_unmap_gpa_pages(
 
 		completed = hv_repcomp(status);
 		if (!hv_result_success(status)) {
-			pr_err("%s: completed %llu out of %llu, %s\n",
-			       __func__,
+			pr_err("%s: completed %llu out of %llu, %s\n", __func__,
 			       page_count - remaining, page_count,
 			       hv_status_to_string(status));
-			ret = hv_status_to_errno(status);
-			break;
+			if (remaining < page_count)
+				pr_err("%s: Partially succeeded; unmapped regions may be in invalid state",
+				       __func__);
+			return hv_status_to_errno(status);
 		}
 
 		remaining -= completed;
 		gpa_target += completed;
 	}
 
-	if (ret && remaining < page_count) {
-		pr_err("%s: Partially succeeded; mapped regions may be in invalid state",
-		       __func__);
-		ret = -EBADFD;
-	}
-
-	return ret;
+	return 0;
 }
 EXPORT_SYMBOL_GPL(hv_call_unmap_gpa_pages);
 
@@ -1275,3 +1280,163 @@ int hv_call_unmap_stat_page(enum hv_stats_object_type type,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(hv_call_unmap_stat_page);
+
+int hv_call_modify_spa_host_access(u64 partition_id, u64 *spa_list,
+				   u64 spa_list_size, u32 host_access,
+				   u32 flags, u8 acquire)
+{
+	struct hv_input_modify_sparse_spa_page_host_access *input_page;
+	u64 status;
+	unsigned long remaining = spa_list_size;
+	u64 completed;
+	int rep_count;
+	unsigned long irq_flags;
+	u16 code = acquire ? HVCALL_ACQUIRE_SPARSE_SPA_PAGE_HOST_ACCESS :
+			     HVCALL_RELEASE_SPARSE_SPA_PAGE_HOST_ACCESS;
+	u64 *spa = spa_list;
+
+	if (spa_list_size == 0)
+		return -EINVAL;
+
+	while (remaining) {
+		rep_count = min(
+			remaining,
+			HV_MODIFY_SPARSE_SPA_PAGE_HOST_ACCESS_MAX_PAGE_COUNT);
+
+		local_irq_save(irq_flags);
+		input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
+		/*
+		 * This is required to make sure that reserved field is set to
+		 * zero, because MSHV has a check to make sure reserved bits are
+		 * set to zero.
+		 */
+		memset(input_page, 0, sizeof(*input_page));
+		/* Only set the partition id if you are making the pages exclusive */
+		if (flags & HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_EXCLUSIVE)
+			input_page->partition_id = partition_id;
+		input_page->flags = flags;
+		input_page->host_access = host_access;
+		memcpy(input_page->spa_page_list, spa,
+		       rep_count * sizeof(*spa));
+
+		status = hv_do_rep_hypercall(code, rep_count, 0, input_page,
+					     NULL);
+		local_irq_restore(irq_flags);
+
+		if (!hv_result_success(status)) {
+			pr_err("%s: completed %llu out of %llu, %s\n", __func__,
+			       spa_list_size - remaining, spa_list_size,
+			       hv_status_to_string(status));
+			if (remaining < spa_list_size)
+				pr_err("%s: Partially succeeded; spa host access may be in invalid state",
+				       __func__);
+			return hv_status_to_errno(status);
+		}
+
+		completed = hv_repcomp(status);
+		spa += completed;
+		remaining -= completed;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(hv_call_modify_spa_host_access);
+
+int hv_call_import_isolated_pages(
+	u64 partition_id, u64 *pages, u64 num_pages,
+	enum hv_isolated_page_type page_type,
+	enum hv_isolated_page_size page_size,
+	void (*completion_handler)(void * /* data */, u64 * /* status */),
+	void *completion_data)
+{
+	struct hv_input_import_isolated_pages *input_page;
+	u64 status;
+	unsigned long remaining = num_pages;
+	u64 completed;
+	int rep_count;
+	unsigned long irq_flags;
+	u64 *gpa = pages;
+
+	if (num_pages == 0)
+		return -EINVAL;
+
+	if (!completion_handler) {
+		pr_err("%s: Missing completion handler for async import isolated pages hypercall, page_type: %u!\n",
+		       __func__, page_type);
+		return -EINVAL;
+	}
+
+	while (remaining) {
+		rep_count = min(remaining, HV_ISOLATED_PAGE_BATCH_SIZE);
+
+		local_irq_save(irq_flags);
+		input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
+		input_page->partition_id = partition_id;
+		input_page->page_type = page_type;
+		input_page->page_size = page_size;
+		memcpy(input_page->page_number, gpa, rep_count * sizeof(*gpa));
+
+		status = hv_do_rep_hypercall(HVCALL_IMPORT_ISOLATED_PAGES,
+					     rep_count, 0, input_page, NULL);
+		local_irq_restore(irq_flags);
+
+		completed = hv_repcomp(status);
+
+		if (hv_result(status) == HV_STATUS_CALL_PENDING)
+			completion_handler(completion_data, &status);
+
+		if (!hv_result_success(status)) {
+			pr_err("%s: completed %llu out of %llu, %s\n", __func__,
+			       num_pages - remaining, num_pages,
+			       hv_status_to_string(status));
+			if (remaining < num_pages)
+				pr_err("%s: Partially succeeded; gpa host access may be in invalid state",
+				       __func__);
+			return hv_status_to_errno(status);
+		}
+
+		gpa += completed;
+		remaining -= completed;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(hv_call_import_isolated_pages);
+
+int hv_call_complete_isolated_import(
+	u64 partition_id,
+	union hv_partition_complete_isolated_import_data *import_data,
+	void (*completion_handler)(void * /* data */, u64 * /* status */),
+	void *completion_data)
+{
+	u64 status;
+	unsigned long flags;
+	struct hv_input_complete_isolated_import *in;
+
+	if (!completion_handler) {
+		pr_err("%s: Missing completion handler for async complete isolated import hypercall!\n",
+		       __func__);
+		return -EINVAL;
+	}
+
+	local_irq_save(flags);
+	in = *this_cpu_ptr(hyperv_pcpu_input_arg);
+
+	in->partition_id = partition_id;
+	memcpy(&in->import_data, import_data, sizeof(*import_data));
+
+	status = hv_do_hypercall(HVCALL_COMPLETE_ISOLATED_IMPORT, in, NULL);
+	local_irq_restore(flags);
+
+	if (hv_result(status) == HV_STATUS_CALL_PENDING)
+		completion_handler(partition_id, &status);
+
+	if (!hv_result_success(status)) {
+		pr_err("%s: status=%s, partition_id=%llu\n", __func__,
+		       hv_status_to_string(status), partition_id);
+		return hv_status_to_errno(status);
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(hv_call_complete_isolated_import);

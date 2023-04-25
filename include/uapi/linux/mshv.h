@@ -178,6 +178,25 @@ struct mshv_vp_run_registers {
 	struct mshv_vp_registers registers;
 };
 
+struct mshv_modify_gpa_host_access {
+	__u32 host_access;
+	__u32 flags;
+	__u8 acquire;
+	__u64 gpa_list_size;
+	__u64 gpa_list[];
+};
+
+struct mshv_import_isolated_pages {
+	enum hv_isolated_page_type page_type;
+	enum hv_isolated_page_size page_size;
+	__u64 num_pages;
+	__u64 page_number[];
+};
+
+struct mshv_complete_isolated_import {
+	union hv_partition_complete_isolated_import_data import_data;
+};
+
 #define MSHV_IOCTL 0xB8
 
 /* mshv device */
@@ -244,6 +263,16 @@ struct mshv_vp_run_registers {
 #define MSHV_SET_DEVICE_ATTR	  _IOW(MSHV_IOCTL, 0x14, struct mshv_device_attr)
 #define MSHV_GET_DEVICE_ATTR	  _IOW(MSHV_IOCTL, 0x15, struct mshv_device_attr)
 #define MSHV_HAS_DEVICE_ATTR	  _IOW(MSHV_IOCTL, 0x16, struct mshv_device_attr)
+
+/* ioctls for changing gpa host visibility */
+#define MSHV_MODIFY_GPA_HOST_ACCESS    _IOW(MSHV_IOCTL, 0x28, struct mshv_modify_gpa_host_access)
+
+/* ioctl for importing isolated pages */
+#define MSHV_IMPORT_ISOLATED_PAGES     _IOW(MSHV_IOCTL, 0x29, struct mshv_import_isolated_pages)
+
+/* ioctls related to SEV-SNP enabled guest */
+#define MSHV_COMPLETE_ISOLATED_IMPORT                                          \
+	_IOW(MSHV_IOCTL, 0x30, struct mshv_complete_isolated_import)
 
 /* register page mapping example:
  * struct hv_vp_register_page *regs = mmap(NULL,

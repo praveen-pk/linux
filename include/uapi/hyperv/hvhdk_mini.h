@@ -277,4 +277,64 @@ union hv_gpa_page_access_state {
 	__u8 as_uint8;
 } __packed;
 
+union hv_snp_guest_policy {
+	struct {
+		__u64 minor_version : 8;
+		__u64 major_version : 8;
+		__u64 smt_allowed : 1;
+		__u64 vmpls_required : 1;
+		__u64 migration_agent_allowed : 1;
+		__u64 debug_allowed : 1;
+		__u64 reserved : 44;
+	} __packed;
+	__u64 as_uint64;
+};
+
+union hv_x64_register_sev_control {
+	__u64 as_uint64;
+	struct {
+		__u64 enable_encrypted_state : 1;
+		__u64 reserved_z : 11;
+		__u64 vmsa_gpa_page_number : 52;
+	} __packed;
+};
+
+struct hv_snp_id_block {
+	__u8 launch_digest[48];
+	__u8 family_id[16];
+	__u8 image_id[16];
+	__u32 version;
+	__u32 guest_svn;
+	union hv_snp_guest_policy policy;
+} __packed;
+
+struct hv_snp_id_auth_info {
+	__u32 id_key_algorithm;
+	__u32 auth_key_algorithm;
+	__u8 reserved0[56];
+	__u8 id_block_signature[512];
+	__u8 id_key[1028];
+	__u8 reserved1[60];
+	__u8 id_key_signature[512];
+	__u8 author_key[1028];
+} __packed;
+
+struct hv_psp_launch_finish_data {
+	struct hv_snp_id_block id_block;
+	struct hv_snp_id_auth_info id_auth_info;
+	__u8 host_data[32];
+	bool id_block_enabled;
+	bool author_key_enabled;
+} __packed;
+
+union hv_partition_complete_isolated_import_data {
+	__u64 reserved;
+	struct hv_psp_launch_finish_data psp_parameters;
+} __packed;
+
+struct hv_input_complete_isolated_import {
+	__u64 partition_id;
+	union hv_partition_complete_isolated_import_data import_data;
+} __packed;
+
 #endif /* _UAPI_HV_HVHDK_MINI_H */
