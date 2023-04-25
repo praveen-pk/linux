@@ -882,6 +882,7 @@ union hv_partition_isolation_properties {
 #define HV_PARTITION_CREATION_FLAG_EXO_PARTITION                    BIT(8)
 #define HV_PARTITION_CREATION_FLAG_LAPIC_ENABLED                    BIT(13)
 #define HV_PARTITION_CREATION_FLAG_INTERCEPT_MESSAGE_PAGE_ENABLED   BIT(19)
+#define HV_PARTITION_CREATION_FLAG_X2APIC_CAPABLE                   BIT(22)
 
 struct hv_input_create_partition {
 	__u64 flags;
