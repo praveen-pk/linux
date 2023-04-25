@@ -551,12 +551,30 @@ static struct notifier_block hv_reboot_notifier = {
 	.notifier_call	= hv_reboot_notifier_handler,
 };
 
+static int hv_acpi_sleep_handler(u8 sleep_state, u32 pm1a_cnt, u32 pm1b_cnt)
+{
+	int ret = 0;
+
+	if (sleep_state == ACPI_STATE_S5)
+		ret = hv_call_enter_sleep_state(HV_SLEEP_STATE_S5);
+
+	return ret == 0 ? 1 : -1;
+}
+
+static int hv_acpi_extended_sleep_handler(u8 sleep_state, u32 val_a, u32 val_b)
+{
+	return hv_acpi_sleep_handler(sleep_state, val_a, val_b);
+}
+
 int hv_sleep_notifiers_register(void)
 {
 	int ret;
 
 	ret = hv_initialize_sleep_states();
 	if (!ret) {
+		acpi_os_set_prepare_sleep(&hv_acpi_sleep_handler);
+		acpi_os_set_prepare_extended_sleep(&hv_acpi_extended_sleep_handler);
+
 		ret = register_reboot_notifier(&hv_reboot_notifier);
 		if (ret)
 			pr_err("%s: cannot register reboot notifier %d\n",
