@@ -21,7 +21,7 @@
 /*
  * hv_do_hypercall- Invoke the specified hypercall
  */
-u64 hv_do_hypercall(u64 control, void *input, void *output)
+u64 hv_do_hypercall(u64 control, const void *input, void *output)
 {
 	struct arm_smccc_res	res;
 	u64			input_address;
@@ -37,7 +37,7 @@ u64 hv_do_hypercall(u64 control, void *input, void *output)
 EXPORT_SYMBOL_GPL(hv_do_hypercall);
 
 /* Hypercall to the L0 hypervisor */
-u64 hv_do_nested_hypercall(u64 control, void *input, void *output)
+u64 hv_do_nested_hypercall(u64 control, const void *input, void *output)
 {
 	return hv_do_hypercall(control | HV_HYPERCALL_NESTED, input, output);
 }
