@@ -16,8 +16,8 @@
 
 int hv_call_add_logical_proc(int node, u32 lp_index, u32 apic_id)
 {
-	struct hv_add_logical_processor_in *input;
-	struct hv_add_logical_processor_out *output;
+	struct hv_input_add_logical_processor *input;
+	struct hv_output_add_logical_processor *output;
 	u64 status;
 	unsigned long flags;
 	int ret = HV_STATUS_SUCCESS;

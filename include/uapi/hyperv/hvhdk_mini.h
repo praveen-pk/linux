@@ -389,15 +389,13 @@ struct hv_lp_startup_status {
 	__u64 substatus6;
 } __packed;
 
-/* HV_INPUT_ADD_LOGICAL_PROCESSOR */
-struct hv_add_logical_processor_in {
+struct hv_input_add_logical_processor {
 	__u32 lp_index;
 	__u32 apic_id;
 	union hv_proximity_domain_info proximity_domain_info;
 } __packed;
 
-/* HV_OUTPUT_ADD_LOGICAL_PROCESSOR */
-struct hv_add_logical_processor_out {
+struct hv_output_add_logical_processor {
 	struct hv_lp_startup_status startup_status;
 } __packed;
 
