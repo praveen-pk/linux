@@ -1429,7 +1429,7 @@ int hv_call_complete_isolated_import(
 	local_irq_restore(flags);
 
 	if (hv_result(status) == HV_STATUS_CALL_PENDING)
-		completion_handler(partition_id, &status);
+		completion_handler(completion_data, &status);
 
 	if (!hv_result_success(status)) {
 		pr_err("%s: status=%s, partition_id=%llu\n", __func__,
