@@ -337,4 +337,46 @@ struct hv_input_complete_isolated_import {
 	union hv_partition_complete_isolated_import_data import_data;
 } __packed;
 
+enum hv_crashdump_action {
+	HV_CRASHDUMP_NONE = 0,
+	HV_CRASHDUMP_SUSPEND_ALL_VPS,
+	HV_CRASHDUMP_PREPARE_FOR_STATE_SAVE,
+	HV_CRASHDUMP_STATE_SAVED,
+	HV_CRASHDUMP_ENTRY,
+};
+
+struct hv_partition_event_root_crashdump_input {
+	__u32 crashdump_action; /* enum hv_crashdump_action */
+} __packed;
+
+struct hv_partition_event_commit_processor_indices_input {
+	__u32 schedulable_processor_count;
+} __packed;
+
+union hv_partition_event_input {
+	/*
+	 * Input for the root crashdump partition event.
+	 */
+	struct hv_partition_event_root_crashdump_input crashdump_input;
+
+	/*
+	 * Input for the commit lp indices event.
+	 */
+	struct hv_partition_event_commit_processor_indices_input
+		commit_lp_indices_input;
+};
+
+enum hv_partition_event {
+	HV_PARTITION_EVENT_DEBUG_DEVICE_AVAILABLE = 1,
+	HV_PARTITION_EVENT_ROOT_CRASHDUMP = 2,
+	HV_PARTITION_EVENT_ACPI_REENABLED = 3,
+	HV_PARTITION_ALL_LOGICAL_PROCESSORS_STARTED = 4,
+	HV_PARTITION_COMMIT_LP_INDICES = 5,
+};
+
+struct hv_input_notify_partition_event {
+	__u32 event; /* enum hv_partition_event */
+	union hv_partition_event_input input;
+} __packed;
+
 #endif /* _UAPI_HV_HVHDK_MINI_H */

@@ -64,7 +64,7 @@ int hv_call_notify_all_processors_started(void)
 	local_irq_save(irq_flags);
 
 	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
-	input->event = hv_partition_all_logical_processors_started;
+	input->event = HV_PARTITION_ALL_LOGICAL_PROCESSORS_STARTED;
 
 	status = hv_do_hypercall(HVCALL_NOTIFY_PARTITION_EVENT, input, NULL);
 

@@ -1025,6 +1025,10 @@ struct hv_input_set_system_property {
 	};
 } __packed;
 
+struct hv_input_enter_sleep_state {
+	u32 sleep_state; /* enum hv_sleep_state */
+} __packed;
+
 enum hv_crashdump_action {
 	HV_CRASHDUMP_NONE = 0,
 	HV_CRASHDUMP_SUSPEND_ALL_VPS,
@@ -1034,11 +1038,11 @@ enum hv_crashdump_action {
 };
 
 struct hv_partition_event_root_crashdump_input {
-	enum hv_crashdump_action crashdump_action;
+	__u32 crashdump_action; /* enum hv_crashdump_action */
 } __packed;
 
 struct hv_partition_event_commit_processor_indices_input {
-	u32 schedulable_processor_count;
+	__u32 schedulable_processor_count;
 } __packed;
 
 union hv_partition_event_input {
@@ -1055,20 +1059,16 @@ union hv_partition_event_input {
 };
 
 enum hv_partition_event {
-	hv_partition_event_debug_device_available = 1,
-	hv_partition_event_root_crashdump = 2,
-	hv_partition_event_acpi_reenabled = 3,
-	hv_partition_all_logical_processors_started = 4,
-	hv_partition_commit_lp_indices = 5,
+	HV_PARTITION_EVENT_DEBUG_DEVICE_AVAILABLE = 1,
+	HV_PARTITION_EVENT_ROOT_CRASHDUMP = 2,
+	HV_PARTITION_EVENT_ACPI_REENABLED = 3,
+	HV_PARTITION_ALL_LOGICAL_PROCESSORS_STARTED = 4,
+	HV_PARTITION_COMMIT_LP_INDICES = 5,
 };
 
 struct hv_input_notify_partition_event {
-	enum hv_partition_event event;
+	__u32 event; /* enum hv_partition_event */
 	union hv_partition_event_input input;
-} __packed;
-
-struct hv_input_enter_sleep_state {
-	u32 sleep_state; /* enum hv_sleep_state */
 } __packed;
 
 /*
