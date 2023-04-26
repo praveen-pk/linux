@@ -379,4 +379,26 @@ struct hv_input_notify_partition_event {
 	union hv_partition_event_input input;
 } __packed;
 
+struct hv_lp_startup_status {
+	__u64 hv_status;
+	__u64 substatus1;
+	__u64 substatus2;
+	__u64 substatus3;
+	__u64 substatus4;
+	__u64 substatus5;
+	__u64 substatus6;
+} __packed;
+
+/* HV_INPUT_ADD_LOGICAL_PROCESSOR */
+struct hv_add_logical_processor_in {
+	__u32 lp_index;
+	__u32 apic_id;
+	union hv_proximity_domain_info proximity_domain_info;
+} __packed;
+
+/* HV_OUTPUT_ADD_LOGICAL_PROCESSOR */
+struct hv_add_logical_processor_out {
+	struct hv_lp_startup_status startup_status;
+} __packed;
+
 #endif /* _UAPI_HV_HVHDK_MINI_H */

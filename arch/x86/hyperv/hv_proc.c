@@ -12,6 +12,7 @@
 #include <asm/apic.h>
 
 #include <asm/trace/hyperv.h>
+#include <asm-generic/hyperv-defs.h>
 
 int hv_call_add_logical_proc(int node, u32 lp_index, u32 apic_id)
 {
