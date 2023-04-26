@@ -354,14 +354,7 @@ struct hv_partition_event_commit_processor_indices_input {
 } __packed;
 
 union hv_partition_event_input {
-	/*
-	 * Input for the root crashdump partition event.
-	 */
 	struct hv_partition_event_root_crashdump_input crashdump_input;
-
-	/*
-	 * Input for the commit lp indices event.
-	 */
 	struct hv_partition_event_commit_processor_indices_input
 		commit_lp_indices_input;
 };
