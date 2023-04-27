@@ -1585,6 +1585,27 @@ union hv_register_intercept_result_parameters {
 	struct hv_register_x64_msr_result_parameters msr;
 } __packed;
 
+struct hv_x64_vmgexit_intercept_message {
+	struct hv_x64_intercept_message_header header;
+	__u64 ghcb_msr;
+	struct {
+		__u64 ghcb_page_valid : 1;
+		__u64 reserved : 63;
+	} __packed;
+	struct {
+		__u32 ghcb_usage;
+		__u32 rserved_ghcb_page;
+		struct {
+			__u16 ghcb_protocol_version;
+			__u16 reserved_st[3];
+			__u64 sw_exit_code;
+			__u64 sw_exit_info1;
+			__u64 sw_exit_info2;
+			__u64 sw_scratch;
+		} __packed;
+	} __packed;
+} __packed;
+
 #endif /* __x86_64__ */
 
 struct hv_async_completion_message_payload {
@@ -1953,5 +1974,32 @@ struct hv_input_import_isolated_pages {
 	__u32 page_size; /* enum hv_isolated_page_size */
 	__u64 page_number[];
 } __packed;
+
+/*
+ * Structure that declares the set of enabled offloads for VMGExit handling;
+ */
+union hv_sev_vmgexit_offload {
+	__u64 as_uint64;
+	struct {
+		/*
+		 * Standard format NAEs.
+		 */
+		__u64 nae_rdtsc : 1;
+		__u64 nae_cpuid : 1;
+		__u64 nae_reserved_io_port : 1;
+		__u64 nae_rdmsr : 1;
+		__u64 nae_wrmsr : 1;
+		__u64 nae_vmmcall : 1;
+		__u64 nae_wbinvd : 1;
+		__u64 nae_snp_page_state_change : 1;
+		__u64 reserved0 : 24;
+		/*
+		 * GHCB MSR protocol.
+		 */
+		__u64 msr_cpuid : 1;
+		__u64 msr_snp_page_state_change : 1;
+		__u64 reserved1 : 30;
+	} __packed;
+};
 
 #endif /* _UAPI_HV_HVHDK_H */

@@ -455,6 +455,7 @@ enum hv_message_type {
 	HVMSG_X64_HALT				= 0x80010007,
 	HVMSG_X64_INTERRUPTION_DELIVERABLE	= 0x80010008,
 	HVMSG_X64_SIPI_INTERCEPT		= 0x80010009,
+	HVMSG_X64_SEV_VMGEXIT_INTERCEPT	= 0x80010013,
 };
 
 /* Define the format of the SIMP register */
@@ -1063,6 +1064,7 @@ enum hv_register_name {
 	HV_X64_REGISTER_SYNTHETIC_TPR	= 0x00090012,
 
 	HV_X64_REGISTER_REG_PAGE	= 0x0009001C,
+	HV_X64_REGISTER_GHCB		= 0x00090019,
 
 	/* Partition Timer Assist Registers */
 	HV_X64_REGISTER_EMULATED_TIMER_PERIOD	= 0x00090030,
@@ -1071,6 +1073,8 @@ enum hv_register_name {
 
 	/* AMD SEV SNP configuration register */
 	HV_X64_REGISTER_SEV_CONTROL		= 0x00090040,
+	HV_X64_REGISTER_SEV_GHCB_GPA		= 0x00090041,
+	HV_X64_REGISTER_SEV_DOORBELL_GPA	= 0x00090042,
 
 	/* Intercept Control Registers */
 	HV_X64_REGISTER_CR_INTERCEPT_CONTROL			= 0x000E0000,
@@ -1388,5 +1392,28 @@ enum hv_eventlog_type { /* HV_EVENTLOG_TYPE */
 	HV_EVENT_LOG_TYPE_LOCAL_DIAGNOSTICS     = 0x00000001,
 	HV_EVENT_LOG_TYPE_SYSTEM_DIAGNOSTICS    = 0x00000002,
 };
+
+union hv_x64_register_sev_ghcb {
+	__u64 as_uint64;
+	struct {
+		__u64 enabled:1;
+		__u64 reservedz:11;
+		__u64 page_number:52;
+	} __packed;
+};
+
+union hv_x64_register_sev_hv_doorbell {
+	__u64 as_uint64;
+	struct {
+		__u64 enabled:1;
+		__u64 reservedz:11;
+		__u64 page_number:52;
+	} __packed;
+};
+
+/* Values for intercept_access_type field */
+#define HV_INTERCEPT_ACCESS_READ 0
+#define HV_INTERCEPT_ACCESS_WRITE 1
+#define HV_INTERCEPT_ACCESS_EXECUTE 2
 
 #endif /* _UAPI_HV_HVGDK_MINI_H */
