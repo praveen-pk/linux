@@ -12,11 +12,12 @@
 #include <asm/apic.h>
 
 #include <asm/trace/hyperv.h>
+#include <asm-generic/hyperv-defs.h>
 
 int hv_call_add_logical_proc(int node, u32 lp_index, u32 apic_id)
 {
-	struct hv_add_logical_processor_in *input;
-	struct hv_add_logical_processor_out *output;
+	struct hv_input_add_logical_processor *input;
+	struct hv_output_add_logical_processor *output;
 	u64 status;
 	unsigned long flags;
 	int ret = HV_STATUS_SUCCESS;
@@ -64,7 +65,7 @@ int hv_call_notify_all_processors_started(void)
 	local_irq_save(irq_flags);
 
 	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
-	input->event = hv_partition_all_logical_processors_started;
+	input->event = HV_PARTITION_ALL_LOGICAL_PROCESSORS_STARTED;
 
 	status = hv_do_hypercall(HVCALL_NOTIFY_PARTITION_EVENT, input, NULL);
 

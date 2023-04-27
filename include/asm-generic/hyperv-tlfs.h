@@ -570,27 +570,6 @@ union hv_proximity_domain_info {
 	u64 as_uint64;
 } __packed;
 
-struct hv_lp_startup_status {
-	u64 hv_status;
-	u64 substatus1;
-	u64 substatus2;
-	u64 substatus3;
-	u64 substatus4;
-	u64 substatus5;
-	u64 substatus6;
-} __packed;
-
-/* HvAddLogicalProcessor hypercall */
-struct hv_add_logical_processor_in {
-	u32 lp_index;
-	u32 apic_id;
-	union hv_proximity_domain_info proximity_domain_info;
-} __packed;
-
-struct hv_add_logical_processor_out {
-	struct hv_lp_startup_status startup_status;
-} __packed;
-
 enum HV_SUBNODE_TYPE
 {
     HvSubnodeAny = 0,
@@ -1023,48 +1002,6 @@ struct hv_input_set_system_property {
 		/* More fields to be filled in when needed */
 		struct hv_sleep_state_info set_sleep_state_info;
 	};
-} __packed;
-
-enum hv_crashdump_action {
-	HV_CRASHDUMP_NONE = 0,
-	HV_CRASHDUMP_SUSPEND_ALL_VPS,
-	HV_CRASHDUMP_PREPARE_FOR_STATE_SAVE,
-	HV_CRASHDUMP_STATE_SAVED,
-	HV_CRASHDUMP_ENTRY,
-};
-
-struct hv_partition_event_root_crashdump_input {
-	enum hv_crashdump_action crashdump_action;
-} __packed;
-
-struct hv_partition_event_commit_processor_indices_input {
-	u32 schedulable_processor_count;
-} __packed;
-
-union hv_partition_event_input {
-	/*
-	 * Input for the root crashdump partition event.
-	 */
-	struct hv_partition_event_root_crashdump_input crashdump_input;
-
-	/*
-	 * Input for the commit lp indices event.
-	 */
-	struct hv_partition_event_commit_processor_indices_input
-		commit_lp_indices_input;
-};
-
-enum hv_partition_event {
-	hv_partition_event_debug_device_available = 1,
-	hv_partition_event_root_crashdump = 2,
-	hv_partition_event_acpi_reenabled = 3,
-	hv_partition_all_logical_processors_started = 4,
-	hv_partition_commit_lp_indices = 5,
-};
-
-struct hv_input_notify_partition_event {
-	enum hv_partition_event event;
-	union hv_partition_event_input input;
 } __packed;
 
 struct hv_input_enter_sleep_state {
