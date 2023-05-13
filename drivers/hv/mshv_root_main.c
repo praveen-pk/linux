@@ -1059,27 +1059,41 @@ mshv_partition_ioctl_get_property(struct mshv_partition *partition,
 	return 0;
 }
 
+static int mshv_root_init_async_handler(struct mshv_partition *partition)
+{
+	if (completion_done(&partition->async_hypercall)) {
+		pr_err("Cannot issue another async hypercall, while another one in progress!\n");
+		return -EPERM;
+	}
+
+	reinit_completion(&partition->async_hypercall);
+	return 0;
+}
+
 static void mshv_root_async_hypercall_handler(void *data, u64 *status)
 {
 	struct mshv_partition *partition = data;
 
 	wait_for_completion(&partition->async_hypercall);
-	reinit_completion(&partition->async_hypercall);
-
 	pr_debug("%s: Partition ID: %llu, async hypercall completed!\n",
 		 __func__, partition->id);
 
-	*status = HV_STATUS_SUCCESS;
+	*status = partition->async_hypercall_status;
 }
 
 static long
 mshv_partition_ioctl_set_property(struct mshv_partition *partition,
 				  void __user *user_args)
 {
+	long ret;
 	struct mshv_partition_property args;
 
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
+
+	ret = mshv_root_init_async_handler(partition);
+	if (ret)
+		return ret;
 
 	return hv_call_set_partition_property(
 			partition->id,
@@ -1863,6 +1877,10 @@ static long mshv_partition_ioctl_import_isolated_pages(
 		goto out;
 	}
 
+	ret = mshv_root_init_async_handler(partition);
+	if (ret)
+		goto out;
+
 	ret = hv_call_import_isolated_pages(partition->id, pages,
 					    args.num_pages, args.page_type,
 					    args.page_size,
@@ -1879,7 +1897,7 @@ mshv_partition_ioctl_complete_isolated_import(struct mshv_partition *partition,
 					      void __user *user_args)
 {
 	struct mshv_complete_isolated_import *args;
-	long ret = 0;
+	long ret;
 
 	args = kzalloc(sizeof(*args), GFP_KERNEL);
 	if (!args) {
@@ -1891,6 +1909,10 @@ mshv_partition_ioctl_complete_isolated_import(struct mshv_partition *partition,
 		ret = -EFAULT;
 		goto out;
 	}
+
+	ret = mshv_root_init_async_handler(partition);
+	if (ret)
+		goto out;
 
 	ret = hv_call_complete_isolated_import(
 		partition->id, &args->import_data, mshv_root_async_hypercall_handler,
@@ -1937,6 +1959,10 @@ mshv_partition_ioctl_issue_psp_guest_request(struct mshv_partition *partition,
 	 */
 	ret = hv_call_modify_spa_host_access(partition->id, page_list,
 					     gpa_list_size, 0, 0, false);
+	if (ret)
+		goto clear_page_list;
+
+	ret = mshv_root_init_async_handler(partition);
 	if (ret)
 		goto clear_page_list;
 
@@ -2247,6 +2273,10 @@ static int destroy_snp_partition_state(struct mshv_partition *partition)
 		/* Clear the runnable bit before destroying SNP partition */
 		union hv_partition_isolation_control isolation_control = { 0 };
 
+		ret = mshv_root_init_async_handler(partition);
+		if (ret)
+			goto out;
+
 		ret = hv_call_set_partition_property(
 			partition->id, HV_PARTITION_PROPERTY_ISOLATION_CONTROL,
 			isolation_control.as_uint64,
@@ -2257,6 +2287,10 @@ static int destroy_snp_partition_state(struct mshv_partition *partition)
 			goto out;
 		}
 	}
+
+	ret = mshv_root_init_async_handler(partition);
+	if (ret)
+		goto out;
 
 	/*
 	 * This must be done before we drain all the vps and call
@@ -2474,6 +2508,10 @@ __mshv_ioctl_create_partition(void __user *user_arg)
 	ret = add_partition(partition);
 	if (ret)
 		goto delete_partition;
+
+	ret = mshv_root_init_async_handler(partition);
+	if (ret)
+		goto remove_partition;
 
 	ret = hv_call_set_partition_property(
 				partition->id,
