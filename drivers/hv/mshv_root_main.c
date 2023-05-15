@@ -712,6 +712,8 @@ mshv_vp_ioctl_get_cpuid_values(struct mshv_vp *vp, void __user *user_args)
 	memset(&info, 0, sizeof(info));
 	info.eax = args.function;
 	info.ecx = args.index;
+	info.xfem = args.xfem;
+	info.xss = args.xss;
 
 	ret = hv_call_get_vp_cpuid_values(vp->index,
 					vp->partition->id,

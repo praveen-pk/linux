@@ -166,6 +166,8 @@ struct mshv_register_deliverabilty_notifications {
 struct mshv_get_vp_cpuid_values {
 	__u32 function;
 	__u32 index;
+	__u64 xfem;
+	__u64 xss;
 	/* output */
 	__u32 eax;
 	__u32 ebx;
