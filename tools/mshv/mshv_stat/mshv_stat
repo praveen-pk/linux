@@ -396,7 +396,8 @@ class IncrementalStatsWriter(StatsWriter):
     """
     A concrete class for writing statistics to the screen incrementally.
     """
-    def __init__(self, stats_names: list = None, stats_filter: str = None, csv_path: str = None, print_all: bool = None, count: str = None):
+    def __init__(self, stats_names: list = None, stats_filter: str = None,
+                 csv_path: str = None, print_all: bool = None, count: str = None):
         CsvStatsWriter.__init__(self, stats_names, stats_filter, csv_path, print_all)
         self.count = int(count) if count else None
         if csv_path or csv_path is None:  # Add screen writer only if CSV output isn't writtent to screen
@@ -758,7 +759,8 @@ class SummarizedVpStats(SummarizedStats):
 
     @property
     def header(self):
-        return "Microsoft hypervisor statistics: Partition {} Virtual Processor{} {}".format(self.partition, *self.header_parts)
+        return "Microsoft hypervisor statistics: " \
+               "Partition {} Virtual Processor{} {}".format(self.partition, *self.header_parts)
 
     @property
     def path(self) -> str:
@@ -872,7 +874,7 @@ class MshvStats(Stats):
         return DebugfsPath.hv_stats_path()
 
 
-def parse_options():
+def parse_options(): # noqa c901
     """Returns processed program arguments."""
     description_text = """
 This script displays various statistics about VMs running under MSHV.

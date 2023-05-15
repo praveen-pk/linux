@@ -2,9 +2,11 @@
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 PIPELINES_DIR=$(realpath "${SCRIPT_DIR}"/..)
+REPO_ROOT_DIR=$(realpath "${SCRIPT_DIR}"/../../)
+MSHV_TOOLS_DIR="${REPO_ROOT_DIR}/tools/mshv/mshv_stat"
 
 MYTMP=$(mktemp)
-find "${SCRIPT_DIR}" "${PIPELINES_DIR}" | while read -r FILE; do
+find "${SCRIPT_DIR}" "${PIPELINES_DIR}" "${MSHV_TOOLS_DIR}" | while read -r FILE; do
 	if [ ! -f "${FILE}" ]; then
 		continue
 	fi
@@ -26,6 +28,6 @@ echo "${SCRIPT_LIST}" | while read -r FILE; do
 	flake8_check "${FILE}"
 done
 
-for D in "${SCRIPT_DIR}" "${PIPELINES_DIR}"; do
+for D in "${SCRIPT_DIR}" "${PIPELINES_DIR}" "${MSHV_TOOLS_DIR}"; do
 	flake8_check "${D}"
 done
