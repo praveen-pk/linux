@@ -10,6 +10,9 @@
 #include <asm/paravirt.h>
 #include <asm-generic/hyperv-defs.h>
 
+struct hv_guest_mapping_flush_list;
+struct hv_interrupt_entry;
+
 typedef int (*hyperv_fill_flush_list_func)(
 		struct hv_guest_mapping_flush_list *flush,
 		void *data);
