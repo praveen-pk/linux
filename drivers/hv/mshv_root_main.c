@@ -1614,25 +1614,25 @@ static long
 mshv_partition_ioctl_complete_isolated_import(struct mshv_partition *partition,
 					      void __user *user_args)
 {
-	union hv_partition_complete_isolated_import_data *import_data;
+	struct mshv_complete_isolated_import *args;
 	long ret = 0;
 
-	import_data = kzalloc(sizeof(*import_data), GFP_KERNEL);
-	if (!import_data) {
+	args = kzalloc(sizeof(*args), GFP_KERNEL);
+	if (!args) {
 		ret = -ENOMEM;
 		goto out;
 	}
 
-	if (copy_from_user(import_data, user_args, sizeof(import_data))) {
+	if (copy_from_user(args, user_args, sizeof(*args))) {
 		ret = -EFAULT;
 		goto out;
 	}
 
 	ret = hv_call_complete_isolated_import(
-		partition->id, import_data, mshv_root_async_hypercall_handler,
+		partition->id, &args->import_data, mshv_root_async_hypercall_handler,
 		partition);
 out:
-	kfree(import_data);
+	kfree(args);
 	return ret;
 }
 
