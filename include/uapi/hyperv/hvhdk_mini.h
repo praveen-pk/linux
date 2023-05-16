@@ -323,8 +323,8 @@ struct hv_psp_launch_finish_data {
 	struct hv_snp_id_block id_block;
 	struct hv_snp_id_auth_info id_auth_info;
 	__u8 host_data[32];
-	bool id_block_enabled;
-	bool author_key_enabled;
+	__u8 id_block_enabled;
+	__u8 author_key_enabled;
 } __packed;
 
 union hv_partition_complete_isolated_import_data {
