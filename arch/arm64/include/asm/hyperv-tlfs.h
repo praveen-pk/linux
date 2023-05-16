@@ -98,6 +98,11 @@ union hv_msi_entry {
 	} __packed;
 };
 
+enum hv_interrupt_type {
+	HV_ARM64_INTERRUPT_TYPE_FIXED		= 0x0000,
+	HV_ARM64_INTERRUPT_TYPE_MAXIMUM		= 0x0008,
+};
+
 #include <asm-generic/hyperv-tlfs.h>
 
 #endif

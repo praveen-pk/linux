@@ -358,15 +358,6 @@ union hv_synic_sint {
 };
 
 
-static inline bool hv_should_clear_interrupt(enum hv_interrupt_type type)
-{
-#if defined(__ARM64__)
-	return false;
-#else
-	return type == HV_X64_INTERRUPT_TYPE_EXTINT;
-#endif
-}
-
 union hv_x64_xsave_xfem_register {
 	__u64 as_uint64;
 	struct {
