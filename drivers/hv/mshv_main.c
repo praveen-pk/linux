@@ -26,7 +26,6 @@
 
 #include "mshv_eventfd.h"
 #include "mshv.h"
-#include "vfio.h"
 
 MODULE_AUTHOR("Microsoft");
 MODULE_LICENSE("GPL");
