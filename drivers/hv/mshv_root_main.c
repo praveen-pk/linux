@@ -2298,6 +2298,10 @@ int __init mshv_root_init(void)
 
 	mshv_cpuhp_online = ret;
 
+	ret = mshv_set_create_partition_func(__mshv_ioctl_create_partition);
+	if (ret)
+		goto remove_cpu_state;
+
 	spin_lock_init(&mshv_root.partitions.lock);
 	hash_init(mshv_root.partitions.items);
 
@@ -2308,10 +2312,10 @@ int __init mshv_root_init(void)
 
 	mshv_debugfs_init();
 
-	mshv_set_create_partition_func(__mshv_ioctl_create_partition);
-
 	return 0;
 
+remove_cpu_state:
+	cpuhp_remove_state(mshv_cpuhp_online);
 free_synic_pages:
 	free_percpu(mshv_root.synic_pages);
 root_sched_deinit:

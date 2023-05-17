@@ -36,35 +36,72 @@ static long mshv_ioctl_dummy(void __user *user_arg)
 	return -ENOTTY;
 }
 
-static long mshv_ioctl_dummy2(u32 arg)
+static long mshv_check_ext_dummy(u32 arg)
 {
-	return -ENOTTY;
+	return -EOPNOTSUPP;
 }
 
-static mshv_create_func_t mshv_ioctl_create_vtl = mshv_ioctl_dummy;
-static mshv_create_func_t mshv_ioctl_create_partition = mshv_ioctl_dummy;
-static mshv_check_ext_func_t mshv_vtl_ioctl_check_extension = mshv_ioctl_dummy2;
+static struct mshv {
+	struct mutex		mutex;
+	mshv_create_func_t	create_vtl;
+	mshv_create_func_t	create_partition;
+	mshv_check_ext_func_t	check_extension;
+} mshv = {
+	.create_vtl		= mshv_ioctl_dummy,
+	.create_partition	= mshv_ioctl_dummy,
+	.check_extension	= mshv_check_ext_dummy,
+};
 
-void mshv_setup_vtl_func(const mshv_create_func_t create_vtl,
-			 const mshv_check_ext_func_t check_ext)
+static int mshv_register_dev(void);
+static void mshv_deregister_dev(void);
+
+int mshv_setup_vtl_func(const mshv_create_func_t create_vtl,
+			const mshv_check_ext_func_t check_ext)
 {
-	if (!create_vtl) {
-		mshv_ioctl_create_vtl = mshv_ioctl_dummy;
-		mshv_vtl_ioctl_check_extension = mshv_ioctl_dummy2;
+	int ret;
+
+	mutex_lock(&mshv.mutex);
+	if (create_vtl && check_ext) {
+		ret = mshv_register_dev();
+		if (ret)
+			goto unlock;
+		mshv.create_vtl = create_vtl;
+		mshv.check_extension = check_ext;
 	} else {
-		mshv_ioctl_create_vtl = create_vtl;
-		mshv_vtl_ioctl_check_extension = check_ext;
+		mshv.create_vtl = mshv_ioctl_dummy;
+		mshv.check_extension = mshv_check_ext_dummy;
+		mshv_deregister_dev();
+		ret = 0;
 	}
+
+unlock:
+	mutex_unlock(&mshv.mutex);
+
+	return ret;
 }
 EXPORT_SYMBOL_GPL(mshv_setup_vtl_func);
 
-void mshv_set_create_partition_func(const mshv_create_func_t func)
+int mshv_set_create_partition_func(const mshv_create_func_t func)
 {
-	if (!func) {
-		mshv_ioctl_create_partition = mshv_ioctl_dummy;
+	int ret;
+
+	mutex_lock(&mshv.mutex);
+	if (func) {
+		ret = mshv_register_dev();
+		if (ret)
+			goto unlock;
+		mshv.create_partition = func;
 	} else {
-		mshv_ioctl_create_partition = func;
+		mshv.create_partition = mshv_ioctl_dummy;
+		mshv_deregister_dev();
+		ret = 0;
 	}
+	mshv.check_extension = mshv_check_ext_dummy;
+
+unlock:
+	mutex_unlock(&mshv.mutex);
+
+	return ret;
 }
 EXPORT_SYMBOL_GPL(mshv_set_create_partition_func);
 
@@ -87,6 +124,28 @@ static struct miscdevice mshv_dev = {
 	.mode = 0600,
 };
 
+static int mshv_register_dev(void)
+{
+	int ret;
+
+	if (mshv_dev.this_device &&
+	    device_is_registered(mshv_dev.this_device)) {
+		pr_err("%s: mshv device already registered\n", __func__);
+		return -ENODEV;
+	}
+
+	ret = misc_register(&mshv_dev);
+	if (ret)
+		pr_err("%s: mshv device register failed\n", __func__);
+
+	return ret;
+}
+
+static void mshv_deregister_dev(void)
+{
+	misc_deregister(&mshv_dev);
+}
+
 static long
 mshv_ioctl_check_extension(void __user *user_arg)
 {
@@ -98,15 +157,9 @@ mshv_ioctl_check_extension(void __user *user_arg)
 	switch (arg) {
 	case MSHV_CAP_CORE_API_STABLE:
 		return 0;
-#ifdef CONFIG_MSHV_VTL
-	case MSHV_CAP_REGISTER_PAGE:
-	case MSHV_CAP_VTL_RETURN_ACTION:
-	case MSHV_CAP_DR6_SHARED:
-		return mshv_vtl_ioctl_check_extension(arg);
-#endif
 	}
 
-	return -EOPNOTSUPP;
+	return mshv.check_extension(arg);
 }
 
 static long
@@ -116,9 +169,9 @@ mshv_dev_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 	case MSHV_CHECK_EXTENSION:
 		return mshv_ioctl_check_extension((void __user *)arg);
 	case MSHV_CREATE_PARTITION:
-		return mshv_ioctl_create_partition((void __user *)arg);
+		return mshv.create_partition((void __user *)arg);
 	case MSHV_CREATE_VTL:
-		return mshv_ioctl_create_vtl((void __user *)arg);
+		return mshv.create_vtl((void __user *)arg);
 	}
 
 	return -ENOTTY;
@@ -139,25 +192,12 @@ mshv_dev_release(struct inode *inode, struct file *filp)
 static int
 __init mshv_init(void)
 {
-	int ret;
-
 	if (!hv_is_hyperv_initialized())
 		return -ENODEV;
 
-	ret = misc_register(&mshv_dev);
-	if (ret) {
-		pr_err("%s: misc device register failed\n", __func__);
-		return ret;
-	}
+	mutex_init(&mshv.mutex);
 
-	return ret;
-}
-
-static void
-__exit mshv_exit(void)
-{
-	misc_deregister(&mshv_dev);
+	return 0;
 }
 
 module_init(mshv_init);
-module_exit(mshv_exit);
