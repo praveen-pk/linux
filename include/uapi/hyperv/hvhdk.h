@@ -879,10 +879,10 @@ union hv_partition_isolation_properties {
 #define HV_PARTITION_ISOLATION_HOST_TYPE_RESERVED   0x2
 
 /* Note: Exo partition is enabled by default */
-#define HV_PARTITION_CREATION_FLAG_EXO_PARTITION                    BIT(8)
-#define HV_PARTITION_CREATION_FLAG_LAPIC_ENABLED                    BIT(13)
-#define HV_PARTITION_CREATION_FLAG_INTERCEPT_MESSAGE_PAGE_ENABLED   BIT(19)
-#define HV_PARTITION_CREATION_FLAG_X2APIC_CAPABLE                   BIT(22)
+#define HV_PARTITION_CREATION_FLAG_EXO_PARTITION                    (1 << 8)
+#define HV_PARTITION_CREATION_FLAG_LAPIC_ENABLED                    (1 << 13)
+#define HV_PARTITION_CREATION_FLAG_INTERCEPT_MESSAGE_PAGE_ENABLED   (1 << 19)
+#define HV_PARTITION_CREATION_FLAG_X2APIC_CAPABLE                   (1 << 22)
 
 struct hv_input_create_partition {
 	__u64 flags;
@@ -1732,7 +1732,7 @@ struct hv_vp_state_data_xsave {
  * Note these hypercalls have an 8-byte aligned variable header size as per the tlfs
  */
 
-#define HV_GET_SET_VP_STATE_TYPE_PFN	BIT(31)
+#define HV_GET_SET_VP_STATE_TYPE_PFN	(1 << 31)
 
 enum hv_get_set_vp_state_type {
 	HV_GET_SET_VP_STATE_LOCAL_INTERRUPT_CONTROLLER_STATE = 0 | HV_GET_SET_VP_STATE_TYPE_PFN,
