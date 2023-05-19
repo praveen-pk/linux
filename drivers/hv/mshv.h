@@ -169,10 +169,8 @@ int mshv_xfer_to_guest_mode_handle_work(unsigned long ti_work);
 
 typedef long (*mshv_create_func_t)(void __user *user_arg);
 typedef long (*mshv_check_ext_func_t)(u32 arg);
-void mshv_setup_vtl_func(const mshv_create_func_t create_vtl,
-			 const mshv_check_ext_func_t check_ext);
-void mshv_set_create_partition_func(const mshv_create_func_t func);
-
-extern struct mshv mshv;
+int mshv_setup_vtl_func(const mshv_create_func_t create_vtl,
+			const mshv_check_ext_func_t check_ext);
+int mshv_set_create_partition_func(const mshv_create_func_t func);
 
 #endif /* _MSHV_H */
