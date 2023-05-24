@@ -5,6 +5,7 @@
 #ifndef _UAPI_HV_HVHDK_H
 #define _UAPI_HV_HVHDK_H
 
+#include <linux/build_bug.h>
 #include "hvhdk_mini.h"
 #include "hvgdk.h"
 
