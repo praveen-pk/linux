@@ -239,7 +239,7 @@ struct mshv_complete_isolated_import {
 #define MSHV_REGISTER_DELIVERABILITY_NOTIFICATIONS \
 	_IOW(MSHV_IOCTL, 0x1A, struct mshv_register_deliverabilty_notifications)
 #define MSHV_GET_VP_CPUID_VALUES \
-        _IOWR(MSHV_IOCTL, 0x1B, struct mshv_get_vp_cpuid_values)	
+	_IOWR(MSHV_IOCTL, 0x1B, struct mshv_get_vp_cpuid_values)
 
 /* vtl device */
 #define MSHV_CREATE_VTL			_IOR(MSHV_IOCTL, 0x1D, char)
@@ -273,6 +273,11 @@ struct mshv_complete_isolated_import {
 /* ioctls related to SEV-SNP enabled guest */
 #define MSHV_COMPLETE_ISOLATED_IMPORT                                          \
 	_IOW(MSHV_IOCTL, 0x30, struct mshv_complete_isolated_import)
+
+/* Ioctls for mshv_diag device */
+#define MSHV_DIAG_IOCTL 0xB9
+#define MSHV_GET_DIAGLOG_FD                             \
+		_IO(MSHV_DIAG_IOCTL, HV_EVENT_LOG_TYPE_SYSTEM_DIAGNOSTICS)
 
 /* register page mapping example:
  * struct hv_vp_register_page *regs = mmap(NULL,
