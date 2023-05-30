@@ -199,4 +199,10 @@ __init mshv_init(void)
 	return 0;
 }
 
+static void
+__exit mshv_exit(void)
+{
+}
+
 module_init(mshv_init);
+module_exit(mshv_exit);
