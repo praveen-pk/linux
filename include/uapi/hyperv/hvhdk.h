@@ -5,7 +5,10 @@
 #ifndef _UAPI_HV_HVHDK_H
 #define _UAPI_HV_HVHDK_H
 
+#if defined(__KERNEL__)
 #include <linux/build_bug.h>
+#endif
+
 #include "hvhdk_mini.h"
 #include "hvgdk.h"
 

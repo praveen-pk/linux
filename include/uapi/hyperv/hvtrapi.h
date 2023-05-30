@@ -5,6 +5,8 @@
 #ifndef _HV_HVTRAPI_H
 #define _HV_HVTRAPI_H
 
+#include <hyperv/hvgdk_mini.h>
+
 #ifdef __KERNEL__
 
 /* Max number of pages in MSHV's Diagnostic Buffers */
