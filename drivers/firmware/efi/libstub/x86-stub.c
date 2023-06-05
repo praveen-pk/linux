@@ -17,6 +17,7 @@
 #include <asm/boot.h>
 
 #include "efistub.h"
+#include "efi-mshv.h"
 
 /* Maximum physical address for 64-bit kernel with 4-level paging */
 #define MAXMEM_X86_64_4LEVEL (1ull << 46)
@@ -665,6 +666,11 @@ static efi_status_t exit_boot(struct boot_params *boot_params, void *handle)
 	if (status != EFI_SUCCESS)
 		return status;
 
+	/* Notify hypervisor of efi runtime services pages */
+	status = mshv_set_efi_rt_range(&map);
+	if (status != EFI_SUCCESS)
+		return status;
+
 	return EFI_SUCCESS;
 }
 
@@ -680,7 +686,7 @@ unsigned long efi_main(efi_handle_t handle,
 	unsigned long bzimage_addr = (unsigned long)startup_32;
 	unsigned long buffer_start, buffer_end;
 	struct setup_header *hdr = &boot_params->hdr;
-	efi_status_t status;
+	efi_status_t status, mshv_status;
 
 	efi_system_table = sys_table_arg;
 
@@ -796,6 +802,8 @@ unsigned long efi_main(efi_handle_t handle,
 	/* Ask the firmware to clear memory on unclean shutdown */
 	efi_enable_reset_attack_mitigation();
 
+	mshv_status = mshv_efi_setup(boot_params);
+
 	efi_random_get_seed();
 
 	efi_retrieve_tpm2_eventlog();
@@ -812,6 +820,10 @@ unsigned long efi_main(efi_handle_t handle,
 		goto fail;
 	}
 
+	if (mshv_status == EFI_SUCCESS) {
+		mshv_status = mshv_launch();
+	}
+		
 	return bzimage_addr;
 fail:
 	efi_err("efi_main() failed!\n");
