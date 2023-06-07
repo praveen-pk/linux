@@ -1143,6 +1143,26 @@ mshv_partition_ioctl_map_memory(struct mshv_partition *partition,
 		remaining -= completed;
 	}
 
+	/*
+	 * For a SNP partition it is a requirement that for every memory region
+	 * that we are going to map for this partition we should make sure that
+	 * host access to that region is released. This is ensured by doing an
+	 * additional hypercall which will update the SLAT to release host
+	 * access to guest memory regions.
+	 */
+	if (mshv_partition_isolation_type_snp(partition)) {
+		region_page_count = HVPFN_DOWN(region->size);
+
+		ret = hv_call_modify_spa_host_access(
+			partition->id, pages, region_page_count, 0,
+			HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_EXCLUSIVE, false);
+		if (ret) {
+			pr_err("%s: Failed to mark the region (guest_pfn: %llu) as exclusive.\n",
+			       __func__, region->guest_pfn);
+			goto err_unpin_pages;
+		}
+	}
+
 	/* Map the pages to GPA pages */
 	ret = hv_call_map_gpa_pages(partition->id, mem.guest_pfn,
 				    page_count, mem.flags, pages);
