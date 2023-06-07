@@ -299,15 +299,6 @@ union hv_snp_guest_policy {
 	__u64 as_uint64;
 };
 
-union hv_x64_register_sev_control {
-	__u64 as_uint64;
-	struct {
-		__u64 enable_encrypted_state : 1;
-		__u64 reserved_z : 11;
-		__u64 vmsa_gpa_page_number : 52;
-	} __packed;
-};
-
 struct hv_snp_id_block {
 	__u8 launch_digest[48];
 	__u8 family_id[16];
