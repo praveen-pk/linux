@@ -694,6 +694,14 @@ enum hv_partition_isolation_state {
 	HV_PARTITION_ISOLATION_SECURE_TERMINATING   = 5,
 };
 
+union hv_partition_isolation_control {
+	__u64 as_uint64;
+
+	struct {
+		__u64 runnable : 1;
+		__u64 reserved_z : 63;
+	} __packed;
+};
 
 #define HV_PARTITION_SYNTHETIC_PROCESSOR_FEATURES_BANKS 1
 
