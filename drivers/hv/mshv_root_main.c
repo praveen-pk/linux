@@ -1721,6 +1721,10 @@ mshv_partition_ioctl_complete_isolated_import(struct mshv_partition *partition,
 	ret = hv_call_complete_isolated_import(
 		partition->id, &args->import_data, mshv_root_async_hypercall_handler,
 		partition);
+	if (ret)
+		goto out;
+
+	partition->import_completed = true;
 out:
 	kfree(args);
 	return ret;
