@@ -13,3 +13,7 @@ EXPORT_TRACEPOINT_SYMBOL_GPL(mshv_create_partition);
 EXPORT_TRACEPOINT_SYMBOL_GPL(mshv_hvcall_create_partition);
 EXPORT_TRACEPOINT_SYMBOL_GPL(mshv_hvcall_initialize_partition);
 EXPORT_TRACEPOINT_SYMBOL_GPL(mshv_hvcall_set_partition_property);
+EXPORT_TRACEPOINT_SYMBOL_GPL(mshv_destroy_partition);
+EXPORT_TRACEPOINT_SYMBOL_GPL(mshv_hvcall_finalize_partition);
+EXPORT_TRACEPOINT_SYMBOL_GPL(mshv_hvcall_delete_partition);
+EXPORT_TRACEPOINT_SYMBOL_GPL(mshv_hvcall_withdraw_memory);

@@ -1936,6 +1936,8 @@ destroy_partition(struct mshv_partition *partition)
 	int i;
 	struct hlist_node *n;
 
+	trace_mshv_destroy_partition(partition->id);
+
 	/*
 	 * This must be done before we drain all the vps and call
 	 * remove_partition, otherwise we won't receive the interrupt

@@ -93,6 +93,8 @@ int hv_call_withdraw_memory(u64 count, int node, u64 partition_id)
 	}
 	free_page((unsigned long)output_page);
 
+	trace_mshv_hvcall_withdraw_memory(status, partition_id);
+
 	return hv_status_to_errno(status);
 }
 
@@ -194,6 +196,8 @@ int hv_call_finalize_partition(u64 partition_id)
 	if (!hv_result_success(status))
 		pr_err("%s: %s\n", __func__, hv_status_to_string(status));
 
+	trace_mshv_hvcall_finalize_partition(status, partition_id);
+
 	return hv_status_to_errno(status);
 }
 
@@ -207,6 +211,8 @@ int hv_call_delete_partition(u64 partition_id)
 
 	if (!hv_result_success(status))
 		pr_err("%s: %s\n", __func__, hv_status_to_string(status));
+
+	trace_mshv_hvcall_delete_partition(status, partition_id);
 
 	return hv_status_to_errno(status);
 }
