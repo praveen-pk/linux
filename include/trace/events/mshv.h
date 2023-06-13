@@ -108,6 +108,83 @@ TRACE_EVENT(mshv_hvcall_initialize_partition,
 	)
 );
 
+TRACE_EVENT(mshv_destroy_partition,
+		TP_PROTO(u64 partition_id),
+		TP_ARGS(partition_id),
+
+	TP_STRUCT__entry(
+		__field(u64, partition_id)
+	),
+
+	TP_fast_assign(
+		__entry->partition_id = partition_id;
+	),
+
+	TP_printk("partition_id=%llu",
+		__entry->partition_id
+	)
+);
+
+TRACE_EVENT(mshv_hvcall_finalize_partition,
+		TP_PROTO(u64 status, u64 partition_id),
+		TP_ARGS(status, partition_id),
+
+	TP_STRUCT__entry(
+		__field(u64, status)
+		__field(u64, partition_id)
+	),
+
+	TP_fast_assign(
+		__entry->status = status;
+		__entry->partition_id = partition_id;
+	),
+
+	TP_printk("status=0x%llx partition_id=%llu",
+		__entry->status,
+		__entry->partition_id
+	)
+);
+
+TRACE_EVENT(mshv_hvcall_withdraw_memory,
+		TP_PROTO(u64 status, u64 partition_id),
+		TP_ARGS(status, partition_id),
+
+	TP_STRUCT__entry(
+		__field(u64, status)
+		__field(u64, partition_id)
+	),
+
+	TP_fast_assign(
+		__entry->status = status;
+		__entry->partition_id = partition_id;
+	),
+
+	TP_printk("status=0x%llx partition_id=%llu",
+		__entry->status,
+		__entry->partition_id
+	)
+);
+
+TRACE_EVENT(mshv_hvcall_delete_partition,
+		TP_PROTO(u64 status, u64 partition_id),
+		TP_ARGS(status, partition_id),
+
+	TP_STRUCT__entry(
+		__field(u64, status)
+		__field(u64, partition_id)
+	),
+
+	TP_fast_assign(
+		__entry->status = status;
+		__entry->partition_id = partition_id;
+	),
+
+	TP_printk("status=0x%llx partition_id=%llu",
+		__entry->status,
+		__entry->partition_id
+	)
+);
+
 #endif /* _TRACE_MSHV_MAIN_H */
 
 /* This part must be outside protection */
