@@ -747,6 +747,67 @@ mshv_vp_ioctl_translate_gva(struct mshv_vp *vp, void __user *user_args)
 }
 
 static long
+mshv_vp_ioctl_read_gpa(struct mshv_vp *vp, void __user *user_args)
+{
+	struct mshv_read_write_gpa args;
+	union hv_access_gpa_control_flags flags;
+
+	union hv_access_gpa_result result;
+	long ret;
+
+	if (copy_from_user(&args, user_args, sizeof(args)))
+		return -EFAULT;
+
+	flags.as_uint64 = args.flags;
+
+	ret = hv_call_read_gpa(vp->index,
+					vp->partition->id,
+					flags,
+					args.base_gpa,
+					args.data,
+					args.byte_count,
+					&result);
+
+	if (ret)
+		return ret;
+
+	if (copy_to_user(user_args, &args, sizeof(args)))
+		return -EFAULT;
+
+	return 0;
+}
+
+static long
+mshv_vp_ioctl_write_gpa(struct mshv_vp *vp, void __user *user_args)
+{
+	struct mshv_read_write_gpa args;
+	union hv_access_gpa_control_flags flags;
+	union hv_access_gpa_result result;
+	long ret;
+
+	if (copy_from_user(&args, user_args, sizeof(args)))
+		return -EFAULT;
+
+	flags.as_uint64 = args.flags;
+
+	ret = hv_call_write_gpa(vp->index,
+					vp->partition->id,
+					flags,
+					args.base_gpa,
+					args.data,
+					args.byte_count,
+					&result);
+
+	if (ret)
+		return ret;
+
+	if (copy_to_user(user_args, &args, sizeof(args)))
+		return -EFAULT;
+
+	return 0;
+}
+
+static long
 mshv_vp_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 {
 	struct mshv_vp *vp = filp->private_data;
@@ -786,6 +847,12 @@ mshv_vp_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 #endif
 	case MSHV_GET_VP_CPUID_VALUES:
 		r = mshv_vp_ioctl_get_cpuid_values(vp, (void __user *)arg);
+		break;
+	case MSHV_READ_GPA:
+		r = mshv_vp_ioctl_read_gpa(vp, (void __user *)arg);
+		break;
+	case MSHV_WRITE_GPA:
+		r = mshv_vp_ioctl_write_gpa(vp, (void __user *)arg);
 		break;
 	default:
 		printk("%s: invalid ioctl: %#x\n", __func__, ioctl);

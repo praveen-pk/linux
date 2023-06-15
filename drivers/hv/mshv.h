@@ -163,6 +163,21 @@ int hv_call_complete_isolated_import(
 	void (*completion_handler)(void * /* data */, u64 * /* status */),
 	void *completion_data);
 
+int hv_call_read_gpa(u32 vp_index,
+		u64 partition_id,
+		union hv_access_gpa_control_flags flags,
+		u64 gpa_base,
+		u8 *data,
+		u32 bytes_count,
+		union hv_access_gpa_result *result);
+int hv_call_write_gpa(u32 vp_index,
+		u64 partition_id,
+		union hv_access_gpa_control_flags flags,
+		u64 gpa_base,
+		u8 *data,
+		u32 bytes_count,
+		union hv_access_gpa_result *result);
+
 struct mshv_partition *mshv_partition_find(u64 partition_id) __must_hold(RCU);
 
 int mshv_xfer_to_guest_mode_handle_work(unsigned long ti_work);
