@@ -27,6 +27,7 @@ mshv_root-y			:= mshv_root_main.o mshv_synic.o mshv_portid_table.o \
 					   mshv_eventfd.o mshv_msi.o vfio.o mshv_root_hv_call.o \
 					   hv_call.o
 mshv_root-$(CONFIG_DEBUG_FS)	+= mshv_debugfs.o
+mshv_root-$(CONFIG_TRACEPOINTS)     += mshv_trace.o
 mshv_vtl-y			:= mshv_vtl_main.o hv_call.o
 
 obj-$(CONFIG_MSHV_XFER_TO_GUEST_WORK) += xfer_to_guest.o

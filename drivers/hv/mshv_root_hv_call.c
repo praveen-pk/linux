@@ -18,6 +18,8 @@
 #include <linux/mm.h>
 #include <asm/mshyperv.h>
 
+#include <trace/events/mshv.h>
+
 /* Determined empirically */
 #define HV_INIT_PARTITION_DEPOSIT_PAGES 208
 #define HV_MAP_GPA_DEPOSIT_PAGES	256
@@ -91,6 +93,8 @@ int hv_call_withdraw_memory(u64 count, int node, u64 partition_id)
 	}
 	free_page((unsigned long)output_page);
 
+	trace_mshv_hvcall_withdraw_memory(status, partition_id);
+
 	return hv_status_to_errno(status);
 }
 
@@ -139,6 +143,8 @@ int hv_call_create_partition(
 					    hv_current_partition_id, 1);
 	} while (!ret);
 
+	trace_mshv_hvcall_create_partition(status, (ret ? 0 : (*partition_id)), flags);
+
 	return ret;
 }
 
@@ -172,6 +178,8 @@ int hv_call_initialize_partition(u64 partition_id)
 		ret = hv_call_deposit_pages(NUMA_NO_NODE, partition_id, 1);
 	} while (!ret);
 
+	trace_mshv_hvcall_initialize_partition(status, partition_id);
+
 	return ret;
 }
 
@@ -188,6 +196,8 @@ int hv_call_finalize_partition(u64 partition_id)
 	if (!hv_result_success(status))
 		pr_err("%s: %s\n", __func__, hv_status_to_string(status));
 
+	trace_mshv_hvcall_finalize_partition(status, partition_id);
+
 	return hv_status_to_errno(status);
 }
 
@@ -201,6 +211,8 @@ int hv_call_delete_partition(u64 partition_id)
 
 	if (!hv_result_success(status))
 		pr_err("%s: %s\n", __func__, hv_status_to_string(status));
+
+	trace_mshv_hvcall_delete_partition(status, partition_id);
 
 	return hv_status_to_errno(status);
 }
@@ -695,6 +707,9 @@ int hv_call_set_partition_property(
 
 	if (!hv_result_success(status))
 		pr_err("%s: %s\n", __func__, hv_status_to_string(status));
+
+	trace_mshv_hvcall_set_partition_property(status, partition_id, property_code,
+						property_value);
 
 	return hv_status_to_errno(status);
 }

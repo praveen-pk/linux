@@ -31,6 +31,8 @@
 #include <asm/mshyperv.h>
 #include <linux/hyperv.h>
 
+#include <trace/events/mshv.h>
+
 #include "mshv_eventfd.h"
 #include "mshv.h"
 #include "mshv_root.h"
@@ -1934,6 +1936,8 @@ destroy_partition(struct mshv_partition *partition)
 	int i;
 	struct hlist_node *n;
 
+	trace_mshv_destroy_partition(partition->id);
+
 	/*
 	 * This must be done before we drain all the vps and call
 	 * remove_partition, otherwise we won't receive the interrupt
@@ -2144,6 +2148,8 @@ __mshv_ioctl_create_partition(void __user *user_arg)
 
 	fd_install(fd, file);
 
+	trace_mshv_create_partition(ret, partition->id, fd);
+
 	return fd;
 
 put_file:
@@ -2161,6 +2167,9 @@ cleanup_irq_srcu:
 	cleanup_srcu_struct(&partition->irq_srcu);
 free_partition:
 	kfree(partition);
+
+	trace_mshv_create_partition(ret, 0, -1);
+
 	return ret;
 }
 
