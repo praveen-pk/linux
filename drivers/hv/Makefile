@@ -3,7 +3,7 @@ obj-$(CONFIG_HYPERV)		+= hv_vmbus.o
 obj-$(CONFIG_HYPERV_UTILS)	+= hv_utils.o
 obj-$(CONFIG_HYPERV_BALLOON)	+= hv_balloon.o
 obj-$(CONFIG_DXGKRNL)		+= dxgkrnl/
-obj-$(CONFIG_MSHV)		+= mshv.o
+obj-$(CONFIG_MSHV)			+= mshv.o
 obj-$(CONFIG_MSHV_VTL)		+= mshv_vtl.o
 obj-$(CONFIG_MSHV_ROOT)		+= mshv_root.o
 obj-$(CONFIG_MSHV_DIAG)		+= diag/
@@ -14,17 +14,20 @@ CFLAGS_hv_balloon.o = -I$(src)
 CFLAGS_mshv_main.o			= -DHV_HYPERV_DEFS
 CFLAGS_hv_call.o			= -DHV_HYPERV_DEFS
 CFLAGS_mshv_root_main.o		= -DHV_HYPERV_DEFS
+CFLAGS_mshv_root_hv_call.o	= -DHV_HYPERV_DEFS
 CFLAGS_mshv_synic.o			= -DHV_HYPERV_DEFS
 CFLAGS_mshv_portid_table.o	= -DHV_HYPERV_DEFS
 CFLAGS_mshv_eventfd.o		= -DHV_HYPERV_DEFS
 CFLAGS_mshv_msi.o			= -DHV_HYPERV_DEFS
 CFLAGS_mshv_debugfs.o		= -DHV_HYPERV_DEFS
-CFLAGS_mshv_vtl.o			= -DHV_HYPERV_DEFS
+CFLAGS_mshv_vtl_main.o		= -DHV_HYPERV_DEFS
 
-mshv-y				+= mshv_main.o hv_call.o
+mshv-y				+= mshv_main.o
 mshv_root-y			:= mshv_root_main.o mshv_synic.o mshv_portid_table.o \
-				   mshv_eventfd.o mshv_msi.o vfio.o
+					   mshv_eventfd.o mshv_msi.o vfio.o mshv_root_hv_call.o \
+					   hv_call.o
 mshv_root-$(CONFIG_DEBUG_FS)	+= mshv_debugfs.o
+mshv_vtl-y			:= mshv_vtl_main.o hv_call.o
 
 obj-$(CONFIG_MSHV_XFER_TO_GUEST_WORK) += xfer_to_guest.o
 hv_vmbus-y := vmbus_drv.o \
