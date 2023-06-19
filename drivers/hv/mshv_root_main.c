@@ -994,6 +994,8 @@ mshv_partition_ioctl_create_vp(struct mshv_partition *partition,
 
 	fd_install(fd, file);
 
+	trace_mshv_create_vp(ret, partition->id, vp->index, fd);
+
 	return fd;
 
 release_file:
@@ -1006,6 +1008,8 @@ free_registers:
 	kfree(vp->registers);
 free_vp:
 	kfree(vp);
+
+	trace_mshv_create_vp(ret, partition->id, vp->index, -1);
 
 	return ret;
 }
