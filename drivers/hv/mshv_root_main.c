@@ -1556,7 +1556,8 @@ static void mshv_destroy_devices(struct mshv_partition *partition)
 }
 
 static int convert_gpa_list_to_spa(struct mshv_partition *partition,
-				   u64 *gpa_list, u64 gpa_list_size)
+				   u64 *gpa_list, u64 gpa_list_size,
+				   struct page **page_list)
 {
 	int i;
 	struct mshv_mem_region *region;
@@ -1582,7 +1583,7 @@ static int convert_gpa_list_to_spa(struct mshv_partition *partition,
 		if (offset >= region_page_count)
 			return -ERANGE;
 
-		gpa_list[i] = page_to_pfn(region->pages[offset]);
+		page_list[i] = region->pages[offset];
 	}
 
 	return 0;
@@ -1594,7 +1595,8 @@ static long mshv_partition_ioctl_modify_gpa_host_access(
 {
 	long ret = 0;
 	struct mshv_modify_gpa_host_access args;
-	u64 *gpa_list = NULL;
+	u64 *gpa_list;
+	struct page **page_list;
 
 	if (!mshv_partition_isolation_type_snp(partition)) {
 		ret = -EOPNOTSUPP;
@@ -1620,17 +1622,16 @@ static long mshv_partition_ioctl_modify_gpa_host_access(
 		goto out;
 	}
 
-	/*
-	 * Since the corresponding hypercall only understands System Page
-	 * Address (SPA), thus we would need to convert the Guest Physical
-	 * Address (GPA) list to SPA list before invoking the hypercall
-	 * to modify host access.
-	 */
-	ret = convert_gpa_list_to_spa(partition, gpa_list, args.gpa_list_size);
+	page_list = kcalloc(args.gpa_list_size, sizeof(struct page *), GFP_KERNEL);
+	if (!page_list)
+		return -ENOMEM;
+
+	ret = convert_gpa_list_to_spa(partition, gpa_list, args.gpa_list_size,
+				      page_list);
 	if (ret < 0)
 		goto clear_gpa_list;
 
-	ret = hv_call_modify_spa_host_access(partition->id, gpa_list,
+	ret = hv_call_modify_spa_host_access(partition->id, page_list,
 					     args.gpa_list_size,
 					     args.host_access, args.flags,
 					     args.acquire);

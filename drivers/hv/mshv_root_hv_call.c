@@ -1135,11 +1135,12 @@ int hv_call_unmap_stat_page(enum hv_stats_object_type type,
 	return 0;
 }
 
-int hv_call_modify_spa_host_access(u64 partition_id, u64 *spa_list,
+int hv_call_modify_spa_host_access(u64 partition_id, struct page **page_list,
 				   u64 spa_list_size, u32 host_access,
 				   u32 flags, u8 acquire)
 {
 	struct hv_input_modify_sparse_spa_page_host_access *input_page;
+	int i;
 	u64 status;
 	unsigned long remaining = spa_list_size;
 	u64 completed;
@@ -1147,7 +1148,6 @@ int hv_call_modify_spa_host_access(u64 partition_id, u64 *spa_list,
 	unsigned long irq_flags;
 	u16 code = acquire ? HVCALL_ACQUIRE_SPARSE_SPA_PAGE_HOST_ACCESS :
 			     HVCALL_RELEASE_SPARSE_SPA_PAGE_HOST_ACCESS;
-	u64 *spa = spa_list;
 
 	if (spa_list_size == 0)
 		return -EINVAL;
@@ -1170,8 +1170,9 @@ int hv_call_modify_spa_host_access(u64 partition_id, u64 *spa_list,
 			input_page->partition_id = partition_id;
 		input_page->flags = flags;
 		input_page->host_access = host_access;
-		memcpy(input_page->spa_page_list, spa,
-		       rep_count * sizeof(*spa));
+
+		for (i = 0; i < rep_count; i++)
+			input_page->spa_page_list[i] = page_to_pfn(page_list[i]);
 
 		status = hv_do_rep_hypercall(code, rep_count, 0, input_page,
 					     NULL);
@@ -1188,7 +1189,7 @@ int hv_call_modify_spa_host_access(u64 partition_id, u64 *spa_list,
 		}
 
 		completed = hv_repcomp(status);
-		spa += completed;
+		page_list += completed;
 		remaining -= completed;
 	}
 
