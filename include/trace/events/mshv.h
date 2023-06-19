@@ -237,6 +237,69 @@ TRACE_EVENT(mshv_hvcall_map_vp_state_page,
 	)
 );
 
+TRACE_EVENT(mshv_drain_vp_signals,
+		TP_PROTO(u64 partition_id, u32 vp_index),
+		TP_ARGS(partition_id, vp_index),
+
+	TP_STRUCT__entry(
+		__field(u64, partition_id)
+		__field(u32, vp_index)
+	),
+
+	TP_fast_assign(
+		__entry->partition_id = partition_id;
+		__entry->vp_index = vp_index;
+	),
+
+	TP_printk("partition_id=%llu vp_index=%u",
+		__entry->partition_id,
+		__entry->vp_index
+	)
+);
+
+TRACE_EVENT(mshv_disable_vp_dispatch,
+		TP_PROTO(long ret, u64 partition_id, u32 vp_index),
+		TP_ARGS(ret, partition_id, vp_index),
+
+	TP_STRUCT__entry(
+		__field(long, ret)
+		__field(u64, partition_id)
+		__field(u32, vp_index)
+	),
+
+	TP_fast_assign(
+		__entry->ret = ret;
+		__entry->partition_id = partition_id;
+		__entry->vp_index = vp_index;
+	),
+
+	TP_printk("ret=%ld partition_id=%llu vp_index=%u",
+		__entry->ret,
+		__entry->partition_id,
+		__entry->vp_index
+	)
+);
+
+TRACE_EVENT(mshv_vp_release,
+		TP_PROTO(u64 partition_id, u32 vp_index),
+		TP_ARGS(partition_id, vp_index),
+
+	TP_STRUCT__entry(
+		__field(u64, partition_id)
+		__field(u32, vp_index)
+	),
+
+	TP_fast_assign(
+		__entry->partition_id = partition_id;
+		__entry->vp_index = vp_index;
+	),
+
+	TP_printk("partition_id=%llu vp_index=%u",
+		__entry->partition_id,
+		__entry->vp_index
+	)
+);
+
 #endif /* _TRACE_MSHV_MAIN_H */
 
 /* This part must be outside protection */
