@@ -50,12 +50,6 @@ int hv_call_get_gpa_access_states(
 		int *written_total,
 		union hv_gpa_page_access_state *states);
 
-int hv_call_set_vp_registers(
-		u32 vp_index,
-		u64 partition_id,
-		u16 count,
-		union hv_input_vtl input_vtl,
-		struct hv_register_assoc *registers);
 int hv_call_install_intercept(u64 partition_id, u32 access_type,
 		enum hv_intercept_type intercept_type,
 		union hv_intercept_parameters intercept_parameter);

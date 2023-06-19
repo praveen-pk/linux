@@ -140,6 +140,10 @@ static inline  __u64 generate_guest_id(__u64 d_info1, __u64 kernel_version,
 }
 
 int hv_get_hypervisor_version(union hv_hypervisor_version_info *info);
+struct hv_register_assoc;
+int hv_call_set_vp_registers(u32 vp_index, u64 partition_id, u16 count,
+			     union hv_input_vtl input_vtl,
+			     struct hv_register_assoc *registers);
 
 void hv_setup_vmbus_handler(void (*handler)(void));
 void hv_remove_vmbus_handler(void);
