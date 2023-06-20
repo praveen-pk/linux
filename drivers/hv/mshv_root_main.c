@@ -1575,6 +1575,37 @@ static void mshv_destroy_devices(struct mshv_partition *partition)
 	}
 }
 
+static long
+mshv_partition_ioctl_sev_snp_ap_create(struct mshv_partition *partition,
+				       void __user *user_args)
+{
+	long ret = 0;
+	struct mshv_vp *vp;
+	struct mshv_sev_snp_ap_create req;
+
+	if (copy_from_user(&req, user_args, sizeof(req))) {
+		ret = -EFAULT;
+		goto out;
+	}
+
+	if (req.vp_id >= MSHV_MAX_VPS) {
+		pr_err("%s: VP index: %llu out of bounds for partition: %llu\n",
+		       __func__, req.vp_id, partition->id);
+		ret = -EINVAL;
+		goto out;
+	}
+
+	vp = partition->vps.array[req.vp_id];
+	if (!vp) {
+		pr_err("%s: Invalid VP index: %llu for partition: %llu\n",
+		       __func__, req.vp_id, partition->id);
+		ret = -EINVAL;
+		goto out;
+	}
+out:
+	return ret;
+}
+
 static int convert_gpa_list_to_page_list(struct mshv_partition *partition,
 					 u64 *gpa_list, u64 gpa_list_size,
 					 struct page **page_list)
@@ -1804,6 +1835,10 @@ static long mshv_partition_snp_ioctl(unsigned int ioctl,
 		ret = mshv_partition_ioctl_issue_psp_guest_request(
 			partition, (void __user *)arg);
 		break;
+	case MSHV_SEV_SNP_AP_CREATE:
+		ret = mshv_partition_ioctl_sev_snp_ap_create(
+			partition, (void __user *)arg);
+		break;
 	default:
 		ret = -ENOTTY;
 	}
@@ -1888,6 +1923,7 @@ mshv_partition_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 	case MSHV_IMPORT_ISOLATED_PAGES:
 	case MSHV_COMPLETE_ISOLATED_IMPORT:
 	case MSHV_ISSUE_PSP_GUEST_REQUEST:
+	case MSHV_SEV_SNP_AP_CREATE:
 		ret = mshv_partition_snp_ioctl(ioctl, partition, arg);
 		break;
 	default:
