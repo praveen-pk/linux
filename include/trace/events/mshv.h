@@ -108,6 +108,23 @@ TRACE_EVENT(mshv_hvcall_initialize_partition,
 	)
 );
 
+TRACE_EVENT(mshv_partition_release,
+		TP_PROTO(u64 partition_id),
+		TP_ARGS(partition_id),
+
+	TP_STRUCT__entry(
+		__field(u64, partition_id)
+	),
+
+	TP_fast_assign(
+		__entry->partition_id = partition_id;
+	),
+
+	TP_printk("partition_id=%llu",
+		__entry->partition_id
+	)
+);
+
 TRACE_EVENT(mshv_destroy_partition,
 		TP_PROTO(u64 partition_id),
 		TP_ARGS(partition_id),
