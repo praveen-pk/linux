@@ -1602,6 +1602,15 @@ mshv_partition_ioctl_sev_snp_ap_create(struct mshv_partition *partition,
 		ret = -EINVAL;
 		goto out;
 	}
+
+	ret = hv_set_sev_control_register(vp->index, vp->partition->id, 1,
+					  HVPFN_DOWN(req.vmsa_gpa));
+	if (ret) {
+		pr_err("%s: failed to set sev control register vCPU#%d in partition %lld\n",
+		       __func__, vp->index, vp->partition->id);
+		goto out;
+	}
+
 out:
 	return ret;
 }
