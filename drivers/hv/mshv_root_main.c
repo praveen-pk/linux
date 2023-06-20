@@ -1579,9 +1579,13 @@ static long
 mshv_partition_ioctl_sev_snp_ap_create(struct mshv_partition *partition,
 				       void __user *user_args)
 {
-	long ret = 0;
+	long ret;
 	struct mshv_vp *vp;
 	struct mshv_sev_snp_ap_create req;
+	struct hv_register_assoc internal_activity = {
+		.name = HV_REGISTER_INTERNAL_ACTIVITY_STATE,
+		.value.internal_activity.as_uint64 = 0,
+	};
 
 	if (copy_from_user(&req, user_args, sizeof(req))) {
 		ret = -EFAULT;
@@ -1608,6 +1612,14 @@ mshv_partition_ioctl_sev_snp_ap_create(struct mshv_partition *partition,
 	if (ret) {
 		pr_err("%s: failed to set sev control register vCPU#%d in partition %lld\n",
 		       __func__, vp->index, vp->partition->id);
+		goto out;
+	}
+
+	ret = mshv_set_vp_registers(vp->index, vp->partition->id, 1,
+				    &internal_activity);
+	if (ret) {
+		pr_err("%s: failed to set internal activity %llu vp %u\n",
+		       __func__, vp->partition->id, vp->index);
 		goto out;
 	}
 
