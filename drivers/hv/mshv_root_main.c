@@ -1637,19 +1637,23 @@ static long mshv_partition_ioctl_modify_gpa_host_access(
 	}
 
 	page_list = kcalloc(args.gpa_list_size, sizeof(struct page *), GFP_KERNEL);
-	if (!page_list)
-		return -ENOMEM;
+	if (!page_list) {
+		ret = -ENOMEM;
+		goto clear_gpa_list;
+	}
 
 	ret = convert_gpa_list_to_spa(partition, gpa_list, args.gpa_list_size,
 				      page_list);
 	if (ret < 0)
-		goto clear_gpa_list;
+		goto clear_page_list;
 
 	ret = hv_call_modify_spa_host_access(partition->id, page_list,
 					     args.gpa_list_size,
 					     args.host_access, args.flags,
 					     args.acquire);
 
+clear_page_list:
+	kfree(page_list);
 clear_gpa_list:
 	kvfree(gpa_list);
 out:
