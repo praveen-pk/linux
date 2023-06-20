@@ -1575,9 +1575,9 @@ static void mshv_destroy_devices(struct mshv_partition *partition)
 	}
 }
 
-static int convert_gpa_list_to_spa(struct mshv_partition *partition,
-				   u64 *gpa_list, u64 gpa_list_size,
-				   struct page **page_list)
+static int convert_gpa_list_to_page_list(struct mshv_partition *partition,
+					 u64 *gpa_list, u64 gpa_list_size,
+					 struct page **page_list)
 {
 	int i;
 	struct mshv_mem_region *region;
@@ -1642,8 +1642,8 @@ static long mshv_partition_ioctl_modify_gpa_host_access(
 		goto clear_gpa_list;
 	}
 
-	ret = convert_gpa_list_to_spa(partition, gpa_list, args.gpa_list_size,
-				      page_list);
+	ret = convert_gpa_list_to_page_list(partition, gpa_list,
+					    args.gpa_list_size, page_list);
 	if (ret < 0)
 		goto clear_page_list;
 
@@ -1750,8 +1750,8 @@ mshv_partition_ioctl_issue_psp_guest_request(struct mshv_partition *partition,
 	if (!page_list)
 		return -ENOMEM;
 
-	ret = convert_gpa_list_to_spa(partition, gpa_list, gpa_list_size,
-				      page_list);
+	ret = convert_gpa_list_to_page_list(partition, gpa_list, gpa_list_size,
+					    page_list);
 	if (ret < 0)
 		goto clear_page_list;
 
