@@ -50,12 +50,6 @@ int hv_call_get_gpa_access_states(
 		int *written_total,
 		union hv_gpa_page_access_state *states);
 
-int hv_call_set_vp_registers(
-		u32 vp_index,
-		u64 partition_id,
-		u16 count,
-		union hv_input_vtl input_vtl,
-		struct hv_register_assoc *registers);
 int hv_call_install_intercept(u64 partition_id, u32 access_type,
 		enum hv_intercept_type intercept_type,
 		union hv_intercept_parameters intercept_parameter);
@@ -148,7 +142,7 @@ int hv_call_map_stat_page(enum hv_stats_object_type type,
 			  void **addr);
 int hv_call_unmap_stat_page(enum hv_stats_object_type type,
 			    const union hv_stats_object_identity *identity);
-int hv_call_modify_spa_host_access(u64 partition_id, u64 *spa_list,
+int hv_call_modify_spa_host_access(u64 partition_id, struct page **page_list,
 				   u64 spa_list_size, u32 host_access,
 				   u32 flags, u8 acquire);
 int hv_call_import_isolated_pages(

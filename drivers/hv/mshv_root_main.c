@@ -1143,6 +1143,26 @@ mshv_partition_ioctl_map_memory(struct mshv_partition *partition,
 		remaining -= completed;
 	}
 
+	/*
+	 * For a SNP partition it is a requirement that for every memory region
+	 * that we are going to map for this partition we should make sure that
+	 * host access to that region is released. This is ensured by doing an
+	 * additional hypercall which will update the SLAT to release host
+	 * access to guest memory regions.
+	 */
+	if (mshv_partition_isolation_type_snp(partition)) {
+		region_page_count = HVPFN_DOWN(region->size);
+
+		ret = hv_call_modify_spa_host_access(
+			partition->id, pages, region_page_count, 0,
+			HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_EXCLUSIVE, false);
+		if (ret) {
+			pr_err("%s: Failed to mark the region (guest_pfn: %llu) as exclusive.\n",
+			       __func__, region->guest_pfn);
+			goto err_unpin_pages;
+		}
+	}
+
 	/* Map the pages to GPA pages */
 	ret = hv_call_map_gpa_pages(partition->id, mem.guest_pfn,
 				    page_count, mem.flags, pages);
@@ -1556,7 +1576,8 @@ static void mshv_destroy_devices(struct mshv_partition *partition)
 }
 
 static int convert_gpa_list_to_spa(struct mshv_partition *partition,
-				   u64 *gpa_list, u64 gpa_list_size)
+				   u64 *gpa_list, u64 gpa_list_size,
+				   struct page **page_list)
 {
 	int i;
 	struct mshv_mem_region *region;
@@ -1582,7 +1603,7 @@ static int convert_gpa_list_to_spa(struct mshv_partition *partition,
 		if (offset >= region_page_count)
 			return -ERANGE;
 
-		gpa_list[i] = page_to_pfn(region->pages[offset]);
+		page_list[i] = region->pages[offset];
 	}
 
 	return 0;
@@ -1594,7 +1615,8 @@ static long mshv_partition_ioctl_modify_gpa_host_access(
 {
 	long ret = 0;
 	struct mshv_modify_gpa_host_access args;
-	u64 *gpa_list = NULL;
+	u64 *gpa_list;
+	struct page **page_list;
 
 	if (!mshv_partition_isolation_type_snp(partition)) {
 		ret = -EOPNOTSUPP;
@@ -1620,17 +1642,16 @@ static long mshv_partition_ioctl_modify_gpa_host_access(
 		goto out;
 	}
 
-	/*
-	 * Since the corresponding hypercall only understands System Page
-	 * Address (SPA), thus we would need to convert the Guest Physical
-	 * Address (GPA) list to SPA list before invoking the hypercall
-	 * to modify host access.
-	 */
-	ret = convert_gpa_list_to_spa(partition, gpa_list, args.gpa_list_size);
+	page_list = kcalloc(args.gpa_list_size, sizeof(struct page *), GFP_KERNEL);
+	if (!page_list)
+		return -ENOMEM;
+
+	ret = convert_gpa_list_to_spa(partition, gpa_list, args.gpa_list_size,
+				      page_list);
 	if (ret < 0)
 		goto clear_gpa_list;
 
-	ret = hv_call_modify_spa_host_access(partition->id, gpa_list,
+	ret = hv_call_modify_spa_host_access(partition->id, page_list,
 					     args.gpa_list_size,
 					     args.host_access, args.flags,
 					     args.acquire);
@@ -1700,6 +1721,10 @@ mshv_partition_ioctl_complete_isolated_import(struct mshv_partition *partition,
 	ret = hv_call_complete_isolated_import(
 		partition->id, &args->import_data, mshv_root_async_hypercall_handler,
 		partition);
+	if (ret)
+		goto out;
+
+	partition->import_completed = true;
 out:
 	kfree(args);
 	return ret;
@@ -1927,14 +1952,73 @@ remove_partition(struct mshv_partition *partition)
 	synchronize_rcu();
 }
 
-static void
-destroy_partition(struct mshv_partition *partition)
+static int destroy_snp_partition_state(struct mshv_partition *partition)
 {
+	int ret = 0;
 	unsigned long page_count;
 	struct mshv_vp *vp;
 	struct mshv_mem_region *region;
 	int i;
 	struct hlist_node *n;
+	struct hv_register_assoc explicit_suspend = {
+		.name = HV_REGISTER_EXPLICIT_SUSPEND,
+		.value.explicit_suspend.suspended = 1,
+	};
+
+	hlist_for_each_entry_safe(region, n, &partition->mem_regions, hnode) {
+		page_count = HVPFN_DOWN(region->size);
+		ret = hv_call_unmap_gpa_pages(partition->id, region->guest_pfn,
+					      page_count, 0);
+		if (ret) {
+			pr_err("%s: failed to unmap guest memory region for partition %lld\n",
+			       __func__, vp->partition->id);
+			goto out;
+		}
+	}
+
+	/*
+	 * Explicit suspend all the present VPs for the partition.
+	 */
+	for (i = 0; i < MSHV_MAX_VPS; ++i) {
+		vp = partition->vps.array[i];
+		if (!vp)
+			continue;
+
+		ret = mshv_set_vp_registers(vp->index, vp->partition->id, 1,
+					    &explicit_suspend);
+		if (ret) {
+			pr_err("%s: failed to explicitly suspend vCPU#%d in partition %lld\n",
+			       __func__, vp->index, vp->partition->id);
+			goto out;
+		}
+
+		ret = hv_set_sev_control_register(vp->index, vp->partition->id, 0);
+		if (ret) {
+			pr_err("%s: failed to clear sev control register vCPU#%d in partition %lld\n",
+			       __func__, vp->index, vp->partition->id);
+			goto out;
+		}
+	}
+
+	/*
+	 * We should only reset the runnable bit in isolation control register
+	 * if the partition has successfully imported all the isolated pages.
+	 * Otherwise setting this partition property will result in a failure.
+	 */
+	if (partition->import_completed) {
+		/* Clear the runnable bit before destroying SNP partition */
+		union hv_partition_isolation_control isolation_control = { 0 };
+
+		ret = hv_call_set_partition_property(
+			partition->id, HV_PARTITION_PROPERTY_ISOLATION_CONTROL,
+			isolation_control.as_uint64,
+			mshv_root_async_hypercall_handler, partition);
+		if (ret) {
+			pr_err("%s: failed to clear runnable bit for partition %lld\n",
+			       __func__, vp->partition->id);
+			goto out;
+		}
+	}
 
 	trace_mshv_destroy_partition(partition->id);
 
@@ -1943,13 +2027,34 @@ destroy_partition(struct mshv_partition *partition)
 	 * remove_partition, otherwise we won't receive the interrupt
 	 * for completion of this async hypercall.
 	 */
-	if (mshv_partition_isolation_type_snp(partition)) {
-		WARN_ON(hv_call_set_partition_property(
-			partition->id, HV_PARTITION_PROPERTY_ISOLATION_STATE,
-			HV_PARTITION_ISOLATION_INSECURE_DIRTY,
-			mshv_root_async_hypercall_handler,
-			partition));
+	ret = hv_call_set_partition_property(
+		partition->id, HV_PARTITION_PROPERTY_ISOLATION_STATE,
+		HV_PARTITION_ISOLATION_INSECURE_DIRTY,
+		mshv_root_async_hypercall_handler, partition);
+	if (ret) {
+		pr_err("%s: failed to set isolation state to INSECURE_DIRTY for partition %lld\n",
+		       __func__, vp->partition->id);
+		goto out;
+	}
+out:
+	return ret;
+}
 
+static void destroy_partition(struct mshv_partition *partition)
+{
+	unsigned long page_count;
+	struct mshv_vp *vp;
+	struct mshv_mem_region *region;
+	int i, ret;
+	struct hlist_node *n;
+
+	if (mshv_partition_isolation_type_snp(partition)) {
+		ret = destroy_snp_partition_state(partition);
+		if (ret) {
+			pr_err("%s: failed to destroy SNP partition=%lld state, error=%d\n",
+			       __func__, vp->partition->id, ret);
+			return;
+		}
 	}
 
 	/*
@@ -1986,17 +2091,32 @@ destroy_partition(struct mshv_partition *partition)
 
 	/* Deallocates and unmaps everything including vcpus, GPA mappings etc */
 	hv_call_finalize_partition(partition->id);
-	/* Withdraw and free all pages we deposited */
-	hv_call_withdraw_memory(U64_MAX, NUMA_NO_NODE, partition->id);
-	hv_call_delete_partition(partition->id);
 
-	/* Remove regions and unpin the pages */
+	/* Remove regions, regain access to the memory and unpin the pages */
 	hlist_for_each_entry_safe(region, n, &partition->mem_regions, hnode) {
 		hlist_del(&region->hnode);
 		page_count = HVPFN_DOWN(region->size);
+
+		if (mshv_partition_isolation_type_snp(partition)) {
+			ret = hv_call_modify_spa_host_access(
+				partition->id, region->pages, page_count,
+				HV_MAP_GPA_READABLE | HV_MAP_GPA_WRITABLE,
+				HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_SHARED,
+				true);
+			if (ret) {
+				pr_err("%s: Failed to regain access to partition: %llu memory, unpinning user pages will fail and crash the host error=%d\n",
+				       __func__, partition->id, ret);
+				return;
+			}
+		}
+
 		unpin_user_pages(&region->pages[0], page_count);
 		vfree(region);
 	}
+
+	/* Withdraw and free all pages we deposited */
+	hv_call_withdraw_memory(U64_MAX, NUMA_NO_NODE, partition->id);
+	hv_call_delete_partition(partition->id);
 
 	mshv_destroy_devices(partition);
 	mshv_free_msi_routing(partition);

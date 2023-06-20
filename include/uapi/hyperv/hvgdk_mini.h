@@ -1234,6 +1234,15 @@ union hv_x64_pending_interruption_register {
 	} __packed;
 };
 
+union hv_x64_register_sev_control {
+	__u64 as_uint64;
+	struct {
+		__u64 enable_encrypted_state : 1;
+		__u64 reserved_z : 11;
+		__u64 vmsa_gpa_page_number : 52;
+	} __packed;
+};
+
 #else /* !defined(__ARM64__) */
 
 #define HV_ARM64_PENDING_EVENT_HEADER \
@@ -1300,6 +1309,7 @@ union hv_register_value {
 	union hv_x64_pending_exception_event pending_exception_event;
 	union hv_x64_pending_virtualization_fault_event
 		pending_virtualization_fault_event;
+	union hv_x64_register_sev_control sev_control;
 #elif defined(__ARM64__)
 	union hv_arm64_pending_interruption_register pending_interruption;
 	union hv_arm64_interrupt_state_register interrupt_state;

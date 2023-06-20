@@ -96,6 +96,7 @@ struct mshv_partition {
 	} ioeventfds;
 	struct mshv_msi_routing_table __rcu *msi_routing;
 	u64 isolation_type;
+	bool import_completed;
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *debugfs_dentry;
 	struct dentry *debugfs_vp_dentry;

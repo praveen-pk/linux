@@ -14,6 +14,10 @@
 #include <asm/trace/hyperv.h>
 #include <asm-generic/hyperv-defs.h>
 
+#define HV_SET_REGISTER_BATCH_SIZE	\
+	((HV_HYP_PAGE_SIZE - sizeof(struct hv_input_set_vp_registers)) \
+		/ sizeof(struct hv_register_assoc))
+
 int hv_call_add_logical_proc(int node, u32 lp_index, u32 apic_id)
 {
 	struct hv_input_add_logical_processor *input;
@@ -78,3 +82,66 @@ int hv_call_notify_all_processors_started(void)
 
 	return hv_status_to_errno(status);
 }
+
+int hv_call_set_vp_registers(
+		u32 vp_index,
+		u64 partition_id,
+		u16 count,
+		union hv_input_vtl input_vtl,
+		struct hv_register_assoc *registers)
+{
+	struct hv_input_set_vp_registers *input_page;
+	u16 completed;
+	unsigned long remaining = count;
+	int rep_count;
+	u64 status;
+	unsigned long flags;
+
+	local_irq_save(flags);
+	input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
+
+	input_page->partition_id = partition_id;
+	input_page->vp_index = vp_index;
+	input_page->input_vtl.as_uint8 = input_vtl.as_uint8;
+	input_page->rsvd_z8 = 0;
+	input_page->rsvd_z16 = 0;
+
+	while (remaining) {
+		rep_count = min(remaining, HV_SET_REGISTER_BATCH_SIZE);
+		memcpy(input_page->elements, registers,
+			sizeof(struct hv_register_assoc) * rep_count);
+
+		status = hv_do_rep_hypercall(HVCALL_SET_VP_REGISTERS, rep_count,
+					     0, input_page, NULL);
+		if (!hv_result_success(status)) {
+			pr_err("%s: completed %li out of %u, %s\n",
+			       __func__,
+			       count - remaining, count,
+			       hv_status_to_string(status));
+			break;
+		}
+		completed = hv_repcomp(status);
+		registers += completed;
+		remaining -= completed;
+	}
+
+	local_irq_restore(flags);
+
+	return hv_status_to_errno(status);
+}
+EXPORT_SYMBOL_GPL(hv_call_set_vp_registers);
+
+int hv_set_sev_control_register(u32 vp_index, u64 partition_id,
+				u64 sev_control_val)
+{
+	union hv_input_vtl input_vtl;
+	struct hv_register_assoc sev_control = {
+		.name = HV_X64_REGISTER_SEV_CONTROL,
+		.value.sev_control.as_uint64 = sev_control_val,
+	};
+
+	input_vtl.as_uint8 = 0;
+	return hv_call_set_vp_registers(vp_index, partition_id, 1, input_vtl,
+					&sev_control);
+}
+EXPORT_SYMBOL_GPL(hv_set_sev_control_register);
