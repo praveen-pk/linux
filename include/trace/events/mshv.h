@@ -300,6 +300,48 @@ TRACE_EVENT(mshv_vp_release,
 	)
 );
 
+TRACE_EVENT(mshv_run_vp_entry,
+		TP_PROTO(u64 partition_id, u32 vp_index, char *scheduler),
+		TP_ARGS(partition_id, vp_index, scheduler),
+	TP_STRUCT__entry(
+		__field(u64, partition_id)
+		__field(u32, vp_index)
+		__string(scheduler, scheduler)
+	),
+	TP_fast_assign(
+		__entry->partition_id = partition_id;
+		__entry->vp_index = vp_index;
+		__assign_str(scheduler, scheduler);
+	),
+	TP_printk("partition_id=%llu vp_index=%u, scheduler=%s",
+		__entry->partition_id,
+		__entry->vp_index,
+		__get_str(scheduler)
+	)
+);
+TRACE_EVENT(mshv_run_vp_exit,
+		TP_PROTO(long ret, u64 partition_id, u32 vp_index, u64 hv_message_type),
+		TP_ARGS(ret, partition_id, vp_index, hv_message_type),
+	TP_STRUCT__entry(
+		__field(long, ret)
+		__field(u64, partition_id)
+		__field(u32, vp_index)
+		__field(u64, hv_message_type)
+	),
+	TP_fast_assign(
+		__entry->ret = ret;
+		__entry->partition_id = partition_id;
+		__entry->vp_index = vp_index;
+		__entry->hv_message_type = hv_message_type;
+	),
+	TP_printk("ret=%ld partition_id=%llu vp_index=%u hv_msg_type=0x%llx",
+		__entry->ret,
+		__entry->partition_id,
+		__entry->vp_index,
+		__entry->hv_message_type
+	)
+);
+
 #endif /* _TRACE_MSHV_MAIN_H */
 
 /* This part must be outside protection */
