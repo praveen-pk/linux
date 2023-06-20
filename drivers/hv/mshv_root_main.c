@@ -2294,6 +2294,8 @@ mshv_partition_release(struct inode *inode, struct file *filp)
 {
 	struct mshv_partition *partition = filp->private_data;
 
+	trace_mshv_partition_release(partition->id);
+
 	mshv_eventfd_release(partition);
 
 	cleanup_srcu_struct(&partition->irq_srcu);
