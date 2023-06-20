@@ -1382,3 +1382,40 @@ out:
 
 	return hv_status_to_errno(status);
 }
+
+int hv_call_issue_psp_guest_request(
+	u64 partition_id, u64 req_pfn, u64 rsp_pfn,
+	void (*completion_handler)(void * /* data */, u64 * /* status */),
+	void *completion_data)
+{
+	u64 status;
+	unsigned long flags;
+	struct hv_input_issue_psp_guest_request *in;
+
+	if (!completion_handler) {
+		pr_err("%s: Missing completion handler for issuing psp guest request hypercall!\n",
+		       __func__);
+		return -EINVAL;
+	}
+
+	local_irq_save(flags);
+	in = *this_cpu_ptr(hyperv_pcpu_input_arg);
+
+	in->partition_id = partition_id;
+	in->request_page = req_pfn;
+	in->response_page = rsp_pfn;
+
+	status = hv_do_hypercall(HVCALL_ISSUE_SNP_PSP_GUEST_REQUEST, in, NULL);
+	local_irq_restore(flags);
+
+	if (hv_result(status) == HV_STATUS_CALL_PENDING)
+		completion_handler(completion_data, &status);
+
+	if (!hv_result_success(status)) {
+		pr_err("%s: status=%s, partition_id=%llu\n", __func__,
+		       hv_status_to_string(status), partition_id);
+		return hv_status_to_errno(status);
+	}
+
+	return 0;
+}

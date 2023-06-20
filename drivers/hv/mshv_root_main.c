@@ -1761,6 +1761,12 @@ mshv_partition_ioctl_issue_psp_guest_request(struct mshv_partition *partition,
 	 */
 	ret = hv_call_modify_spa_host_access(partition->id, page_list,
 					     gpa_list_size, 0, 0, false);
+	if (ret)
+		goto clear_page_list;
+
+	ret = hv_call_issue_psp_guest_request(
+		partition->id, HVPFN_DOWN(req.req_gpa), HVPFN_DOWN(req.rsp_gpa),
+		mshv_root_async_hypercall_handler, partition);
 
 clear_page_list:
 	kfree(page_list);
