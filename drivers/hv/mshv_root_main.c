@@ -473,6 +473,9 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 static long
 mshv_vp_ioctl_run_vp(struct mshv_vp *vp, void __user *ret_message)
 {
+	trace_mshv_run_vp_entry(vp->partition->id, vp->index,
+				hv_scheduler_type == HV_SCHEDULER_TYPE_ROOT ? "root" : "hv");
+
 	if (hv_scheduler_type != HV_SCHEDULER_TYPE_ROOT) {
 		struct hv_register_assoc suspend_registers[2] = {
 			{ .name = HV_REGISTER_INTERCEPT_SUSPEND },
@@ -821,6 +824,9 @@ mshv_vp_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 	switch (ioctl) {
 	case MSHV_RUN_VP:
 		r = mshv_vp_ioctl_run_vp(vp, (void __user *)arg);
+		trace_mshv_run_vp_exit(
+			r, vp->partition->id, vp->index,
+			vp->intercept_message_page->header.message_type);
 		break;
 	case MSHV_RUN_VP_REGISTERS:
 		r = mshv_vp_ioctl_run_vp_regs(vp, (void __user *)arg);
