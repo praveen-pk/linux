@@ -1618,12 +1618,6 @@ static long mshv_partition_ioctl_modify_gpa_host_access(
 	u64 *gpa_list;
 	struct page **page_list;
 
-	if (!mshv_partition_isolation_type_snp(partition)) {
-		ret = -EOPNOTSUPP;
-		pr_err("%s: Ioctl not supported for non SEV-SNP enabled partition!\n", __func__);
-		goto out;
-	}
-
 	if (copy_from_user(&args, user_args, sizeof(args))) {
 		ret = -EFAULT;
 		goto out;
