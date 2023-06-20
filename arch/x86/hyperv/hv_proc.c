@@ -132,13 +132,18 @@ int hv_call_set_vp_registers(
 EXPORT_SYMBOL_GPL(hv_call_set_vp_registers);
 
 int hv_set_sev_control_register(u32 vp_index, u64 partition_id,
-				u64 sev_control_val)
+				u64 enable_encrypted_state,
+				u64 vmsa_gpa_page_number)
 {
 	union hv_input_vtl input_vtl;
 	struct hv_register_assoc sev_control = {
 		.name = HV_X64_REGISTER_SEV_CONTROL,
-		.value.sev_control.as_uint64 = sev_control_val,
 	};
+	union hv_x64_register_sev_control *sc;
+
+	sc = &sev_control.value.sev_control;
+	sc->enable_encrypted_state = enable_encrypted_state;
+	sc->vmsa_gpa_page_number = vmsa_gpa_page_number;
 
 	input_vtl.as_uint8 = 0;
 	return hv_call_set_vp_registers(vp_index, partition_id, 1, input_vtl,

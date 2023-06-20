@@ -145,7 +145,8 @@ int hv_call_set_vp_registers(u32 vp_index, u64 partition_id, u16 count,
 			     union hv_input_vtl input_vtl,
 			     struct hv_register_assoc *registers);
 int hv_set_sev_control_register(u32 vp_index, u64 partition_id,
-				u64 sev_control_val);
+				u64 enable_encrypted_state,
+				u64 vmsa_gpa_page_number);
 
 void hv_setup_vmbus_handler(void (*handler)(void));
 void hv_remove_vmbus_handler(void);

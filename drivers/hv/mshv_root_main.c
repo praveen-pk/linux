@@ -2077,7 +2077,11 @@ static int destroy_snp_partition_state(struct mshv_partition *partition)
 			goto out;
 		}
 
-		ret = hv_set_sev_control_register(vp->index, vp->partition->id, 0);
+		/*
+		 * Clear the sev control register i.e., disable encrypted page and
+		 * VMSA GFN.
+		 */
+		ret = hv_set_sev_control_register(vp->index, vp->partition->id, 0, 0);
 		if (ret) {
 			pr_err("%s: failed to clear sev control register vCPU#%d in partition %lld\n",
 			       __func__, vp->index, vp->partition->id);
