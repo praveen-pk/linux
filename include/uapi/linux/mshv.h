@@ -197,6 +197,11 @@ struct mshv_complete_isolated_import {
 	union hv_partition_complete_isolated_import_data import_data;
 };
 
+struct mshv_issue_psp_guest_request {
+	__u64 req_gpa;
+	__u64 rsp_gpa;
+};
+
 #define MSHV_IOCTL 0xB8
 
 /* mshv device */
@@ -275,6 +280,10 @@ struct mshv_complete_isolated_import {
 /* ioctls related to SEV-SNP enabled guest */
 #define MSHV_COMPLETE_ISOLATED_IMPORT                                          \
 	_IOW(MSHV_IOCTL, 0x30, struct mshv_complete_isolated_import)
+
+/* ioctls for fetching attestation report for SEV-SNP guest */
+#define MSHV_ISSUE_PSP_GUEST_REQUEST                                           \
+	_IOW(MSHV_IOCTL, 0x31, struct mshv_issue_psp_guest_request)
 
 /* Ioctls for mshv_diag device */
 #define MSHV_DIAG_IOCTL 0xB9

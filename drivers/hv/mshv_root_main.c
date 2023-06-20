@@ -1730,6 +1730,46 @@ out:
 	return ret;
 }
 
+static long
+mshv_partition_ioctl_issue_psp_guest_request(struct mshv_partition *partition,
+					     void __user *user_args)
+{
+	long ret;
+	struct page **page_list;
+	struct mshv_issue_psp_guest_request req;
+	u64 gpa_list[2];
+	u64 gpa_list_size = 2;
+
+	if (copy_from_user(&req, user_args, sizeof(req))) {
+		ret = -EFAULT;
+		goto out;
+	}
+
+	gpa_list[0] = req.req_gpa;
+	gpa_list[1] = req.rsp_gpa;
+
+	page_list = kcalloc(gpa_list_size, sizeof(struct page *), GFP_KERNEL);
+	if (!page_list)
+		return -ENOMEM;
+
+	ret = convert_gpa_list_to_spa(partition, gpa_list, gpa_list_size,
+				      page_list);
+	if (ret < 0)
+		goto clear_page_list;
+
+	/*
+	 * Release host access to pages which would be used for
+	 * generating attestation report.
+	 */
+	ret = hv_call_modify_spa_host_access(partition->id, page_list,
+					     gpa_list_size, 0, 0, false);
+
+clear_page_list:
+	kfree(page_list);
+out:
+	return ret;
+}
+
 static long mshv_partition_snp_ioctl(unsigned int ioctl,
 				     struct mshv_partition *partition,
 				     unsigned long arg)
@@ -1754,6 +1794,10 @@ static long mshv_partition_snp_ioctl(unsigned int ioctl,
 		break;
 	case MSHV_COMPLETE_ISOLATED_IMPORT:
 		ret = mshv_partition_ioctl_complete_isolated_import(
+			partition, (void __user *)arg);
+		break;
+	case MSHV_ISSUE_PSP_GUEST_REQUEST:
+		ret = mshv_partition_ioctl_issue_psp_guest_request(
 			partition, (void __user *)arg);
 		break;
 	default:
@@ -1839,6 +1883,7 @@ mshv_partition_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 	case MSHV_MODIFY_GPA_HOST_ACCESS:
 	case MSHV_IMPORT_ISOLATED_PAGES:
 	case MSHV_COMPLETE_ISOLATED_IMPORT:
+	case MSHV_ISSUE_PSP_GUEST_REQUEST:
 		ret = mshv_partition_snp_ioctl(ioctl, partition, arg);
 		break;
 	default:
