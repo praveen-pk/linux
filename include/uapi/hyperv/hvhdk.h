@@ -2062,4 +2062,10 @@ struct hv_output_write_gpa {
 	union hv_access_gpa_result access_result;
 } __packed;
 
+struct hv_input_issue_psp_guest_request {
+	__u64 partition_id;
+	__u64 request_page;
+	__u64 response_page;
+} __packed;
+
 #endif /* _UAPI_HV_HVHDK_H */

@@ -1575,9 +1575,9 @@ static void mshv_destroy_devices(struct mshv_partition *partition)
 	}
 }
 
-static int convert_gpa_list_to_spa(struct mshv_partition *partition,
-				   u64 *gpa_list, u64 gpa_list_size,
-				   struct page **page_list)
+static int convert_gpa_list_to_page_list(struct mshv_partition *partition,
+					 u64 *gpa_list, u64 gpa_list_size,
+					 struct page **page_list)
 {
 	int i;
 	struct mshv_mem_region *region;
@@ -1618,12 +1618,6 @@ static long mshv_partition_ioctl_modify_gpa_host_access(
 	u64 *gpa_list;
 	struct page **page_list;
 
-	if (!mshv_partition_isolation_type_snp(partition)) {
-		ret = -EOPNOTSUPP;
-		pr_err("%s: Ioctl not supported for non SEV-SNP enabled partition!\n", __func__);
-		goto out;
-	}
-
 	if (copy_from_user(&args, user_args, sizeof(args))) {
 		ret = -EFAULT;
 		goto out;
@@ -1643,19 +1637,23 @@ static long mshv_partition_ioctl_modify_gpa_host_access(
 	}
 
 	page_list = kcalloc(args.gpa_list_size, sizeof(struct page *), GFP_KERNEL);
-	if (!page_list)
-		return -ENOMEM;
-
-	ret = convert_gpa_list_to_spa(partition, gpa_list, args.gpa_list_size,
-				      page_list);
-	if (ret < 0)
+	if (!page_list) {
+		ret = -ENOMEM;
 		goto clear_gpa_list;
+	}
+
+	ret = convert_gpa_list_to_page_list(partition, gpa_list,
+					    args.gpa_list_size, page_list);
+	if (ret < 0)
+		goto clear_page_list;
 
 	ret = hv_call_modify_spa_host_access(partition->id, page_list,
 					     args.gpa_list_size,
 					     args.host_access, args.flags,
 					     args.acquire);
 
+clear_page_list:
+	kfree(page_list);
 clear_gpa_list:
 	kvfree(gpa_list);
 out:
@@ -1730,6 +1728,52 @@ out:
 	return ret;
 }
 
+static long
+mshv_partition_ioctl_issue_psp_guest_request(struct mshv_partition *partition,
+					     void __user *user_args)
+{
+	long ret;
+	struct page **page_list;
+	struct mshv_issue_psp_guest_request req;
+	u64 gpa_list[2];
+	u64 gpa_list_size = 2;
+
+	if (copy_from_user(&req, user_args, sizeof(req))) {
+		ret = -EFAULT;
+		goto out;
+	}
+
+	gpa_list[0] = req.req_gpa;
+	gpa_list[1] = req.rsp_gpa;
+
+	page_list = kcalloc(gpa_list_size, sizeof(struct page *), GFP_KERNEL);
+	if (!page_list)
+		return -ENOMEM;
+
+	ret = convert_gpa_list_to_page_list(partition, gpa_list, gpa_list_size,
+					    page_list);
+	if (ret < 0)
+		goto clear_page_list;
+
+	/*
+	 * Release host access to pages which would be used for
+	 * generating attestation report.
+	 */
+	ret = hv_call_modify_spa_host_access(partition->id, page_list,
+					     gpa_list_size, 0, 0, false);
+	if (ret)
+		goto clear_page_list;
+
+	ret = hv_call_issue_psp_guest_request(
+		partition->id, HVPFN_DOWN(req.req_gpa), HVPFN_DOWN(req.rsp_gpa),
+		mshv_root_async_hypercall_handler, partition);
+
+clear_page_list:
+	kfree(page_list);
+out:
+	return ret;
+}
+
 static long mshv_partition_snp_ioctl(unsigned int ioctl,
 				     struct mshv_partition *partition,
 				     unsigned long arg)
@@ -1754,6 +1798,10 @@ static long mshv_partition_snp_ioctl(unsigned int ioctl,
 		break;
 	case MSHV_COMPLETE_ISOLATED_IMPORT:
 		ret = mshv_partition_ioctl_complete_isolated_import(
+			partition, (void __user *)arg);
+		break;
+	case MSHV_ISSUE_PSP_GUEST_REQUEST:
+		ret = mshv_partition_ioctl_issue_psp_guest_request(
 			partition, (void __user *)arg);
 		break;
 	default:
@@ -1839,6 +1887,7 @@ mshv_partition_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 	case MSHV_MODIFY_GPA_HOST_ACCESS:
 	case MSHV_IMPORT_ISOLATED_PAGES:
 	case MSHV_COMPLETE_ISOLATED_IMPORT:
+	case MSHV_ISSUE_PSP_GUEST_REQUEST:
 		ret = mshv_partition_snp_ioctl(ioctl, partition, arg);
 		break;
 	default:
