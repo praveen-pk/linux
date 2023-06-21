@@ -145,3 +145,37 @@ int hv_set_sev_control_register(u32 vp_index, u64 partition_id,
 					&sev_control);
 }
 EXPORT_SYMBOL_GPL(hv_set_sev_control_register);
+
+bool hv_lp_exists(u32 lp_index)
+{
+	struct hv_input_get_logical_processor_run_time *input;
+	struct hv_output_get_logical_processor_run_time *out_page;
+	unsigned long flags;
+	u64 status;
+
+	local_irq_save(flags);
+
+	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
+	out_page = *this_cpu_ptr(hyperv_pcpu_output_arg);
+
+	input->lp_index = lp_index;
+	status = hv_do_hypercall(HVCALL_GET_LOGICAL_PROCESSOR_RUN_TIME, input,
+			out_page);
+
+	local_irq_restore(flags);
+
+	/*
+	 * This method is called early in boot before adding the LPs.
+	 *
+	 * HV_STATUS_SUCCESS and HV_STATUS_INVALID_LP_INDEX are the only
+	 * expected return codes here. Anything else means the system is
+	 * in some sort of an indeterminate state and we can't say for sure
+	 * whether the LP is added or not.
+	 */
+	if (status != HV_STATUS_SUCCESS && status != HV_STATUS_INVALID_LP_INDEX) {
+		pr_err("%s: unexpected status %llu\n", __func__, status);
+		BUG();
+	}
+
+	return hv_result_success(status);
+}

@@ -43,6 +43,7 @@ extern u64 hv_current_partition_id;
 
 int hv_call_add_logical_proc(int node, u32 lp_index, u32 acpi_id);
 int hv_call_notify_all_processors_started(void);
+bool hv_lp_exists(u32 lp_index);
 
 static inline u64 hv_do_hypercall(u64 control, const void *input, void *output)
 {

@@ -320,6 +320,14 @@ static void __init hv_smp_prepare_cpus(unsigned int max_cpus)
 	}
 
 	i = next_smallest_apicid(apicids, 0);
+
+	/*
+	 * If we are in a kexec'd kernel, the LPs have already been added
+	 * and VPs already created. Skip doing that again.
+	 */
+	if (i != INT_MAX && hv_lp_exists(1))
+		return;
+
 	for (lpidx = 1; i != INT_MAX; lpidx++) {
 #ifdef CONFIG_NUMA
 		node = __apicid_to_node[i];
