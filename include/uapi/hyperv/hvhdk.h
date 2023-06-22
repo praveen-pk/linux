@@ -1961,6 +1961,27 @@ struct hv_input_modify_sparse_spa_page_host_access {
 #define HV_MODIFY_SPA_PAGE_HOST_ACCESS_LARGE_PAGE      0x4
 #define HV_MODIFY_SPA_PAGE_HOST_ACCESS_HUGE_PAGE       0x8
 
+struct hv_psp_cpuid_leaf {
+	__u32 eax_in;
+	__u32 ecx_in;
+	__u64 xfem_in;
+	__u64 xss_in;
+	__u32 eax_out;
+	__u32 ebx_out;
+	__u32 ecx_out;
+	__u32 edx_out;
+	__u64 reserved_z;
+} __packed;
+
+#define HV_PSP_CPUID_LEAF_COUNT_MAX     64
+
+struct hv_psp_cpuid_page {
+	__u32 count;
+	__u32 reserved_z1;
+	__u64 reserved_z2;
+	struct hv_psp_cpuid_leaf cpuid_leaf_info[HV_PSP_CPUID_LEAF_COUNT_MAX];
+} __packed;
+
 enum hv_isolated_page_type {
 	HV_ISOLATED_PAGE_TYPE_NORMAL = 0,
 	HV_ISOLATED_PAGE_TYPE_VMSA = 1,
