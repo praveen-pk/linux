@@ -1182,6 +1182,17 @@ union hv_dispatch_suspend_register {
 	} __packed;
 };
 
+union hv_internal_activity_register {
+	__u64 as_uint64;
+
+	struct {
+		__u64 startup_suspend : 1;
+		__u64 halt_suspend : 1;
+		__u64 idle_suspend : 1;
+		__u64 rsvd_z : 61;
+	} __packed;
+};
+
 union hv_x64_interrupt_state_register {
 	__u64 as_uint64;
 	struct {
@@ -1304,6 +1315,7 @@ union hv_register_value {
 	union hv_explicit_suspend_register explicit_suspend;
 	union hv_intercept_suspend_register intercept_suspend;
 	union hv_dispatch_suspend_register dispatch_suspend;
+	union hv_internal_activity_register internal_activity;
 #if defined(__x86_64__)
 	union hv_x64_interrupt_state_register interrupt_state;
 	union hv_x64_pending_interruption_register pending_interruption;

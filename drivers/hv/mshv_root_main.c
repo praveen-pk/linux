@@ -1575,6 +1575,58 @@ static void mshv_destroy_devices(struct mshv_partition *partition)
 	}
 }
 
+static long
+mshv_partition_ioctl_sev_snp_ap_create(struct mshv_partition *partition,
+				       void __user *user_args)
+{
+	long ret;
+	struct mshv_vp *vp;
+	struct mshv_sev_snp_ap_create req;
+	struct hv_register_assoc internal_activity = {
+		.name = HV_REGISTER_INTERNAL_ACTIVITY_STATE,
+		.value.internal_activity.as_uint64 = 0,
+	};
+
+	if (copy_from_user(&req, user_args, sizeof(req))) {
+		ret = -EFAULT;
+		goto out;
+	}
+
+	if (req.vp_id >= MSHV_MAX_VPS) {
+		pr_err("%s: VP index: %llu out of bounds for partition: %llu\n",
+		       __func__, req.vp_id, partition->id);
+		ret = -EINVAL;
+		goto out;
+	}
+
+	vp = partition->vps.array[req.vp_id];
+	if (!vp) {
+		pr_err("%s: Invalid VP index: %llu for partition: %llu\n",
+		       __func__, req.vp_id, partition->id);
+		ret = -EINVAL;
+		goto out;
+	}
+
+	ret = hv_set_sev_control_register(vp->index, vp->partition->id, 1,
+					  HVPFN_DOWN(req.vmsa_gpa));
+	if (ret) {
+		pr_err("%s: failed to set sev control register vCPU#%d in partition %lld\n",
+		       __func__, vp->index, vp->partition->id);
+		goto out;
+	}
+
+	ret = mshv_set_vp_registers(vp->index, vp->partition->id, 1,
+				    &internal_activity);
+	if (ret) {
+		pr_err("%s: failed to set internal activity %llu vp %u\n",
+		       __func__, vp->partition->id, vp->index);
+		goto out;
+	}
+
+out:
+	return ret;
+}
+
 static int convert_gpa_list_to_page_list(struct mshv_partition *partition,
 					 u64 *gpa_list, u64 gpa_list_size,
 					 struct page **page_list)
@@ -1804,6 +1856,10 @@ static long mshv_partition_snp_ioctl(unsigned int ioctl,
 		ret = mshv_partition_ioctl_issue_psp_guest_request(
 			partition, (void __user *)arg);
 		break;
+	case MSHV_SEV_SNP_AP_CREATE:
+		ret = mshv_partition_ioctl_sev_snp_ap_create(
+			partition, (void __user *)arg);
+		break;
 	default:
 		ret = -ENOTTY;
 	}
@@ -1888,6 +1944,7 @@ mshv_partition_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 	case MSHV_IMPORT_ISOLATED_PAGES:
 	case MSHV_COMPLETE_ISOLATED_IMPORT:
 	case MSHV_ISSUE_PSP_GUEST_REQUEST:
+	case MSHV_SEV_SNP_AP_CREATE:
 		ret = mshv_partition_snp_ioctl(ioctl, partition, arg);
 		break;
 	default:
@@ -2041,7 +2098,11 @@ static int destroy_snp_partition_state(struct mshv_partition *partition)
 			goto out;
 		}
 
-		ret = hv_set_sev_control_register(vp->index, vp->partition->id, 0);
+		/*
+		 * Clear the sev control register i.e., disable encrypted page and
+		 * VMSA GFN.
+		 */
+		ret = hv_set_sev_control_register(vp->index, vp->partition->id, 0, 0);
 		if (ret) {
 			pr_err("%s: failed to clear sev control register vCPU#%d in partition %lld\n",
 			       __func__, vp->index, vp->partition->id);

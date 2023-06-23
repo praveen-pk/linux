@@ -12,7 +12,8 @@ int hv_call_set_vp_registers(u32 vp_index, u64 partition_id, u16 count,
 EXPORT_SYMBOL_GPL(hv_call_set_vp_registers);
 
 int hv_set_sev_control_register(u32 vp_index, u64 partition_id,
-				u64 sev_control_val)
+				u64 enable_encrypted_state,
+				u64 vmsa_gpa_page_number)
 {
 	return -EOPNOTSUPP;
 }
