@@ -908,6 +908,8 @@ mshv_vp_release(struct inode *inode, struct file *filp)
 {
 	struct mshv_vp *vp = filp->private_data;
 
+	trace_mshv_vp_release(vp->partition->id, vp->index);
+
 	/* Rest of VP cleanup happens in destroy_partition() */
 	mshv_partition_put(vp->partition);
 	return 0;
@@ -994,6 +996,8 @@ mshv_partition_ioctl_create_vp(struct mshv_partition *partition,
 
 	fd_install(fd, file);
 
+	trace_mshv_create_vp(ret, partition->id, vp->index, fd);
+
 	return fd;
 
 release_file:
@@ -1006,6 +1010,8 @@ free_registers:
 	kfree(vp->registers);
 free_vp:
 	kfree(vp);
+
+	trace_mshv_create_vp(ret, partition->id, vp->index, -1);
 
 	return ret;
 }
@@ -1970,6 +1976,8 @@ disable_vp_dispatch(struct mshv_vp *vp)
 		pr_err("%s: failed to suspend partition %llu vp %u\n",
 			__func__, vp->partition->id, vp->index);
 
+	trace_mshv_disable_vp_dispatch(ret, vp->partition->id, vp->index);
+
 	return ret;
 }
 
@@ -2018,6 +2026,8 @@ drain_vp_signals(struct mshv_vp *vp)
 		vp->run.kicked_by_hv = 0;
 		vp_signal_count = atomic64_read(&vp->run.signaled_count);
 	}
+
+	trace_mshv_drain_vp_signals(vp->partition->id, vp->index);
 }
 
 static void drain_all_vps(const struct mshv_partition *partition)

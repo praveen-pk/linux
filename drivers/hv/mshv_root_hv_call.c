@@ -616,6 +616,8 @@ int hv_call_map_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
 		ret = hv_call_deposit_pages(NUMA_NO_NODE, partition_id, 1);
 	} while (!ret);
 
+	trace_mshv_hvcall_map_vp_state_page(status, partition_id, vp_index, type);
+
 	return ret;
 }
 
