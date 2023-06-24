@@ -1192,6 +1192,8 @@ mshv_partition_ioctl_map_memory(struct mshv_partition *partition,
 	/* Map the pages to GPA pages */
 	ret = hv_call_map_gpa_pages(partition->id, mem.guest_pfn,
 				    page_count, mem.flags, pages);
+	if (ret)
+		goto err_unpin_pages;
 
 	/* Install the new region */
 	hlist_add_head(&region->hnode, &partition->mem_regions);
