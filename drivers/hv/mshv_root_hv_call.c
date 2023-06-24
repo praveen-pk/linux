@@ -19,6 +19,7 @@
 #include <asm/mshyperv.h>
 
 #include <trace/events/mshv.h>
+#include "mshv.h"
 
 /* Determined empirically */
 #define HV_INIT_PARTITION_DEPOSIT_PAGES 208
@@ -270,8 +271,7 @@ static int hv_do_map_gpa_hcall(u64 partition_id, u64 gfn, u64 page_count,
 	}
 
 	if (ret && done)
-		pr_err("%s: Partially succeeded; mapped regions may be in invalid state",
-		       __func__);
+		hv_call_unmap_gpa_pages(partition_id, gfn, done, flags);
 
 	return ret;
 }
