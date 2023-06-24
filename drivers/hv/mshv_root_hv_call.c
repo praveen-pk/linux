@@ -217,63 +217,59 @@ int hv_call_delete_partition(u64 partition_id)
 	return hv_status_to_errno(status);
 }
 
-static int hv_do_map_gpa_hcall(u64 partition_id, u64 gpa_target,
-			       u64 page_count, u32 flags,
-			       struct page **pages)
+static int hv_do_map_gpa_hcall(u64 partition_id, u64 gfn, u64 page_count,
+			       u32 flags, struct page **pages)
 {
 	struct hv_input_map_gpa_pages *input_page;
-	u64 status;
-	int i;
-	struct page **p;
-	u32 completed = 0;
-	unsigned long remaining = page_count;
-	int rep_count;
+	u64 status, *pfnlist;
 	unsigned long irq_flags;
-	int ret = 0;
+	int ret, done = 0;
 
 	if (page_count == 0)
 		return -EINVAL;
 
-	while (remaining) {
-
-		rep_count = min(remaining, HV_MAP_GPA_BATCH_SIZE);
+	while (done < page_count) {
+		ulong i, completed, remain = page_count - done;
+		int rep_count = min(remain, HV_MAP_GPA_BATCH_SIZE);
 
 		local_irq_save(irq_flags);
 		input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
 
 		input_page->target_partition_id = partition_id;
-		input_page->target_gpa_base = gpa_target;
+		input_page->target_gpa_base = gfn + done;
 		input_page->map_flags = flags;
+		pfnlist = input_page->source_gpa_page_list;
 
-		for (i = 0, p = pages; i < rep_count; i++, p++)
-			input_page->source_gpa_page_list[i] = page_to_pfn(*p);
-		status = hv_do_rep_hypercall(
-			HVCALL_MAP_GPA_PAGES, rep_count, 0, input_page, NULL);
+		for (i = 0; i < rep_count; i++)
+			pfnlist[i] = page_to_pfn(pages[done + i]);
+
+		status = hv_do_rep_hypercall(HVCALL_MAP_GPA_PAGES, rep_count, 0,
+					     input_page, NULL);
 		local_irq_restore(irq_flags);
 
 		completed = hv_repcomp(status);
 
 		if (hv_result(status) == HV_STATUS_INSUFFICIENT_MEMORY) {
-			ret = hv_call_deposit_pages(NUMA_NO_NODE,
-						    partition_id,
+			ret = hv_call_deposit_pages(NUMA_NO_NODE, partition_id,
 						    HV_MAP_GPA_DEPOSIT_PAGES);
-			if (ret)
+			if (ret) {
+				pr_err("%s: Unable to deposit pages 0x%llx\n",
+				       __func__, status);
 				break;
+			}
+
 		} else if (!hv_result_success(status)) {
-			pr_err("%s: completed %llu out of %llu, %s\n",
-			       __func__,
-			       page_count - remaining, page_count,
-			       hv_status_to_string(status));
+			pr_err("%s: map pages failed %u/%llu. status:0x%llx %s",
+			       __func__, done, page_count, status,
+			       hv_status_to_string(hv_result(status)));
 			ret = hv_status_to_errno(status);
 			break;
 		}
 
-		pages += completed;
-		remaining -= completed;
-		gpa_target += completed;
+		done += completed;
 	}
 
-	if (ret && remaining < page_count)
+	if (ret && done)
 		pr_err("%s: Partially succeeded; mapped regions may be in invalid state",
 		       __func__);
 
