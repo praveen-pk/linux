@@ -217,11 +217,9 @@ int hv_call_delete_partition(u64 partition_id)
 	return hv_status_to_errno(status);
 }
 
-int hv_call_map_gpa_pages(
-		u64 partition_id,
-		u64 gpa_target,
-		u64 page_count, u32 flags,
-		struct page **pages)
+static int hv_do_map_gpa_hcall(u64 partition_id, u64 gpa_target,
+			       u64 page_count, u32 flags,
+			       struct page **pages)
 {
 	struct hv_input_map_gpa_pages *input_page;
 	u64 status;
@@ -280,6 +278,14 @@ int hv_call_map_gpa_pages(
 		       __func__);
 
 	return ret;
+}
+
+/* Ask the hypervisor to map guest ram pages */
+int hv_call_map_gpa_pages(u64 partition_id, u64 gpa_target, u64 page_count,
+			  u32 flags, struct page **pages)
+{
+	return hv_do_map_gpa_hcall(partition_id, gpa_target, page_count,
+				   flags, pages);
 }
 
 int hv_call_unmap_gpa_pages(
