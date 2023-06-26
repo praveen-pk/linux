@@ -1199,13 +1199,28 @@ static int mshv_partition_chk_snp_map_ram(struct mshv_partition *partition,
 	return ret;
 }
 
+/*
+ * This maps two things: guest RAM and for pci passthru mmio space.
+ *
+ * mmio:
+ *  - vfio overloads vm_pgoff to store the mmio start pfn/spa.
+ *  - Two things need to happen for mapping mmio range:
+ *	1. mapped in the uaddr so VMM can access it.
+ *	2. mapped in the hwpt (gfn <-> mmio phys addr) so guest can access it.
+ *
+ *   This function takes care of the second. The first one is managed by vfio,
+ *   and hence is taken care of via vfio_pci_mmap_fault().
+ */
 static long
 mshv_partition_ioctl_map_memory(struct mshv_partition *partition,
 				struct mshv_user_mem_region __user *user_mem)
 {
 	struct mshv_user_mem_region mem;
 	struct mshv_mem_region *region;
-	long ret = 0;
+	struct vm_area_struct *vma;
+	bool is_mmio;
+	ulong mmio_pfn;
+	long ret;
 
 	if (copy_from_user(&mem, user_mem, sizeof(mem)))
 		return -EFAULT;
@@ -1220,15 +1235,32 @@ mshv_partition_ioctl_map_memory(struct mshv_partition *partition,
 	if (ret)
 		return ret;
 
-	ret = mshv_partition_pin_ram(partition, &mem, region->pages);
-	if (ret)
+	mmap_read_lock(current->mm);
+	vma = vma_lookup(current->mm, mem.userspace_addr);
+	is_mmio = vma ? !!(vma->vm_flags & (VM_IO | VM_PFNMAP)) : 0;
+	mmio_pfn = is_mmio ? vma->vm_pgoff : 0;
+	mmap_read_unlock(current->mm);
+
+	ret = -EINVAL;
+	if (vma == NULL)
 		goto errout;
 
-	ret = mshv_partition_chk_snp_map_ram(partition, mem.flags, region);
-	if (ret) {
-		unpin_user_pages(region->pages, HVPFN_DOWN(mem.size));
-		goto errout;
+	if (is_mmio) {
+		ret = hv_call_map_mmio_pages(partition->id, mem.guest_pfn,
+					     mmio_pfn, HVPFN_DOWN(mem.size));
+	} else {
+		ret = mshv_partition_pin_ram(partition, &mem, region->pages);
+		if (ret)
+			goto errout;
+
+		ret = mshv_partition_chk_snp_map_ram(partition, mem.flags,
+						     region);
+		if (ret)
+			unpin_user_pages(region->pages, HVPFN_DOWN(mem.size));
 	}
+
+	if (ret)
+		goto errout;
 
 	/* Install the new region */
 	hlist_add_head(&region->hnode, &partition->mem_regions);
@@ -1240,6 +1272,7 @@ errout:
 	return ret;
 }
 
+/* called for unmapping both the guest ram and the mmio space */
 static long
 mshv_partition_ioctl_unmap_memory(struct mshv_partition *partition,
 				  struct mshv_user_mem_region __user *user_mem)
@@ -1247,7 +1280,8 @@ mshv_partition_ioctl_unmap_memory(struct mshv_partition *partition,
 	struct mshv_user_mem_region mem;
 	struct mshv_mem_region *region;
 	u64 page_count;
-	long ret;
+	struct vm_area_struct *vma;
+	bool is_mmio;
 
 	if (hlist_empty(&partition->mem_regions))
 		return -EINVAL;
@@ -1268,14 +1302,20 @@ mshv_partition_ioctl_unmap_memory(struct mshv_partition *partition,
 
 	hlist_del(&region->hnode);
 	page_count = HVPFN_DOWN(region->size);
-	ret = hv_call_unmap_gpa_pages(partition->id, region->guest_pfn,
-				      page_count, 0);
-	if (ret)
-		return ret;
 
-	unpin_user_pages(&region->pages[0], page_count);
+	/* ignore unmap failures and continue as process may be exiting */
+	hv_call_unmap_gpa_pages(partition->id, region->guest_pfn,
+				page_count, 0);
+
+	mmap_read_lock(current->mm);
+	vma = vma_lookup(current->mm, mem.userspace_addr);
+	is_mmio = vma ? !!(vma->vm_flags & (VM_IO | VM_PFNMAP)) : 0;
+	mmap_read_unlock(current->mm);
+
+	if (!is_mmio)
+		unpin_user_pages(&region->pages[0], page_count);
+
 	vfree(region);
-
 	return 0;
 }
 
