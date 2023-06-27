@@ -1166,13 +1166,16 @@ static int mshv_partition_pin_ram(struct mshv_partition *partition,
 	return 0;
 }
 
-/* map guest ram. if snp, make sure to release that from the host first */
+/*
+ * map guest ram. if snp, make sure to release that from the host first
+ * Side Effects: In case of failure, pages are unpinned when feasible.
+ */
 static int mshv_partition_chk_snp_map_ram(struct mshv_partition *partition,
 					  __u32 flags,
 					  struct mshv_mem_region *region)
 {
 	struct page **pages = region->pages;
-	int ret, numpgs = HVPFN_DOWN(region->size);
+	int ret, shrc, numpgs = HVPFN_DOWN(region->size);
 
 	/*
 	 * For an SNP partition it is a requirement that for every memory region
@@ -1189,6 +1192,7 @@ static int mshv_partition_chk_snp_map_ram(struct mshv_partition *partition,
 		if (ret) {
 			pr_err("%s: Failed to mark the region (guest_pfn: %llu) as exclusive.\n",
 			       __func__, region->guest_pfn);
+			unpin_user_pages(pages, numpgs);
 			return ret;
 		}
 	}
@@ -1196,6 +1200,25 @@ static int mshv_partition_chk_snp_map_ram(struct mshv_partition *partition,
 	/* ask the hypervisor to map guest ram */
 	ret = hv_call_map_gpa_pages(partition->id, region->guest_pfn, numpgs,
 				    flags, pages);
+
+	if (ret && mshv_partition_isolation_type_snp(partition)) {
+		shrc = hv_call_modify_spa_host_access(partition->id, pages,
+				     numpgs,
+				     HV_MAP_GPA_READABLE | HV_MAP_GPA_WRITABLE,
+				     HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_SHARED,
+				     true);
+		if (shrc)
+			pr_err("%s: Failed to mark shared. gfn:%llu rc:%d\n",
+			       __func__, region->guest_pfn, shrc);
+	}
+
+	/* don't unpin if marking shared failed because pages are no longer
+	 * mapped in the host, ie root, anymore.
+	 */
+	if (ret)
+		if (!mshv_partition_isolation_type_snp(partition) || shrc == 0)
+			unpin_user_pages(pages, numpgs);
+
 	return ret;
 }
 
@@ -1255,8 +1278,6 @@ mshv_partition_ioctl_map_memory(struct mshv_partition *partition,
 
 		ret = mshv_partition_chk_snp_map_ram(partition, mem.flags,
 						     region);
-		if (ret)
-			unpin_user_pages(region->pages, HVPFN_DOWN(mem.size));
 	}
 
 	if (ret)
