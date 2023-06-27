@@ -2158,8 +2158,6 @@ static int destroy_snp_partition_state(struct mshv_partition *partition)
 		}
 	}
 
-	trace_mshv_destroy_partition(partition->id);
-
 	/*
 	 * This must be done before we drain all the vps and call
 	 * remove_partition, otherwise we won't receive the interrupt
@@ -2185,6 +2183,8 @@ static void destroy_partition(struct mshv_partition *partition)
 	struct mshv_mem_region *region;
 	int i, ret;
 	struct hlist_node *n;
+
+	trace_mshv_destroy_partition(partition->id);
 
 	if (mshv_partition_isolation_type_snp(partition)) {
 		ret = destroy_snp_partition_state(partition);
@@ -2293,6 +2293,8 @@ static int
 mshv_partition_release(struct inode *inode, struct file *filp)
 {
 	struct mshv_partition *partition = filp->private_data;
+
+	trace_mshv_partition_release(partition->id);
 
 	mshv_eventfd_release(partition);
 
