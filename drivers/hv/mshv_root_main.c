@@ -326,6 +326,9 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 
 			ret = mshv_set_vp_registers(vp->index, vp->partition->id,
 						    1, &explicit_suspend);
+
+			trace_mshv_root_sched_unsuspend_vp(ret, vp->partition->id, vp->index);
+
 			if (ret) {
 				pr_err("%s: failed to unsuspend partition %llu vp %u\n",
 					__func__, vp->partition->id, vp->index);
@@ -388,6 +391,10 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 
 				preempt_disable();
 
+				trace_mshv_root_sched_handle_work(
+					ret, vp->partition->id, vp->index,
+					ti_work);
+
 				if (ret) {
 					complete = true;
 					break;
@@ -421,6 +428,11 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 			input->flags = flags;
 
 			status = hv_do_hypercall(HVCALL_DISPATCH_VP, input, output);
+
+			trace_mshv_hvcall_dispatch_vp(status, vp->partition->id,
+						      vp->index, flags,
+						      output->dispatch_state,
+						      output->dispatch_event);
 
 			if (!hv_result_success(status)) {
 				pr_err("%s: status %s\n", __func__, hv_status_to_string(status));
@@ -473,6 +485,9 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 static long
 mshv_vp_ioctl_run_vp(struct mshv_vp *vp, void __user *ret_message)
 {
+	trace_mshv_run_vp_entry(vp->partition->id, vp->index,
+				hv_scheduler_type == HV_SCHEDULER_TYPE_ROOT ? "root" : "hv");
+
 	if (hv_scheduler_type != HV_SCHEDULER_TYPE_ROOT) {
 		struct hv_register_assoc suspend_registers[2] = {
 			{ .name = HV_REGISTER_INTERCEPT_SUSPEND },
@@ -821,6 +836,9 @@ mshv_vp_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 	switch (ioctl) {
 	case MSHV_RUN_VP:
 		r = mshv_vp_ioctl_run_vp(vp, (void __user *)arg);
+		trace_mshv_run_vp_exit(
+			r, vp->partition->id, vp->index,
+			vp->intercept_message_page->header.message_type);
 		break;
 	case MSHV_RUN_VP_REGISTERS:
 		r = mshv_vp_ioctl_run_vp_regs(vp, (void __user *)arg);
