@@ -89,7 +89,9 @@ union hv_register_vsm_capabilities {
 		u64 hardware_hvpt_range_bits: 6;
 		u64 intercept_page_available: 1;
 		u64 return_action_available: 1;
-		u64 reserved: 35;
+		u64 vtl0_alias_map_available: 1;
+		u64 intercept_not_present_available: 1;
+		u64 reserved: 33;
 	} __packed;
 };
 
