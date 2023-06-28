@@ -1458,6 +1458,7 @@ out:
 	return hv_status_to_errno(status);
 }
 
+#ifdef HV_SUPPORTS_SEV_SNP_GUESTS
 int hv_call_issue_psp_guest_request(
 	u64 partition_id, u64 req_pfn, u64 rsp_pfn,
 	void (*completion_handler)(void * /* data */, u64 * /* status */),
@@ -1494,3 +1495,4 @@ int hv_call_issue_psp_guest_request(
 
 	return 0;
 }
+#endif /* HV_SUPPORTS_SEV_SNP_GUESTS */

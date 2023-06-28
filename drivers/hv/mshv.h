@@ -176,10 +176,13 @@ int hv_call_write_gpa(u32 vp_index,
 		u8 *data,
 		u32 bytes_count,
 		union hv_access_gpa_result *result);
+
+#ifdef HV_SUPPORTS_SEV_SNP_GUESTS
 int hv_call_issue_psp_guest_request(
 	u64 partition_id, u64 req_pfn, u64 rsp_pfn,
 	void (*completion_handler)(void * /* data */, u64 * /* status */),
 	void *completion_data);
+#endif /* HV_SUPPORTS_SEV_SNP_GUESTS */
 
 struct mshv_partition *mshv_partition_find(u64 partition_id) __must_hold(RCU);
 

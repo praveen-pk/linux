@@ -1559,6 +1559,8 @@ union hv_x64_pending_interruption_register {
 	} __packed;
 };
 
+#define HV_SUPPORTS_SEV_SNP_GUESTS
+
 union hv_x64_register_sev_control {
 	__u64 as_uint64;
 	struct {
