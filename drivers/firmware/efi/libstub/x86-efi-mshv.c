@@ -60,7 +60,7 @@ static efi_status_t mshv_populate_ranges(struct boot_params *boot_params,
 	unsigned long cmdline_ptr;
 	u32 cmdline_size;
 	u32 cmdline_len;
-	u8 mshv_cmdline[COMMAND_LINE_SIZE];
+	static u8 mshv_cmdline[COMMAND_LINE_SIZE];
 
 	if (!efi_mshv)
 		return EFI_SUCCESS;
