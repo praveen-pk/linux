@@ -27,6 +27,7 @@ int hv_call_create_partition(
 int hv_call_initialize_partition(u64 partition_id);
 int hv_call_finalize_partition(u64 partition_id);
 int hv_call_delete_partition(u64 partition_id);
+int hv_call_map_mmio_pages(u64 partition_id, u64 gfn, u64 mmio_spa, u64 numpgs);
 int hv_call_map_gpa_pages(
 		u64 partition_id,
 		u64 gpa_target,
