@@ -1659,28 +1659,30 @@ static int convert_gpa_list_to_page_list(struct mshv_partition *partition,
 {
 	int i;
 	struct mshv_mem_region *region;
+	struct hlist_node *n;
 	u64 region_page_count, region_user_start, region_user_end, offset;
 
 	for (i = 0; i < gpa_list_size; i++) {
-		region = NULL;
-		hlist_for_each_entry(region, &partition->mem_regions, hnode) {
+		u64 gfn = HVPFN_DOWN(gpa_list[i]);
+
+		hlist_for_each_entry_safe(region, n, &partition->mem_regions,
+					  hnode) {
 			region_page_count = HVPFN_DOWN(region->size);
 			region_user_start = region->guest_pfn;
-			region_user_end = region->guest_pfn + region->size;
+			region_user_end = region->guest_pfn + region_page_count;
 
 			/* Check if the GPA lies in the region */
-			if (gpa_list[i] >= region_user_start &&
-			    gpa_list[i] < region_user_end)
+			if (gfn >= region_user_start && gfn < region_user_end)
 				break;
 		}
 
-		if (!region)
+		if (!region) {
+			pr_err("%s: Failed to find the region for GFN: %llx with partition id: %llu\n",
+			       __func__, gfn, partition->id);
 			return -ERANGE;
+		}
 
-		offset = HVPFN_DOWN(gpa_list[i] - region_user_start);
-		if (offset >= region_page_count)
-			return -ERANGE;
-
+		offset = gfn - region_user_start;
 		page_list[i] = region->pages[offset];
 	}
 
