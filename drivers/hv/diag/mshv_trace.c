@@ -35,6 +35,9 @@ struct mshv_trace {
 	spinlock_t ctb_list_lock;
 	struct list_head ctb_list;
 	wait_queue_head_t events_queue;
+
+	const struct task_struct *reader;
+	const struct mshv_trace_buffer *ctb;
 };
 
 static DEFINE_MUTEX(mshv_trace_state_lock);
@@ -128,6 +131,134 @@ static int hv_call_map_event_log_buffer(enum hv_eventlog_type type, u32 index,
 		       __func__, hv_status_to_string(status));
 
 	return hv_status_to_errno(status);
+}
+
+static int hv_call_release_event_log_buffer(enum hv_eventlog_type type,
+					    u32 buffer_index)
+{
+	union hv_input_eventlog_release_buffer input;
+	u64 status;
+
+	input.type = type;
+	input.buffer_index = buffer_index;
+
+	status = hv_do_fast_hypercall8(HVCALL_RELEASE_EVENT_LOG_BUFFER,
+				       input.as_uint64);
+
+	if (!hv_result_success(status))
+		pr_err("%s: hypercall failed: %s\n",
+		       __func__, hv_status_to_string(status));
+
+	return hv_status_to_errno(status);
+}
+
+static int mshv_trace_buffer_release(const struct mshv_trace_state *state,
+				     u32 buffer_index)
+{
+	int err;
+
+	err = hv_call_release_event_log_buffer(state->type, buffer_index);
+	if (err)
+		pr_err("%s: failed to release trace buffer %u: %d\n",
+		       __func__, buffer_index, err);
+	return err;
+}
+
+static const struct mshv_trace_buffer *mshv_trace_wait_for_ctb(struct mshv_trace *trace)
+{
+	struct mshv_trace_buffer *tb;
+	unsigned long flags;
+
+	if (wait_event_interruptible(trace->events_queue,
+				     !list_empty(&trace->ctb_list)))
+		return ERR_PTR(-EINTR);
+
+	spin_lock_irqsave(&trace->ctb_list_lock, flags);
+	tb = list_first_entry(&trace->ctb_list, struct mshv_trace_buffer, list);
+	list_del_init(&tb->list);
+	spin_unlock_irqrestore(&trace->ctb_list_lock, flags);
+
+	return tb;
+}
+
+static ssize_t mshv_trace_read(struct file *filp, char __user *buf,
+			       size_t size, loff_t *ppos)
+{
+	struct mshv_trace *trace = filp->private_data;
+	size_t bytes_copied;
+	ssize_t err;
+
+	/*
+	 * The hypervisor trace is a stream with unique metadata, managed by
+	 * both the kernel and hypervisor. This driver ensures that only the
+	 * task attached to the trace can read it, preventing race conditions
+	 * during buffer replacement or concurrent read releases. Simply put,
+	 * even if a task duplicates itself or shares its file descriptor over
+	 * a Unix socket, the recipient can't read the trace.
+	 */
+	if (trace->reader != current)
+		return -EPERM;
+
+	bytes_copied = 0;
+
+	while (bytes_copied < size) {
+		const struct hv_eventlog_buffer_header *hdr;
+		size_t ctb_size;
+		size_t ctb_offset;
+		size_t ctb_bytes_left;
+		size_t bytes_to_copy;
+
+		if (!trace->ctb) {
+			trace->ctb = mshv_trace_wait_for_ctb(trace);
+			if (IS_ERR(trace->ctb)) {
+				err = PTR_ERR(trace->ctb);
+				goto err;
+			}
+		}
+
+		hdr = trace->ctb->hdr;
+		ctb_size = sizeof(*hdr) + hdr->buffer_size;
+		/*
+		 * Safety check: This situation should not occur, as the buffer
+		 * size is communicated to the hypervisor during trace state
+		 * creation.
+		 */
+		if (WARN_ON_ONCE(ctb_size !=
+				 mshv_trace_state->cfg.pages_per_buffer *
+				 PAGE_SIZE)) {
+			err = -EIO;
+			goto err;
+		}
+
+		ctb_offset = *ppos % ctb_size;
+		ctb_bytes_left = ctb_size - ctb_offset;
+		bytes_to_copy = min(ctb_bytes_left, size - bytes_copied);
+
+		err = -EFAULT;
+		if (copy_to_user(&buf[bytes_copied],
+				 (const void *)hdr + ctb_offset,
+				 bytes_to_copy))
+			goto err;
+
+		ctb_bytes_left -= bytes_to_copy;
+		bytes_copied += bytes_to_copy;
+		*ppos += bytes_to_copy;
+
+		if (!ctb_bytes_left) {
+			(void)mshv_trace_buffer_release(mshv_trace_state,
+							hdr->buffer_index);
+			trace->ctb = NULL;
+		}
+	}
+
+	return bytes_copied;
+
+err:
+	if (err == -EINTR) {
+		if (bytes_copied)
+			return bytes_copied;
+	}
+	return err;
 }
 
 static int hv_call_initialize_event_log_buffer_group(enum hv_eventlog_type type,
@@ -578,6 +709,8 @@ static int mshv_trace_attach_state_ioctl(struct mshv_trace *trace,
 
 	state->trace = trace;
 
+	trace->reader = current;
+
 	return 0;
 }
 
@@ -646,6 +779,7 @@ static int mshv_trace_release(struct inode *inode, struct file *filp)
 
 static const struct file_operations mshv_trace_fops = {
 	.owner = THIS_MODULE,
+	.read = mshv_trace_read,
 	.unlocked_ioctl = mshv_trace_ioctl,
 	.release = mshv_trace_release,
 };

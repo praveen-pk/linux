@@ -101,6 +101,14 @@ union hv_input_delete_eventlog_buffer {
 		__u32 buffer_index;
 	} __packed;
 };
+
+union hv_input_eventlog_release_buffer {
+	__u64 as_uint64;
+	struct {
+		__u32 type; /* enum hv_eventlog_type */
+		__u32 buffer_index;
+	} __packed;
+};
 #endif
 
 struct hv_eventlog_entry_header { /* HV_EVENTLOG_ENTRY_HEADER */
