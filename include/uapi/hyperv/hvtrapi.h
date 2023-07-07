@@ -37,35 +37,6 @@ enum hv_eventlog_buffer_state { /* HV_EVENTLOG_BUFFER_STATE */
 	HV_EVENT_LOG_BUFFER_STATE_READY = 4,
 };
 
-struct hv_eventlog_buffer_header { /* HV_EVENTLOG_BUFFER_HEADER */
-	u32 buffer_size;
-	u32 buffer_index;
-	u32 events_lost;
-	u32 reference_count;
-	union {
-		u64 time_stamp;
-		hv_nano100_time_t reference_time;
-	};
-	u64 reserved1;
-	u64 reserved2;
-	struct {
-		u16 logical_processor;
-		u16 logger_id;
-	} __packed;
-	u32 buffer_state; /* HV_EVENTLOG_BUFFER_STATE */
-	u32 next_buffer_offset;
-	union {
-		u32 type; /* HV_EVENTLOG_TYPE */
-		struct {
-			u16 buffer_flag;
-			u16 buffer_type;
-		} __packed;
-	};
-	u32 next_buffer_index;
-	u32 lp_sequence_number;
-	u32 reserved4[2];
-} __packed;
-
 struct hv_input_initialize_eventlog_buffer_group {
 	struct hv_eventlog_init_type {
 		__u16 type; /* enum hv_eventlog_type */
@@ -212,5 +183,34 @@ enum hv_eventlog_entry_time_basis {
 				 HV_TR_GROUP_TI | HV_TR_GROUP_KE | \
 				 HV_TR_GROUP_MM | HV_TR_GROUP_PROFILER | \
 				 HV_TR_GROUP_USCH | HV_TR_GROUP_GENERIC)
+
+struct hv_eventlog_buffer_header {
+	__u32 buffer_size;
+	__u32 buffer_index;
+	__u32 events_lost;
+	__u32 reference_count;
+	union {
+		__u64 time_stamp;
+		hv_nano100_time_t reference_time;
+	};
+	__u64 reserved1;
+	__u64 reserved2;
+	struct {
+		__u16 logical_processor;
+		__u16 logger_id;
+	} __packed;
+	__u32 buffer_state; /* enum hv_eventlog_buffer_state */
+	__u32 next_buffer_offset;
+	union {
+		__u32 type; /* enum hv_eventlog_type */
+		struct {
+			__u16 buffer_flag;
+			__u16 buffer_type;
+		} __packed;
+	};
+	__u32 next_buffer_index;
+	__u32 lp_sequence_number;
+	__u32 reserved4[2];
+} __packed;
 
 #endif
