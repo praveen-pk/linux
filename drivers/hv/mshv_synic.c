@@ -398,6 +398,16 @@ unlock_out:
 	return handled;
 }
 
+static bool mshv_eventlog_buffer_completion_isr(struct hv_message *msg)
+{
+	if (msg->header.message_type != HVMSG_EVENTLOG_BUFFERCOMPLETE)
+		return false;
+
+	mshv_trace_buffer_complete((void *)msg->u.payload);
+
+	return true;
+}
+
 void mshv_isr(void)
 {
 	struct hv_synic_pages *spages = this_cpu_ptr(mshv_root.synic_pages);
@@ -423,6 +433,9 @@ void mshv_isr(void)
 
 	if (!handled)
 		handled = mshv_scheduler_isr(msg);
+
+	if (!handled)
+		handled = mshv_eventlog_buffer_completion_isr(msg);
 
 	if (!handled)
 		handled = mshv_async_call_completion_isr(msg);

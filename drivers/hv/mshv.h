@@ -188,4 +188,10 @@ int mshv_setup_vtl_func(const mshv_create_func_t create_vtl,
 			const mshv_check_ext_func_t check_ext);
 int mshv_set_create_partition_func(const mshv_create_func_t func);
 
+#if IS_ENABLED(CONFIG_MSHV_DIAG)
+void mshv_trace_buffer_complete(const struct hv_eventlog_message_payload *msg);
+#else
+static inline void mshv_trace_buffer_complete(const struct hv_eventlog_message_payload *msg) {}
+#endif /* CONFIG_MSHV_DIAG */
+
 #endif /* _MSHV_H */

@@ -20,6 +20,7 @@
 #include "mshv_diag.h"
 
 struct mshv_trace_buffer {
+	struct list_head list;
 	const struct hv_eventlog_buffer_header *hdr;
 };
 
@@ -31,10 +32,59 @@ struct mshv_trace_state {
 };
 
 struct mshv_trace {
+	spinlock_t ctb_list_lock;
+	struct list_head ctb_list;
+	wait_queue_head_t events_queue;
 };
 
 static DEFINE_MUTEX(mshv_trace_state_lock);
 static struct mshv_trace_state *mshv_trace_state;
+
+/*
+ * The hypervisor has the ability to signal the completion of multiple event
+ * buffers with a single Synthetic Interrupt (SINT) message. When this occurs,
+ * the completed buffers are linked in the correct order, with the
+ * 'next_buffer_index' variable in the current event buffer header pointing to
+ * the subsequent buffer. If 'next_buffer_index' equals -1, it signifies that
+ * this buffer is the last one completed in the chain.
+ */
+static struct mshv_trace_buffer *mshv_trace_next_buffer(u32 next_buffer_index)
+{
+	if (next_buffer_index == HV_EVENTLOG_BUFFER_INDEX_NONE)
+		return NULL;
+	return &mshv_trace_state->tbs[next_buffer_index];
+}
+
+void mshv_trace_buffer_complete(const struct hv_eventlog_message_payload *msg)
+{
+	struct mshv_trace_state *state = mshv_trace_state;
+	struct mshv_trace *trace;
+	struct mshv_trace_buffer *tb;
+
+	if (!state ||
+	    !state->tbs ||
+	    state->cfg.max_buffers_count <= msg->buffer_index ||
+	    state->type != msg->type)
+		return;
+
+	tb = &state->tbs[msg->buffer_index];
+
+	if (!list_empty(&tb->list) ||
+	    !state->trace)
+		return;
+
+	trace = state->trace;
+
+	spin_lock(&trace->ctb_list_lock);
+	while (tb) {
+		list_add_tail(&tb->list, &trace->ctb_list);
+		tb = mshv_trace_next_buffer(tb->hdr->next_buffer_index);
+	};
+	spin_unlock(&trace->ctb_list_lock);
+
+	wake_up(&trace->events_queue);
+}
+EXPORT_SYMBOL_GPL(mshv_trace_buffer_complete);
 
 static int hv_call_unmap_event_log_buffer(enum hv_eventlog_type type,
 					  u32 index)
@@ -266,6 +316,7 @@ static int mshv_trace_buffers_create(struct mshv_trace_state *state)
 		err = mshv_trace_buffer_create(state, i);
 		if (err)
 			goto free_buffers;
+		INIT_LIST_HEAD(&tbs[i].list);
 	}
 
 	state->tbs = tbs;
@@ -606,6 +657,10 @@ static struct mshv_trace *mshv_trace_create(void)
 	trace = kzalloc(sizeof(struct mshv_trace), GFP_KERNEL);
 	if (!trace)
 		return ERR_PTR(-ENOMEM);
+
+	spin_lock_init(&trace->ctb_list_lock);
+	INIT_LIST_HEAD(&trace->ctb_list);
+	init_waitqueue_head(&trace->events_queue);
 
 	return trace;
 }
