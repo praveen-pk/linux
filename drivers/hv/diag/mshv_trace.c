@@ -11,6 +11,8 @@
 #include <linux/fs.h>
 #include <linux/slab.h>
 #include <linux/anon_inodes.h>
+#include <linux/mm.h>
+#include <linux/vmalloc.h>
 #include <linux/mshv.h>
 #include <hyperv/hvtrapi.h>
 #include <asm/mshyperv.h>
@@ -18,6 +20,7 @@
 #include "mshv_diag.h"
 
 struct mshv_trace_buffer {
+	const struct hv_eventlog_buffer_header *hdr;
 };
 
 struct mshv_trace_state {
@@ -32,6 +35,50 @@ struct mshv_trace {
 
 static DEFINE_MUTEX(mshv_trace_state_lock);
 static struct mshv_trace_state *mshv_trace_state;
+
+static int hv_call_unmap_event_log_buffer(enum hv_eventlog_type type,
+					  u32 index)
+{
+	union hv_input_unmap_eventlog_buffer input;
+	u64 status;
+
+	input.type = type;
+	input.buffer_index = index;
+
+	status = hv_do_fast_hypercall8(HVCALL_UNMAP_EVENT_LOG_BUFFER,
+			input.as_uint64);
+
+	if (!hv_result_success(status))
+		pr_err("%s: hypercall: HVCALL_UNMAP_EVENT_LOG_BUFFER, status %s\n",
+		       __func__, hv_status_to_string(status));
+
+	return hv_status_to_errno(status);
+}
+
+static int hv_call_map_event_log_buffer(enum hv_eventlog_type type, u32 index,
+					struct hv_output_map_eventlog_buffer *output)
+{
+	struct hv_input_map_eventlog_buffer *input;
+	unsigned long flags;
+	u64 status;
+
+	local_irq_save(flags);
+
+	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
+
+	input->type = type;
+	input->buffer_index = index;
+
+	status = hv_do_hypercall(HVCALL_MAP_EVENT_LOG_BUFFER, input, output);
+
+	local_irq_restore(flags);
+
+	if (!hv_result_success(status))
+		pr_err("%s: hypercall: HVCALL_MAP_EVENT_LOG_BUFFER, status %s\n",
+		       __func__, hv_status_to_string(status));
+
+	return hv_status_to_errno(status);
+}
 
 static int hv_call_initialize_event_log_buffer_group(enum hv_eventlog_type type,
 			     enum hv_eventlog_mode mode,
@@ -248,6 +295,101 @@ static int mshv_trace_buffers_group_fini(struct mshv_trace_state *state)
 	return 0;
 }
 
+static int mshv_trace_buffer_unmap(struct mshv_trace_state *state,
+				   u32 buffer_index)
+{
+	int err;
+
+	err = hv_call_unmap_event_log_buffer(state->type, buffer_index);
+	if (err) {
+		pr_err("%s: failed to unmap trace buffer %u: %d\n",
+		       __func__, buffer_index, err);
+		return err;
+	}
+
+	vunmap(state->tbs[buffer_index].hdr);
+	state->tbs[buffer_index].hdr = NULL;
+
+	return 0;
+}
+
+static int mshv_trace_buffers_unmap(struct mshv_trace_state *state)
+{
+	int i, err;
+
+	for (i = 0; i < state->cfg.max_buffers_count; i++) {
+		err = mshv_trace_buffer_unmap(state, i);
+		if (err)
+			return err;
+	}
+
+	return 0;
+}
+
+static int mshv_trace_buffer_map(struct mshv_trace_state *state,
+				 u32 buffer_index,
+				 u64 *pfns, struct page **pages)
+{
+	const void *ptr;
+	int i, err;
+
+	err = hv_call_map_event_log_buffer(state->type, buffer_index,
+					   (void *)pfns);
+	if (err) {
+		pr_err("%s: failed to map trace buffer %u: %d\n",
+		       __func__, i, err);
+		return err;
+	}
+
+	for (i = 0; i < state->cfg.pages_per_buffer; i++)
+		pages[i] = pfn_to_page(pfns[i]);
+
+	ptr = vmap(pages, state->cfg.pages_per_buffer, VM_MAP, PAGE_KERNEL_RO);
+	if (!ptr) {
+		pr_err("%s: failed to vmap pages for trace buffer %u\n",
+		       __func__, buffer_index);
+		goto unmap_buffer;
+	}
+
+	state->tbs[buffer_index].hdr = ptr;
+
+	return 0;
+
+unmap_buffer:
+	hv_call_unmap_event_log_buffer(state->type, i);
+	return err;
+}
+
+static int mshv_trace_buffers_map(struct mshv_trace_state *state)
+{
+	struct page *page, **pages;
+	u64 *pfns;
+	int i, err;
+
+	page = alloc_pages(GFP_KERNEL, 1);
+	if (!page)
+		return -ENOMEM;
+
+	pfns = page_address(page);
+	pages = page_address(page) + PAGE_SIZE;
+
+	for (i = 0; i < state->cfg.max_buffers_count; i++) {
+		err = mshv_trace_buffer_map(state, i, pfns, pages);
+		if (err)
+			goto unmap_buffers;
+	}
+
+	__free_pages(page, 1);
+
+	return 0;
+
+unmap_buffers:
+	for (i -= 1; i >= 0; i--)
+		(void)mshv_trace_buffer_unmap(state, i);
+	__free_pages(page, 1);
+	return err;
+}
+
 static int mshv_trace_state_create(struct mshv_trace_state **statep,
 				   const struct mshv_trace_config *cfg)
 {
@@ -269,10 +411,19 @@ static int mshv_trace_state_create(struct mshv_trace_state **statep,
 		goto finalize_state;
 	}
 
+	err = mshv_trace_buffers_map(state);
+	if (err) {
+		pr_err("%s: failed to map trace buffers: %d\n",
+		       __func__, err);
+		goto delete_tbs;
+	}
+
 	*statep = state;
 
 	return 0;
 
+delete_tbs:
+	(void)mshv_trace_buffers_delete(state);
 finalize_state:
 	(void)mshv_trace_buffers_group_fini(state);
 	return err;
@@ -282,7 +433,9 @@ static int mshv_trace_state_destroy(struct mshv_trace_state **statep)
 {
 	int err;
 
-	err = mshv_trace_buffers_delete(*statep);
+	err = mshv_trace_buffers_unmap(*statep);
+	if (!err)
+		err = mshv_trace_buffers_delete(*statep);
 	if (!err)
 		err = mshv_trace_buffers_group_fini(*statep);
 	if (err)
