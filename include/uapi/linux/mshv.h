@@ -314,6 +314,8 @@ struct mshv_issue_psp_guest_request {
 #define MSHV_TRACE_STATE_INFO		_IOR(MSHV_TRACE_IOCTL, 0x1, \
 					     struct mshv_trace_config)
 #define MSHV_TRACE_STATE_DESTROY	_IO(MSHV_TRACE_IOCTL, 0x2)
+#define MSHV_TRACE_STATE_ATTACH		_IO(MSHV_TRACE_IOCTL, 0x3)
+#define MSHV_TRACE_STATE_DETACH		_IO(MSHV_TRACE_IOCTL, 0x4)
 
 /* register page mapping example:
  * struct hv_vp_register_page *regs = mmap(NULL,
