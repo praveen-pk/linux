@@ -38,6 +38,8 @@ struct mshv_trace {
 
 	const struct task_struct *reader;
 	const struct mshv_trace_buffer *ctb;
+
+	bool enabled;
 };
 
 static DEFINE_MUTEX(mshv_trace_state_lock);
@@ -170,7 +172,17 @@ static const struct mshv_trace_buffer *mshv_trace_wait_for_ctb(struct mshv_trace
 	unsigned long flags;
 
 	if (wait_event_interruptible(trace->events_queue,
-				     !list_empty(&trace->ctb_list)))
+				     !list_empty(&trace->ctb_list) ||
+				     !trace->enabled))
+		return ERR_PTR(-EINTR);
+
+	/*
+	 * If the buffer list is empty, it indicates that the trace has been
+	 * disabled and all flushed buffers have already been processed. In
+	 * this case, we return -EINTR. This results in a return value of 0
+	 * from the read function, corresponding to the disabled trace state.
+	 */
+	if (list_empty(&trace->ctb_list))
 		return ERR_PTR(-EINTR);
 
 	spin_lock_irqsave(&trace->ctb_list_lock, flags);
@@ -257,6 +269,8 @@ err:
 	if (err == -EINTR) {
 		if (bytes_copied)
 			return bytes_copied;
+		if (!trace->enabled)
+			return 0;
 	}
 	return err;
 }
@@ -723,7 +737,180 @@ static int mshv_trace_detach_state_ioctl(const struct mshv_trace *trace,
 	if (state->trace != trace)
 		return -EPERM;
 
+	if (trace->enabled)
+		return -EBUSY;
+
 	state->trace = NULL;
+
+	return 0;
+}
+
+static int hv_call_set_event_group_sources(enum hv_eventlog_type type,
+		   u32 group_count,
+		   u64 configuration_flags,
+		   const struct hv_eventlog_eventgroup_configuration *groups)
+{
+	struct hv_input_eventlog_set_events *input;
+	unsigned long flags;
+	u64 status;
+
+	local_irq_save(flags);
+
+	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
+	memset(input, 0, sizeof(*input));
+
+	input->type = type;
+	input->group_count = group_count;
+	input->configuration_flags = configuration_flags;
+	if (group_count)
+		memcpy(input->groups, groups, sizeof(input->groups));
+
+	status = hv_do_hypercall(HVCALL_SET_EVENT_LOG_GROUP_SOURCES,
+				 input, NULL);
+
+	local_irq_restore(flags);
+
+	if (!hv_result_success(status))
+		pr_err("%s: hypercall failed: %s\n",
+		       __func__, hv_status_to_string(status));
+
+	return hv_status_to_errno(status);
+}
+
+static int mshv_trace_state_set_sources(const struct mshv_trace_state *state,
+					u64 flags)
+{
+	union hv_eventlog_extended_trace_flags extended_flags = {
+		.legacy.flags = flags
+	};
+
+	/* Make sure flags are HvEventLogExtendedModeLegacy compatible */
+	if (extended_flags.common.extended)
+		return -EINVAL;
+
+	return hv_call_set_event_group_sources(state->type, 0,
+					       extended_flags.as_uint64, NULL);
+}
+
+static int hv_call_flush_event_log_buffer(enum hv_eventlog_type type,
+					  u32 buffer_index)
+{
+	union hv_input_flush_eventlog_buffer input;
+	u64 status;
+
+	input.type = type;
+	input.buffer_index = buffer_index;
+
+	status = hv_do_fast_hypercall8(HVCALL_FLUSH_EVENT_LOG_BUFFER,
+				       input.as_uint64);
+
+	if (!hv_result_success(status))
+		pr_err("%s: hypercall failed: %s\n",
+		       __func__, hv_status_to_string(status));
+
+	return hv_status_to_errno(status);
+}
+
+static int mshv_trace_state_buffer_flush(const struct mshv_trace_state *state,
+					 u32 buffer_index)
+{
+	int err;
+
+	err = hv_call_flush_event_log_buffer(state->type, buffer_index);
+	if (err)
+		pr_err("%s: failed to flush trace buffer %u: %d\n",
+		       __func__, buffer_index, err);
+	return err;
+}
+
+static bool hv_eventlog_buffer_in_use(const struct hv_eventlog_buffer_header *hdr)
+{
+	return hdr->buffer_state == HV_EVENT_LOG_BUFFER_STATE_IN_USE;
+}
+
+static bool hv_eventlog_buffer_completed(const struct hv_eventlog_buffer_header *hdr)
+{
+	return hdr->buffer_state == HV_EVENT_LOG_BUFFER_STATE_COMPLETE;
+}
+
+static bool mshv_trace_buffers_in_use(const struct mshv_trace_state *state)
+{
+	const struct mshv_trace_buffer *tb = state->tbs;
+	int i;
+
+	for (i = 0; i < state->cfg.max_buffers_count; i++, tb++) {
+		if (hv_eventlog_buffer_in_use(tb->hdr))
+			return true;
+	}
+	return false;
+}
+
+static int mshv_trace_flush_buffers(struct mshv_trace *trace,
+				    const struct mshv_trace_state *state)
+{
+	const struct mshv_trace_buffer *tb = state->tbs;
+	int i;
+
+	for (i = 0; i < state->cfg.max_buffers_count; i++, tb++) {
+		if (hv_eventlog_buffer_in_use(tb->hdr))
+			(void)mshv_trace_state_buffer_flush(state, i);
+	}
+
+	if (!wait_event_timeout(trace->events_queue,
+				!mshv_trace_buffers_in_use(state), HZ)) {
+		pr_err("%s: timed out to wait for buffers to get unused\n",
+		       __func__);
+		return -ETIME;
+	}
+
+	return 0;
+}
+
+static int mshv_trace_state_release_buffers(const struct mshv_trace_state *state)
+{
+	const struct mshv_trace_buffer *tb = state->tbs;
+	int i;
+
+	for (i = 0; i < state->cfg.max_buffers_count; i++, tb++) {
+		if (hv_eventlog_buffer_completed(tb->hdr))
+			(void)mshv_trace_buffer_release(state, i);
+	}
+
+	return 0;
+}
+
+static int mshv_trace_trace_stop(struct mshv_trace *trace,
+				 const struct mshv_trace_state *state)
+{
+	int err;
+
+	err = mshv_trace_state_set_sources(state, 0);
+	if (!err)
+		err = mshv_trace_flush_buffers(trace, state);
+	if (!err)
+		err = mshv_trace_state_release_buffers(state);
+
+	return err;
+}
+
+static int mshv_trace_stop_ioctl(struct mshv_trace *trace,
+				 const struct mshv_trace_state *state)
+{
+	int err;
+
+	if (!state)
+		return -ENOENT;
+
+	if (state->trace != trace)
+		return -EPERM;
+
+	err = mshv_trace_trace_stop(trace, state);
+	if (err)
+		return err;
+
+	trace->enabled = false;
+	wmb();
+	wake_up(&trace->events_queue);
 
 	return 0;
 }
@@ -752,6 +939,9 @@ static long mshv_trace_ioctl(struct file *filp, unsigned int ioctl,
 	case MSHV_TRACE_STATE_DESTROY:
 		ret = mshv_trace_destroy_state_ioctl(&mshv_trace_state);
 		break;
+	case MSHV_TRACE_STOP:
+		ret = mshv_trace_stop_ioctl(trace, mshv_trace_state);
+		break;
 	case MSHV_TRACE_STATE_ATTACH:
 		ret = mshv_trace_attach_state_ioctl(trace, mshv_trace_state);
 		break;
@@ -769,8 +959,10 @@ static int mshv_trace_release(struct inode *inode, struct file *filp)
 {
 	struct mshv_trace *trace = filp->private_data;
 
-	if (mshv_trace_state && mshv_trace_state->trace == trace)
+	if (mshv_trace_state && mshv_trace_state->trace == trace) {
+		(void)mshv_trace_trace_stop(trace, mshv_trace_state);
 		mshv_trace_state->trace = NULL;
+	}
 
 	kfree(trace);
 

@@ -109,6 +109,50 @@ union hv_input_eventlog_release_buffer {
 		__u32 buffer_index;
 	} __packed;
 };
+
+union hv_eventlog_extended_trace_flags {
+	__u64 as_uint64;
+	struct {
+		__u64 reserved1:8;
+		__u64 id:8;
+		__u64 reserved2:48;
+	} __packed scenario;
+	struct {
+		__u64 reserved1:8;
+		__u64 operation:8;
+		__u64 reserved2:48;
+	} __packed granular;
+	struct {
+		__u64 flags;
+	} __packed legacy;
+	struct {
+		__u64 extended: 1;
+		__u64 mode: 7;
+		__u64 reserved1:56;
+	} __packed common;
+};
+
+struct hv_eventlog_eventgroup_configuration {
+	__u32 group_id;
+	__u8 pad[2];
+	__u16 event_count;
+	__u8 event_id[256];
+} __packed;
+
+struct hv_input_eventlog_set_events {
+	__u32 type; /* enum hv_eventlog_type */
+	__u32 group_count;
+	__u64 configuration_flags;
+	struct hv_eventlog_eventgroup_configuration groups[2];
+} __packed;
+
+union hv_input_flush_eventlog_buffer {
+	__u64 as_uint64;
+	struct {
+		__u32 type; /* enum hv_eventlog_type */
+		__u32 buffer_index;
+	} __packed;
+};
 #endif
 
 struct hv_eventlog_entry_header { /* HV_EVENTLOG_ENTRY_HEADER */
