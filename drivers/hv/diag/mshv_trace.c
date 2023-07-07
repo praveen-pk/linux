@@ -915,6 +915,30 @@ static int mshv_trace_stop_ioctl(struct mshv_trace *trace,
 	return 0;
 }
 
+static int mshv_trace_start_ioctl(struct mshv_trace *trace,
+				  const struct mshv_trace_state *state,
+				  u64 flags)
+{
+	int err;
+
+	if (!state)
+		return -ENOENT;
+
+	if (state->trace != trace)
+		return -EPERM;
+
+	if (!(flags & HV_TR_ALL_GROUPS))
+		return -EINVAL;
+
+	err = mshv_trace_state_set_sources(state, flags);
+	if (err)
+		return err;
+
+	trace->enabled = true;
+
+	return 0;
+}
+
 static long mshv_trace_ioctl(struct file *filp, unsigned int ioctl,
 			     unsigned long arg)
 {
@@ -938,6 +962,9 @@ static long mshv_trace_ioctl(struct file *filp, unsigned int ioctl,
 		break;
 	case MSHV_TRACE_STATE_DESTROY:
 		ret = mshv_trace_destroy_state_ioctl(&mshv_trace_state);
+		break;
+	case MSHV_TRACE_START:
+		ret = mshv_trace_start_ioctl(trace, mshv_trace_state, arg);
 		break;
 	case MSHV_TRACE_STOP:
 		ret = mshv_trace_stop_ioctl(trace, mshv_trace_state);
