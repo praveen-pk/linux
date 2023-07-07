@@ -180,6 +180,15 @@ struct mshv_vp_run_registers {
 	struct mshv_vp_registers registers;
 };
 
+struct mshv_trace_config {
+	__u32 mode; /* enum hv_eventlog_mode */
+	__u32 max_buffers_count;
+	__u32 pages_per_buffer;
+	__u32 buffers_threshold;
+	__u32 time_basis; /* enum hv_eventlog_entry_time_basis */
+	__u64 system_time;
+};
+
 struct mshv_modify_gpa_host_access {
 	__u32 host_access;
 	__u32 flags;
@@ -297,6 +306,14 @@ struct mshv_issue_psp_guest_request {
 		_IO(MSHV_DIAG_IOCTL, HV_EVENT_LOG_TYPE_LOCAL_DIAGNOSTICS)
 #define MSHV_GET_DIAGLOG_FD                             \
 		_IO(MSHV_DIAG_IOCTL, HV_EVENT_LOG_TYPE_SYSTEM_DIAGNOSTICS)
+
+/* ioctls for fds returned by MSHV_GET_TRACE_FD */
+#define MSHV_TRACE_IOCTL		0xBA
+#define MSHV_TRACE_STATE_CREATE		_IOW(MSHV_TRACE_IOCTL, 0x0, \
+					     struct mshv_trace_config)
+#define MSHV_TRACE_STATE_INFO		_IOR(MSHV_TRACE_IOCTL, 0x1, \
+					     struct mshv_trace_config)
+#define MSHV_TRACE_STATE_DESTROY	_IO(MSHV_TRACE_IOCTL, 0x2)
 
 /* register page mapping example:
  * struct hv_vp_register_page *regs = mmap(NULL,

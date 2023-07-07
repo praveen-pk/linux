@@ -65,6 +65,25 @@ struct hv_eventlog_buffer_header { /* HV_EVENTLOG_BUFFER_HEADER */
 	u32 lp_sequence_number;
 	u32 reserved4[2];
 } __packed;
+
+struct hv_input_initialize_eventlog_buffer_group {
+	struct hv_eventlog_init_type {
+		__u16 type; /* enum hv_eventlog_type */
+		__u16 mode; /* enum hv_eventlog_mode */
+	} __packed init;
+	__u32 maximum_buffer_count;
+	__u32 buffer_size_in_bytes;
+	__u32 threshold;
+	__u32 time_basis; /* enum hv_eventlog_entry_time_basis */
+	hv_nano100_time_t system_time;
+} __packed;
+
+union hv_input_finalize_eventlog_buffer_group {
+	__u64 as_uint64;
+	struct {
+		__u32 type; /* enum hv_eventlog_type */
+	} __packed;
+};
 #endif
 
 struct hv_eventlog_entry_header { /* HV_EVENTLOG_ENTRY_HEADER */
@@ -76,5 +95,18 @@ struct hv_eventlog_entry_header { /* HV_EVENTLOG_ENTRY_HEADER */
 		hv_nano100_time_t reference_time; /* HV_NANO100_TIME */
 	};
 } __attribute__((packed, aligned(sizeof(__u64))));
+
+enum hv_eventlog_mode {
+	HV_EVENT_LOG_MODE_REGULAR  = 0,
+	HV_EVENT_LOG_MODE_CIRCULAR = 1,
+	HV_EVENT_LOG_MODE_MAX      = 2
+};
+
+enum hv_eventlog_entry_time_basis {
+	HV_EVENT_LOG_ENTRY_TIME_REFERENCE = 0,
+	HV_EVENT_LOG_ENTRY_TIME_TSC       = 1,
+	HV_EVENT_LOG_ENTRY_TIME_QPC       = 2,
+	HV_EVENT_LOG_ENTRY_TIME_MAX       = 3
+};
 
 #endif
