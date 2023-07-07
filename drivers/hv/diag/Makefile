@@ -5,5 +5,6 @@ obj-$(CONFIG_MSHV_DIAG)	+= mshv_diag.o
 
 CFLAGS_mshv_diag_main.o	= -DHV_HYPERV_DEFS
 CFLAGS_mshv_diaglog.o	= -DHV_HYPERV_DEFS
+CFLAGS_mshv_trace.o	= -DHV_HYPERV_DEFS
 
-mshv_diag-y     := mshv_diag_main.o mshv_diaglog.o
+mshv_diag-y     := mshv_diag_main.o mshv_diaglog.o mshv_trace.o

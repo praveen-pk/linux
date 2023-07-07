@@ -11,4 +11,6 @@ extern int mshv_diaglog_init(void);
 extern int mshv_diaglog_exit(void);
 extern int mshv_diaglog_get_fd(void);
 
+extern int mshv_trace_get_fd(void);
+
 #endif /*  _MSHV_DIAG_H */

@@ -293,6 +293,8 @@ struct mshv_issue_psp_guest_request {
 
 /* Ioctls for mshv_diag device */
 #define MSHV_DIAG_IOCTL 0xB9
+#define MSHV_GET_TRACE_FD				\
+		_IO(MSHV_DIAG_IOCTL, HV_EVENT_LOG_TYPE_LOCAL_DIAGNOSTICS)
 #define MSHV_GET_DIAGLOG_FD                             \
 		_IO(MSHV_DIAG_IOCTL, HV_EVENT_LOG_TYPE_SYSTEM_DIAGNOSTICS)
 
