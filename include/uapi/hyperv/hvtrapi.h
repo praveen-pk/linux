@@ -13,7 +13,7 @@
 #define HV_MAX_PAGES_IN_DIAG 512  /* Non-HyperV code */
 
 struct hv_input_map_eventlog_buffer { /* HV_INPUT_MAP_EVENTLOG_BUFFER */
-	u32 event_log_type; /* HV_EVENTLOG_TYPE */
+	u32 type; /* HV_EVENTLOG_TYPE */
 	u32 buffer_index;
 } __packed;
 
@@ -21,10 +21,13 @@ struct hv_output_map_eventlog_buffer { /* HV_OUTPUT_MAP_EVENTLOG_BUFFER */
 	u64 gpa_numbers[HV_MAX_PAGES_IN_DIAG];
 } __packed;
 
-struct hv_input_unmap_eventlog_buffer { /* HV_INPUT_UNMAP_EVENTLOG_BUFFER */
-	u32 event_log_type; /* HV_EVENTLOG_TYPE */
-	u32 buffer_index;
-} __packed;
+union hv_input_unmap_eventlog_buffer { /* HV_INPUT_UNMAP_EVENTLOG_BUFFER */
+	u64 as_uint64;
+	struct {
+		u32 type; /* HV_EVENTLOG_TYPE */
+		u32 buffer_index;
+	} __packed;
+};
 
 enum hv_eventlog_buffer_state { /* HV_EVENTLOG_BUFFER_STATE */
 	HV_EVENT_LOG_BUFFER_STATE_STANDBY = 0,
