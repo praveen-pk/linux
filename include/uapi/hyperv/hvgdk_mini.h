@@ -632,7 +632,9 @@ union hv_register_vsm_partition_config {
 		__u64 intercept_cpuid_unimplemented : 1;
 		__u64 intercept_unrecoverable_exception : 1;
 		__u64 intercept_page : 1;
-		__u64 mbz : 51;
+		__u64 intercept_restore_partition_time: 1;
+		__u64 intercept_not_present: 1;
+		__u64 mbz : 49;
 	};
 };
 
