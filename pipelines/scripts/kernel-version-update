@@ -3,7 +3,6 @@
 import os
 import sys
 import subprocess
-import re
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))  # noqa E402
 
 from lsgtools import cli
@@ -64,4 +63,3 @@ log.info(res.stdout.decode("utf-8"))
 if 0 != res.returncode:
     log.fatal(res.stderr.decode("utf-8"))
     exit(1)
-
