@@ -33,7 +33,7 @@ jobs:
   - bash: |
       set -e
       set -x
-      ./pipelines/scripts/kernel-version-update -vv --in-pipeline --target-branch=$(TARGET_BRANCH) --new-version=${{ parameters.VERSION_NEW }}
+      ./pipelines/scripts/kernel-version-update -vv --target-branch=$(TARGET_BRANCH) --new-version=${{ parameters.VERSION_NEW }}
     displayName: 'Update kernel version'
 
   - bash: |
