@@ -26,6 +26,9 @@ static long mshv_diag_ioctl(struct file *filp, unsigned int ioctl,
 	int rc;
 
 	switch (ioctl) {
+	case MSHV_GET_TRACE_FD:
+		rc = mshv_trace_get_fd();
+		break;
 	case MSHV_GET_DIAGLOG_FD:
 		rc = mshv_diaglog_get_fd();
 		break;

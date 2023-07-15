@@ -247,14 +247,13 @@ static int unmap_diaglog_pages(int numbufs)
 	int i, ret = 0;
 	unsigned long flags;
 	u64 status;
-	struct hv_input_unmap_eventlog_buffer *input_page;
+	union hv_input_unmap_eventlog_buffer *input_page;
 
 	for (i = 0; i < numbufs; i++) {
 		local_irq_save(flags);
 
 		input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
-		input_page->event_log_type =
-					HV_EVENT_LOG_TYPE_SYSTEM_DIAGNOSTICS;
+		input_page->type = HV_EVENT_LOG_TYPE_SYSTEM_DIAGNOSTICS;
 		input_page->buffer_index = i;
 		status = hv_do_hypercall(HVCALL_UNMAP_EVENT_LOG_BUFFER,
 					 input_page, NULL);
@@ -329,8 +328,7 @@ int __init mshv_diaglog_init(void)
 		local_irq_save(flags);
 
 		input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
-		input_page->event_log_type =
-					HV_EVENT_LOG_TYPE_SYSTEM_DIAGNOSTICS;
+		input_page->type = HV_EVENT_LOG_TYPE_SYSTEM_DIAGNOSTICS;
 		input_page->buffer_index = i;
 		output_page = *this_cpu_ptr(hyperv_pcpu_output_arg);
 

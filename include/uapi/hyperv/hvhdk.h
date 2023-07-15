@@ -1901,6 +1901,13 @@ struct hv_vp_signal_bitset_scheduler_message {
 #undef BITSET_BUFFER_SIZE
 } __packed;
 
+#define HV_EVENTLOG_BUFFER_INDEX_NONE			0xffffffff
+
+struct hv_eventlog_message_payload {
+	__u32 type;
+	__u32 buffer_index;
+} __packed;
+
 #if defined(__KERNEL__)
 static_assert(sizeof(struct hv_vp_signal_bitset_scheduler_message) <=
 	(sizeof(struct hv_message) - sizeof(struct hv_message_header)));
