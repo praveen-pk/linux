@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 from lsgtools import cli
 from lsgtools import log
 from lsgtools import git
+from lsgtools.virt.mshv import kernel
 
 arg_parser = cli.create_arg_parser(prog="kernel-upstream-pull",
                                    description="Pull latest LSG-linux-rolling tag and create a feature branch")
@@ -153,30 +154,8 @@ if 0 != res.returncode:
         log.fatal(res.stderr.decode("utf-8"))
         exit(1)
 
-# TODO This piece can be shared later
 # Update Makefile and defconfigs
-with open("Makefile", "r") as f:
-    mfc = f.read()
-f.close()
-with open("Makefile", "w") as f:
-    mfc = re.sub(r"EXTRAVERSION =\..*\d+\n", "EXTRAVERSION =.{}\\n".format(version_mshv.split(".")[3]), mfc)
-    f.write(mfc)
-f.close()
-
-arch_map = {
-        "x86": "x86_64",
-        "arm64": "arm64"
-        }
-for k in arch_map:
-    for fn in ["mshv_defconfig", "uvm_defconfig"]:
-        cfg = "arch/{}/configs/{}".format(k, fn)
-        with open(cfg, "r") as f:
-            c = f.read()
-        f.close()
-        with open(cfg, "w") as f:
-            c = re.sub("Linux/.*Kernel Configuration", "Linux/{} {} Kernel Configuration".format(arch_map[k], version_mshv), c)
-            f.write(c)
-        f.close()
+kernel.update_kernel_version(".", version_mshv)
 
 cmd = ["git", "commit", "-a", "-m", "'makefile: config: Set MSHV version'"]
 log.info("{}".format(" ".join(cmd)))

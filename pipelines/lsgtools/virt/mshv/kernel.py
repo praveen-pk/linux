@@ -4,6 +4,7 @@ import subprocess
 import json
 import tarfile
 import hashlib
+import os
 
 from lsgtools import log
 
@@ -93,3 +94,25 @@ def update_spec(kernel_spec_path, version, rev_hash):
     with open(kernel_spec_path, "w") as f:
         f.write(kernel_spec)
     f.close()
+
+
+def update_kernel_version(src_tree, ver):
+    mf = os.path.join(src_tree, "Makefile")
+    with open(mf, "r") as f:
+        mfc = f.read()
+    with open(mf, "w") as f:
+        mfc = re.sub(r"EXTRAVERSION =\..*\d+\n", "EXTRAVERSION =.{}\\n".format(ver.split(".")[3]), mfc)
+        f.write(mfc)
+
+    arch_map = {
+            "x86": "x86_64",
+            "arm64": "arm64"
+            }
+    for k in arch_map:
+        for fn in ["mshv_defconfig", "uvm_defconfig"]:
+            cfg = os.path.join(src_tree, "arch/{}/configs/{}".format(k, fn))
+            with open(cfg, "r") as f:
+                c = f.read()
+            with open(cfg, "w") as f:
+                c = re.sub("Linux/.*Kernel Configuration", "Linux/{} {} Kernel Configuration".format(arch_map[k], ver), c)
+                f.write(c)
