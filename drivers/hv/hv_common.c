@@ -25,6 +25,7 @@
 #include <linux/notifier.h>
 #include <asm/hyperv-tlfs.h>
 #include <asm/mshyperv.h>
+#include <acpi/acpi.h>
 
 /*
  * hv_root_partition and ms_hyperv are defined here with other Hyper-V
@@ -483,15 +484,30 @@ free_buf:
 EXPORT_SYMBOL_GPL(hv_call_deposit_pages);
 
 /*
- * Corresponding sleep states have to be initialized, in order a subsequent
+ * Corresponding sleep states have to be initialized, in order for a subsequent
  * HVCALL_ENTER_SLEEP_STATE call to succeed. Currently only S5 state as per
  * ACPI 6.4 chapter 7.4.2 is relevant, while S1, S2 and S3 can be supported.
+ *
+ * ACPI should be initialized and should support S5 sleep state when this method
+ * is called, so that, it can extract correct PM values and pass them to hv.
  */
 static int hv_initialize_sleep_states(void)
 {
 	u64 status;
 	unsigned long flags;
 	struct hv_input_set_system_property *in;
+	acpi_status acpi_status;
+	u8 sleep_type_a, sleep_type_b;
+
+	if (!acpi_sleep_state_supported(ACPI_STATE_S5)) {
+		pr_err("%s: S5 sleep state not supported.\n", __func__);
+		return -ENODEV;
+	}
+
+	acpi_status = acpi_get_sleep_type_data(ACPI_STATE_S5,
+						&sleep_type_a, &sleep_type_b);
+	if (ACPI_FAILURE(acpi_status))
+		return -ENODEV;
 
 	local_irq_save(flags);
 	in = (struct hv_input_set_system_property *)(*this_cpu_ptr(
@@ -499,8 +515,8 @@ static int hv_initialize_sleep_states(void)
 
 	in->property_id = HV_SYSTEM_PROPERTY_SLEEP_STATE;
 	in->set_sleep_state_info.sleep_state = HV_SLEEP_STATE_S5;
-	in->set_sleep_state_info.pm1a_slp_typ = HV_SLEEP_STATE_S5;
-	in->set_sleep_state_info.pm1b_slp_typ = 0;
+	in->set_sleep_state_info.pm1a_slp_typ = sleep_type_a;
+	in->set_sleep_state_info.pm1b_slp_typ = sleep_type_b;
 
 	status = hv_do_hypercall(HVCALL_SET_SYSTEM_PROPERTY, in, NULL);
 	local_irq_restore(flags);
