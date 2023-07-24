@@ -40,8 +40,7 @@ resources:
     - repository: lisa
       type: git
       name: LSG/lsg-lisa
-      #ref: refs/tags/virtstack/stable
-      ref: sgardhariya/temp_branch_for_linux_dom0
+      ref: refs/tags/virtstack/stable
 
 trigger:
   batch: false
