@@ -83,7 +83,13 @@ struct mshv_partition {
 
 	struct hlist_head devices;
 
+	/*
+	 * Since MSHV does not support more than one async hypercall in flight
+	 * for a single partition. Thus, it is okay to define per partition
+	 * async hypercall status.
+	 */
 	struct completion async_hypercall;
+	u64 async_hypercall_status;
 
 	struct {
 		spinlock_t        lock;
