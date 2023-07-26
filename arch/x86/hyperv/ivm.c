@@ -105,7 +105,6 @@ static inline u64 rd_ghcb_msr(void)
 
 static inline void wr_ghcb_msr(u64 val)
 {
-	printk("JJJJJJJJJJ %s Value we are going to write to GHCB MSR: %lx\n", __func__, val);
 	native_wrmsrl(MSR_AMD64_SEV_ES_GHCB, val);
 }
 

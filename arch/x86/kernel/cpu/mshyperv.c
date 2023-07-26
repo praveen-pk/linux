@@ -240,7 +240,6 @@ static u8 ap_start_stack[PAGE_SIZE] __aligned(PAGE_SIZE);
 
 int hv_snp_boot_ap(int cpu, unsigned long start_ip)
 {
-	printk("\n \nLLLLLLLLL Awesome coming here\n");
 	struct vmcb_save_area *vmsa = (struct vmcb_save_area *)
 		__get_free_page(GFP_KERNEL | __GFP_ZERO);
 	struct desc_ptr gdtr;

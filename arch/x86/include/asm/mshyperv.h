@@ -44,8 +44,6 @@ static inline u64 hv_do_hypercall(u64 control, void *input, void *output)
 	u64 output_address = output ? virt_to_phys(output) : 0;
 	u64 hv_status;
 
-	printk("&&&&&&&&&&&&& Crassssssshing after coming into this\n");
-
 #ifdef CONFIG_X86_64
 	if (hv_isolation_type_en_snp()) {
 		__asm__ __volatile__("mov %4, %%r8\n"
