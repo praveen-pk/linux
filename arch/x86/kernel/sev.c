@@ -1223,15 +1223,20 @@ static int wakeup_cpu_via_vmgexit(int apic_id, unsigned long start_ip)
 	/* Override start_ip with known protected guest start IP */
 	start_ip = real_mode_header->sev_es_trampoline_start;
 
-	/* Find the logical CPU for the APIC ID */
-	for_each_present_cpu(cpu) {
-		if (arch_match_cpu_phys_id(cpu, apic_id))
-			break;
-	}
-	if (cpu >= nr_cpu_ids)
-		return -EINVAL;
+	// /* Find the logical CPU for the APIC ID */
+	// for_each_present_cpu(cpu) {
+	// 	if (arch_match_cpu_phys_id(cpu, apic_id))
+	// 		break;
+	// }
+	// if (cpu >= nr_cpu_ids)
+	// 	return -EINVAL;
 
-	cur_vmsa = per_cpu(sev_vmsa, cpu);
+	/*
+	 * This is a hack to have a single IGVM file. Currently we are assuming that
+	 * APIC ID allocated by VMM is identical to the cpu index. Thus, we can
+	 * directly use apic_id instead of finding cpu index from it.
+	 */
+	cur_vmsa = per_cpu(sev_vmsa, apic_id);
 
 	/*
 	 * A new VMSA is created each time because there is no guarantee that
