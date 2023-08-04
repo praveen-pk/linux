@@ -89,15 +89,6 @@
 #define HV_SYN_REG_CRASH_P4		(HV_REGISTER_GUEST_CRASH_P4)
 #define HV_SYN_REG_CRASH_CTL		(HV_REGISTER_GUEST_CRASH_CTL)
 
-union hv_msi_entry {
-	u64 as_uint64[2];
-	struct {
-		u64 address;
-		u32 data;
-		u32 reserved;
-	} __packed;
-};
-
 enum hv_interrupt_type {
 	HV_ARM64_INTERRUPT_TYPE_FIXED		= 0x0000,
 	HV_ARM64_INTERRUPT_TYPE_MAXIMUM		= 0x0008,
