@@ -103,6 +103,15 @@ enum hv_interrupt_type {
 	HV_ARM64_INTERRUPT_TYPE_MAXIMUM		= 0x0008,
 };
 
+union hv_msi_entry {
+	u64 as_uint64[2];
+	struct {
+		u64 address;
+		u32 data;
+		u32 reserved;
+	} __packed;
+};
+
 #include <asm-generic/hyperv-tlfs.h>
 
 #endif
