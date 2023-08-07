@@ -30,6 +30,10 @@
 #include <linux/nospec.h>
 #include <asm/mshyperv.h>
 #include <linux/hyperv.h>
+#include <linux/notifier.h>
+#include <linux/reboot.h>
+#include <linux/kexec.h>
+
 #include <trace/events/mshv.h>
 
 #include "mshv_eventfd.h"
@@ -2719,6 +2723,17 @@ root_scheduler_deinit(void)
 	free_percpu(root_scheduler_output);
 }
 
+static int mshv_reboot_notify(struct notifier_block *nb,
+		unsigned long code, void *unused)
+{
+	cpuhp_remove_state(mshv_cpuhp_online);
+	return 0;
+}
+
+struct notifier_block mshv_reboot_nb = {
+	.notifier_call = mshv_reboot_notify,
+};
+
 int __init mshv_root_init(void)
 {
 	int ret;
@@ -2772,9 +2787,13 @@ int __init mshv_root_init(void)
 
 	mshv_cpuhp_online = ret;
 
-	ret = mshv_set_create_partition_func(__mshv_ioctl_create_partition);
+	ret = register_reboot_notifier(&mshv_reboot_nb);
 	if (ret)
 		goto remove_cpu_state;
+
+	ret = mshv_set_create_partition_func(__mshv_ioctl_create_partition);
+	if (ret)
+		goto unregister_reboot_nb;
 
 	spin_lock_init(&mshv_root.partitions.lock);
 	hash_init(mshv_root.partitions.items);
@@ -2788,6 +2807,8 @@ int __init mshv_root_init(void)
 
 	return 0;
 
+unregister_reboot_nb:
+	unregister_reboot_notifier(&mshv_reboot_nb);
 remove_cpu_state:
 	cpuhp_remove_state(mshv_cpuhp_online);
 free_synic_pages:
@@ -2800,6 +2821,8 @@ out:
 
 void __exit mshv_root_exit(void)
 {
+	unregister_reboot_notifier(&mshv_reboot_nb);
+
 	mshv_set_create_partition_func(NULL);
 
 	mshv_debugfs_exit();
