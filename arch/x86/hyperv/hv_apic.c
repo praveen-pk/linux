@@ -97,8 +97,6 @@ static void hv_apic_eoi_write(u32 reg, u32 val)
 {
 	struct hv_vp_assist_page *hvp = hv_vp_assist_page[smp_processor_id()];
 
-	printk("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! Found it %llx\n", __pa(&hvp->apic_assist));
-
 	if (hvp && (xchg(&hvp->apic_assist, 0) & 0x1))
 		return;
 
