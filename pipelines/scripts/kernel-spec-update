@@ -99,30 +99,6 @@ kernel.update_spec_sums(kernel_sums_path, sums_struct)
 kernel.update_spec(kernel_spec_path, version, rev_hash)
 
 
-# Update kernel-uvm.spec
-kernel_spec_path = "SPECS/kernel/kernel-uvm.spec"
-kernel_sums_path = "SPECS/kernel/kernel-uvm.signatures.json"
-kernel_conf = {
-        "x86": {"path": "SPECS/kernel/config_uvm_x86", "sha256": None, "kernel_arch": "x86"},
-        "aarch64": {"path": "SPECS/kernel/config_uvm_aarch64", "sha256": None, "kernel_arch": "arm64"}
-        }
-kernel_conf_patch = [
-    ["Linux/(.*) (.*) Kernel Configuration", "Linux/\\1 {} Kernel Configuration".format(version)]
-]
-kernel_conf = kernel.patch_config(tarball_local_path, kernel_conf, kernel_conf_patch, "uvm_defconfig")
-# Re-create signatures file
-sums_struct = {
-    "Signatures": {
-        os.path.basename(kernel_conf["x86"]["path"]): kernel_conf["x86"]["sha256"],
-        os.path.basename(kernel_conf["aarch64"]["path"]): kernel_conf["aarch64"]["sha256"],
-        tarball_name: tarball_sha256,
-            }
-    }
-kernel.update_spec_sums(kernel_sums_path, sums_struct)
-# Update spec
-kernel.update_spec(kernel_spec_path, version, rev_hash)
-
-
 # Commit the branch
 commit_msg = """kernel-msft: Autoupdate to {}
 

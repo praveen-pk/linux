@@ -109,7 +109,7 @@ def update_kernel_version(src_tree, ver):
             "arm64": "arm64"
             }
     for k in arch_map:
-        for fn in ["mshv_defconfig", "uvm_defconfig"]:
+        for fn in ["mshv_defconfig"]:
             cfg = os.path.join(src_tree, "arch/{}/configs/{}".format(k, fn))
             with open(cfg, "r") as f:
                 c = f.read()
