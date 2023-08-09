@@ -802,7 +802,7 @@ static void __init early_reserve_memory(void)
 
 	reserve_ibft_region();
 	reserve_bios_regions();
-	//trim_snb_memory();
+	trim_snb_memory();
 }
 
 /*

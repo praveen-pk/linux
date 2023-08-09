@@ -809,5 +809,5 @@ void __init early_quirks(void)
 	if (!early_pci_allowed())
 		return;
 
-	//early_pci_scan_bus(0);
+	early_pci_scan_bus(0);
 }
