@@ -101,7 +101,7 @@ def update_kernel_version(src_tree, ver):
     with open(mf, "r") as f:
         mfc = f.read()
     with open(mf, "w") as f:
-        mfc = re.sub(r"EXTRAVERSION =\..*\d+\n", "EXTRAVERSION =.{}\\n".format(ver.split(".")[3]), mfc)
+        mfc = re.sub(r"EXTRAVERSION =\s*\..*\d+\n", "EXTRAVERSION =.{}\\n".format(ver.split(".")[3]), mfc)
         f.write(mfc)
 
     arch_map = {
