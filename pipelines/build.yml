@@ -120,16 +120,6 @@ stages:
           machinePool: 'lsg-virt-aarch64-1es-agent-pool-2'
           FLAVOR: 'dom0-disabled'
           ARCH: 'arm64'
-        'UVM x86_64':
-          machinePool: 'lsg-virt-amd64-1es-agent-pool-2'
-          FLAVOR: 'uvm'
-          ARCH: 'x86_64'
-          DEFCONF: 'uvm_defconfig'
-        'UVM aarch64':
-          machinePool: 'lsg-virt-aarch64-1es-agent-pool-2'
-          FLAVOR: 'uvm'
-          ARCH: 'arm64'
-          DEFCONF: 'uvm_defconfig'
     pool:
       name: $(machinePool)
 
