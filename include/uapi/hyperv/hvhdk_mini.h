@@ -185,6 +185,7 @@ enum hv_snp_status {
 
 enum hv_dynamic_processor_feature_property {
 	/* Add more values when needed */
+	HV_X64_DYNAMIC_PROCESSOR_FEATURE_MAX_ENCRYPTED_PARTITIONS = 13,
 	HV_X64_DYNAMIC_PROCESSOR_FEATURE_SNP_STATUS = 16,
 };
 
