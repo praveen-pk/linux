@@ -170,8 +170,9 @@ struct hv_sleep_state_info {
 
 struct hv_input_get_system_property {
 	__u32 property_id; /* enum hv_system_property */
+	__u32 reserved;
 	union {
-		__u32 as_uint32;
+		__u64 as_uint64;
 		/* More fields to be filled in when needed */
 	};
 } __packed;
