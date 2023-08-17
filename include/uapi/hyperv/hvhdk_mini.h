@@ -159,6 +159,7 @@ enum hv_system_property {
 	/* Add more values when needed */
 	HV_SYSTEM_PROPERTY_SLEEP_STATE = 3,
 	HV_SYSTEM_PROPERTY_SCHEDULER_TYPE = 15,
+	HV_DYNAMIC_PROCESSOR_FEATURE_PROPERTY = 21,
 	HV_SYSTEM_PROPERTY_DIAGOSTICS_LOG_BUFFERS = 28,
 };
 
@@ -168,10 +169,34 @@ struct hv_sleep_state_info {
 	__u8 pm1b_slp_typ;
 } __packed;
 
+enum hv_snp_status {
+	HV_SNP_STATUS_NONE = 0,
+	HV_SNP_STATUS_AVAILABLE = 1,
+	HV_SNP_STATUS_INCOMPATIBLE = 2,
+	HV_SNP_STATUS_PSP_UNAVAILABLE = 3,
+	HV_SNP_STATUS_PSP_INIT_FAILED = 4,
+	HV_SNP_STATUS_PSP_BAD_FW_VERSION = 5,
+	HV_SNP_STATUS_BAD_CONFIGURATION = 6,
+	HV_SNP_STATUS_PSP_FW_UPDATE_IN_PROGRESS = 7,
+	HV_SNP_STATUS_PSP_RB_INIT_FAILED = 8,
+	HV_SNP_STATUS_PSP_PLATFORM_STATUS_FAILED = 9,
+	HV_SNP_STATUS_PSP_INIT_LATE_FAILED = 10,
+};
+
+enum hv_dynamic_processor_feature_property {
+	/* Add more values when needed */
+	HV_X64_DYNAMIC_PROCESSOR_FEATURE_MAX_ENCRYPTED_PARTITIONS = 13,
+	HV_X64_DYNAMIC_PROCESSOR_FEATURE_SNP_STATUS = 16,
+};
+
 struct hv_input_get_system_property {
 	__u32 property_id; /* enum hv_system_property */
+	__u32 reserved;
 	union {
-		__u32 as_uint32;
+		__u64 as_uint64;
+#if defined(__x86_64__)
+		__u32 hv_processor_feature; /* enum hv_dynamic_processor_feature_property */
+#endif
 		/* More fields to be filled in when needed */
 	};
 } __packed;
@@ -186,6 +211,9 @@ struct hv_output_get_system_property { /* HV_OUTPUT_GET_SYSTEM_PROPERTY */
 	union {
 		__u32 scheduler_type; /* HV_SCHEDULER_TYPE */
 		struct hv_system_diag_log_buffer_config hv_diagbuf_info;
+#if defined(__x86_64__)
+		__u64 hv_processor_feature_value;
+#endif
 	};
 } __packed;
 

@@ -2638,6 +2638,76 @@ static int __init mshv_retrieve_scheduler_type(void)
 	return 0;
 }
 
+static int mshv_print_max_sev_snp_partitions(void)
+{
+#if defined(__x86_64__)
+	struct hv_input_get_system_property *input;
+	struct hv_output_get_system_property *output;
+	unsigned long flags;
+	u64 status;
+	__u64 snp_partition_count;
+
+	local_irq_save(flags);
+	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
+	output = *this_cpu_ptr(hyperv_pcpu_output_arg);
+
+	memset(input, 0, sizeof(*input));
+	memset(output, 0, sizeof(*output));
+	input->property_id = HV_DYNAMIC_PROCESSOR_FEATURE_PROPERTY;
+	input->hv_processor_feature = HV_X64_DYNAMIC_PROCESSOR_FEATURE_MAX_ENCRYPTED_PARTITIONS;
+
+	status = hv_do_hypercall(HVCALL_GET_SYSTEM_PROPERTY, input, output);
+	if (!hv_result_success(status)) {
+		local_irq_restore(flags);
+		pr_err("%s: %s\n", __func__, hv_status_to_string(status));
+		return hv_status_to_errno(status);
+	}
+
+	snp_partition_count = output->hv_processor_feature_value;
+	local_irq_restore(flags);
+
+	pr_info("mshv: Maximum supported SEV-SNP partitions are: %llu\n", snp_partition_count);
+#endif
+	return 0;
+}
+
+static int __init mshv_check_sev_snp_support(void)
+{
+#if defined(__x86_64__)
+	struct hv_input_get_system_property *input;
+	struct hv_output_get_system_property *output;
+	unsigned long flags;
+	u64 status;
+	enum hv_snp_status snp_status;
+
+	local_irq_save(flags);
+	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
+	output = *this_cpu_ptr(hyperv_pcpu_output_arg);
+
+	memset(input, 0, sizeof(*input));
+	memset(output, 0, sizeof(*output));
+	input->property_id = HV_DYNAMIC_PROCESSOR_FEATURE_PROPERTY;
+	input->hv_processor_feature = HV_X64_DYNAMIC_PROCESSOR_FEATURE_SNP_STATUS;
+
+	status = hv_do_hypercall(HVCALL_GET_SYSTEM_PROPERTY, input, output);
+	if (!hv_result_success(status)) {
+		local_irq_restore(flags);
+		pr_err("%s: %s\n", __func__, hv_status_to_string(status));
+		return hv_status_to_errno(status);
+	}
+
+	snp_status = output->hv_processor_feature_value;
+	local_irq_restore(flags);
+
+	if (snp_status == HV_SNP_STATUS_AVAILABLE) {
+		pr_info("mshv: SEV-SNP is supported\n");
+		return mshv_print_max_sev_snp_partitions();
+	}
+#endif
+
+	return 0;
+}
+
 static int mshv_root_scheduler_init(unsigned int cpu)
 {
 	void **inputarg, **outputarg, *p;
@@ -2763,6 +2833,9 @@ int __init mshv_root_init(void)
 	}
 
 	if (mshv_retrieve_scheduler_type())
+		return -ENODEV;
+
+	if (mshv_check_sev_snp_support())
 		return -ENODEV;
 
 	ret = root_scheduler_init();
