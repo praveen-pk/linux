@@ -2587,7 +2587,8 @@ noinstr void irqentry_exit_hv_cond(struct pt_regs *regs, irqentry_state_t state)
 	 * corresponding hangs and/or per-cpu IRQs handled on
 	 * non-intended cpu.
 	 */
-	if (user_mode(regs) &&
+	if (cc_platform_has(CC_ATTR_GUEST_STATE_ENCRYPT) &&
+	    user_mode(regs) &&
 	    this_cpu_read(snp_runtime_data)->hv_handling_events)
 		return;
 
