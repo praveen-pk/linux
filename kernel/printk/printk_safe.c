@@ -28,6 +28,17 @@ void __printk_safe_exit(void)
 
 static DEFINE_SPINLOCK(printk_lock);
 
+union hv_ghcb_dbgprint {
+	struct {
+		u16 code;
+		u8 bytes[6];
+	};
+	struct {
+		u32 lo;
+		u32 hi;
+	};
+};
+
 int hv_sev_printf(const char *fmt, va_list ap)
 {
 	char buf[1024];
@@ -36,7 +47,8 @@ int hv_sev_printf(const char *fmt, va_list ap)
 	int left;
 	unsigned long flags;
 	u32 orig_low, orig_high;
-	u32 low, high;
+	union hv_ghcb_dbgprint dbgprint;
+	dbgprint.code = 0xf03;
 
 	len = vsnprintf(buf, sizeof(buf), fmt, ap);
 
@@ -46,14 +58,11 @@ int hv_sev_printf(const char *fmt, va_list ap)
 	for (idx = 0; idx < len; idx += 6) {
 		left = len - idx;
 		if (left > 6) left = 6;
-		low = 0xf03;
-		high = 0;
-		memcpy((char *)&low+2, &buf[idx], left == 1 ? 1 : 2);
-		if (left > 2)
-			memcpy((char *)&high, &buf[idx+2], left-2);
+		memset(&dbgprint.bytes, 0, sizeof(dbgprint.bytes));
+		memcpy((char *)&dbgprint.bytes, &buf[idx], left);
 		asm volatile ("wrmsr\n\r"
 				"rep; vmmcall\n\r"
-				:: "c" (MSR_AMD64_SEV_ES_GHCB), "a" (low), "d" (high));
+				:: "c" (MSR_AMD64_SEV_ES_GHCB), "a" (dbgprint.lo), "d" (dbgprint.hi));
 	}
 	asm volatile ("wrmsr" :: "c" (MSR_AMD64_SEV_ES_GHCB), "a" (orig_low), "d" (orig_high));
 	spin_unlock(&printk_lock);
