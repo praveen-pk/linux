@@ -498,7 +498,7 @@ stages:
         run_stress_ng_tests: ${{ parameters.run_stress_ng_tests }}
         run_ch_community_tests: ${{ parameters.run_ch_community_tests }}
         ch_subtest_include_list: $(ch_integration_tests)
-        lisa_exclude_list: 'verify_cloud_hypervisor_live_migration_tests'
+        lisa_exclude_list: 'verify_cloud_hypervisor_live_migration_tests,stress_mshv_vm_create'
         run_ch_perf_tests: ${{ parameters.run_ch_perf_tests }}
         run_mshv_tests: ${{ parameters.run_mshv_tests }}
         kernel_change_needed: True

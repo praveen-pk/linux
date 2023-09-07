@@ -134,6 +134,10 @@ cmds = [
     ["git", "merge", "--no-ff", "--log", "--allow-unrelated-histories", upstream_tag],
     ["git", "checkout", "--theirs", "Makefile"],
     ["git", "add", "Makefile"],
+    ["git", "checkout", "--theirs", "MSFT-Merge/log"],
+    ["git", "add", "MSFT-Merge/log"],
+    ["git", "checkout", "--theirs", "Documentation"],
+    ["git", "add", "Documentation"],
     ["git", "commit", "--no-edit"]
 ]
 
