@@ -302,6 +302,7 @@ union hv_hypervisor_version_info {
 #define HVCALL_ISSUE_SNP_PSP_GUEST_REQUEST	0x00f2
 #define HVCALL_GET_VP_CPUID_VALUES		0x00f4
 #define HVCALL_LOG_HYPERVISOR_SYSTEM_CONFIG	0x00f8
+#define HVCALL_DISABLE_HYP_EX			0x010f
 
 /*
  * Some macros - i.e. GENMASK_ULL and BIT_ULL - are not currently supported by
