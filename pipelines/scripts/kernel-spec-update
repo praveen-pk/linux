@@ -99,6 +99,20 @@ kernel.update_spec_sums(kernel_sums_path, sums_struct)
 kernel.update_spec(kernel_spec_path, version, rev_hash)
 
 
+# Update kernel-mshv-headers.spec
+kernel_spec_path = "SPECS/kernel/kernel-mshv-headers.spec"
+kernel_sums_path = "SPECS/kernel/kernel-mshv-headers.signatures.json"
+# Re-create signatures file
+sums_struct = {
+    "Signatures": {
+        tarball_name: tarball_sha256,
+        }
+    }
+kernel.update_spec_sums(kernel_sums_path, sums_struct)
+# Update spec
+kernel.update_spec(kernel_spec_path, version, rev_hash)
+
+
 # Commit the branch
 commit_msg = """kernel-msft: Autoupdate to {}
 
