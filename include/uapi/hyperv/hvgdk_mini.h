@@ -56,6 +56,7 @@ enum hv_status {
 #define HV_HYP_PAGE_SHIFT		12
 #define HV_HYP_PAGE_SIZE		BIT(HV_HYP_PAGE_SHIFT)
 #define HV_HYP_PAGE_MASK		(~(HV_HYP_PAGE_SIZE - 1))
+#define HV_HYP_LARGE_PAGE_SHIFT		21
 
 
 #define HV_PARTITION_ID_INVALID		((__u64) 0)
@@ -1368,6 +1369,8 @@ struct hv_input_set_vp_registers {
 	__u16 rsvd_z16;
 	struct hv_register_assoc elements[];
 } __packed;
+
+#define HV_UNMAP_GPA_LARGE_PAGE		0x2
 
 enum hv_intercept_type {
 #if defined(__x86_64__)

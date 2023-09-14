@@ -25,6 +25,8 @@
 #define HV_INIT_PARTITION_DEPOSIT_PAGES 208
 #define HV_MAP_GPA_DEPOSIT_PAGES	256
 
+#define HV_PAGE_COUNT_2M_ALIGNED(pg_count) (!((pg_count) & (0x200 - 1)))
+
 #define HV_WITHDRAW_BATCH_SIZE	(HV_HYP_PAGE_SIZE / sizeof(u64))
 #define HV_MAP_GPA_BATCH_SIZE	\
 	((HV_HYP_PAGE_SIZE - sizeof(struct hv_input_map_gpa_pages)) \
@@ -219,16 +221,27 @@ int hv_call_delete_partition(u64 partition_id)
 }
 
 /* Ask the hypervisor to map guest ram pages or the guest mmio space */
-static int hv_do_map_gpa_hcall(u64 partition_id, u64 gfn, u64 page_count,
+static int hv_do_map_gpa_hcall(u64 partition_id, u64 gfn, u64 page_struct_count,
 			       u32 flags, struct page **pages, u64 mmio_spa)
 {
 	struct hv_input_map_gpa_pages *input_page;
 	u64 status, *pfnlist;
-	unsigned long irq_flags;
+	unsigned long irq_flags, large_shift = 0;
 	int ret = 0, done = 0;
+	u64 page_count = page_struct_count;
 
 	if (page_count == 0 || (pages && mmio_spa))
 		return -EINVAL;
+
+	if (flags & HV_MAP_GPA_LARGE_PAGE) {
+		if (!HV_PAGE_COUNT_2M_ALIGNED(page_count)) {
+			pr_err("%s: HV_MAP_GPA_LARGE_PAGE, but page_count %llx not aligned\n",
+			       __func__, page_count);
+			return -EINVAL;
+		}
+		large_shift = HV_HYP_LARGE_PAGE_SHIFT - HV_HYP_PAGE_SHIFT;
+		page_count >>= large_shift;
+	}
 
 	while (done < page_count) {
 		ulong i, completed, remain = page_count - done;
@@ -238,15 +251,22 @@ static int hv_do_map_gpa_hcall(u64 partition_id, u64 gfn, u64 page_count,
 		input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
 
 		input_page->target_partition_id = partition_id;
-		input_page->target_gpa_base = gfn + done;
+		input_page->target_gpa_base = gfn + (done << large_shift);
 		input_page->map_flags = flags;
 		pfnlist = input_page->source_gpa_page_list;
 
 		for (i = 0; i < rep_count; i++)
-			if (pages)
-				pfnlist[i] = page_to_pfn(pages[done + i]);
-			else
+			if (pages) {
+				u64 index = (done + i) << large_shift;
+
+				if (index >= page_struct_count) {
+					WARN(true, "Bad index\n");
+					return -EINVAL;
+				}
+				pfnlist[i] = page_to_pfn(pages[index]);
+			} else {
 				pfnlist[i] = mmio_spa++;
+			}
 
 		status = hv_do_rep_hypercall(HVCALL_MAP_GPA_PAGES, rep_count, 0,
 					     input_page, NULL);
@@ -264,7 +284,7 @@ static int hv_do_map_gpa_hcall(u64 partition_id, u64 gfn, u64 page_count,
 			}
 
 		} else if (!hv_result_success(status)) {
-			pr_err("%s: map pages failed %u/%llu. status:0x%llx %s",
+			pr_err("%s: map pages failed %u/%llu. status:0x%llx %s\n",
 			       __func__, done, page_count, status,
 			       hv_status_to_string(hv_result(status)));
 			ret = hv_status_to_errno(status);
@@ -274,8 +294,13 @@ static int hv_do_map_gpa_hcall(u64 partition_id, u64 gfn, u64 page_count,
 		done += completed;
 	}
 
-	if (ret && done)
-		hv_call_unmap_gpa_pages(partition_id, gfn, done, flags);
+	if (ret && done) {
+		u32 unmap_flags = 0;
+
+		if (flags & HV_MAP_GPA_LARGE_PAGE)
+			unmap_flags |= HV_UNMAP_GPA_LARGE_PAGE;
+		hv_call_unmap_gpa_pages(partition_id, gfn, done, unmap_flags);
+	}
 
 	return ret;
 }
@@ -305,47 +330,56 @@ int hv_call_map_mmio_pages(u64 partition_id, u64 gfn, u64 mmio_spa, u64 numpgs)
 
 int hv_call_unmap_gpa_pages(
 		u64 partition_id,
-		u64 gpa_target,
-		u64 page_count, u32 flags)
+		u64 gfn,
+		u64 page_count_4k, u32 flags)
 {
 	struct hv_input_unmap_gpa_pages *input_page;
-	u64 status;
-	u32 completed = 0;
-	unsigned long remaining = page_count;
-	int rep_count;
-	unsigned long irq_flags;
+	u64 status, page_count = page_count_4k;
+	unsigned long irq_flags, large_shift = 0;
+	int ret = 0, done = 0;
 
 	if (page_count == 0)
 		return -EINVAL;
 
-	while (remaining) {
+	if (flags & HV_UNMAP_GPA_LARGE_PAGE) {
+		if (!HV_PAGE_COUNT_2M_ALIGNED(page_count)) {
+			pr_err("%s: HV_UNMAP_GPA_LARGE_PAGE, but page_count %llx not aligned\n",
+			       __func__, page_count);
+			return -EINVAL;
+		}
+		large_shift = HV_HYP_LARGE_PAGE_SHIFT - HV_HYP_PAGE_SHIFT;
+		page_count >>= large_shift;
+	}
+
+	while (done < page_count) {
+		ulong completed, remain = page_count - done;
+		int rep_count = min(remain, HV_MAP_GPA_BATCH_SIZE);
+
 		local_irq_save(irq_flags);
 		input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
 
 		input_page->target_partition_id = partition_id;
-		input_page->target_gpa_base = gpa_target;
+		input_page->target_gpa_base = gfn + (done << large_shift);
 		input_page->unmap_flags = flags;
-		rep_count = min(remaining, HV_MAP_GPA_BATCH_SIZE);
 		status = hv_do_rep_hypercall(
 			HVCALL_UNMAP_GPA_PAGES, rep_count, 0, input_page, NULL);
 		local_irq_restore(irq_flags);
 
 		completed = hv_repcomp(status);
 		if (!hv_result_success(status)) {
-			pr_err("%s: completed %llu out of %llu, %s\n", __func__,
-			       page_count - remaining, page_count,
-			       hv_status_to_string(status));
-			if (remaining < page_count)
-				pr_err("%s: Partially succeeded; unmapped regions may be in invalid state",
-				       __func__);
-			return hv_status_to_errno(status);
+			pr_err("%s: unmap pages failed %u/%llu. status:0x%llx %s\n",
+			       __func__, done, page_count, status,
+			       hv_status_to_string(hv_result(status)));
+			ret = hv_status_to_errno(status);
+			break;
 		}
 
-		remaining -= completed;
-		gpa_target += completed;
+		done += completed;
 	}
 
-	return 0;
+	WARN(ret && done, "%s: Partial success\n", __func__);
+
+	return ret;
 }
 
 int hv_call_get_gpa_access_states(
