@@ -1192,26 +1192,35 @@ int hv_call_unmap_stat_page(enum hv_stats_object_type type,
 	return 0;
 }
 
-int hv_call_modify_spa_host_access(u64 partition_id, struct page **page_list,
-				   u64 spa_list_size, u32 host_access,
+int hv_call_modify_spa_host_access(u64 partition_id, struct page **pages,
+				   u64 page_struct_count, u32 host_access,
 				   u32 flags, u8 acquire)
 {
 	struct hv_input_modify_sparse_spa_page_host_access *input_page;
-	int i;
 	u64 status;
-	unsigned long remaining = spa_list_size;
-	u64 completed;
-	int rep_count;
-	unsigned long irq_flags;
+	int done = 0;
+	unsigned long irq_flags, large_shift = 0;
+	u64 page_count = page_struct_count;
 	u16 code = acquire ? HVCALL_ACQUIRE_SPARSE_SPA_PAGE_HOST_ACCESS :
 			     HVCALL_RELEASE_SPARSE_SPA_PAGE_HOST_ACCESS;
 
-	if (spa_list_size == 0)
+	if (page_count == 0)
 		return -EINVAL;
 
-	while (remaining) {
-		rep_count = min(
-			remaining,
+	if (flags & HV_MODIFY_SPA_PAGE_HOST_ACCESS_LARGE_PAGE) {
+		if (!HV_PAGE_COUNT_2M_ALIGNED(page_count)) {
+			pr_err("%s: HV_MODIFY_SPA_PAGE_HOST_ACCESS_LARGE_PAGE, but page_count %llx not aligned\n",
+			       __func__, page_count);
+			return -EINVAL;
+		}
+		large_shift = HV_HYP_LARGE_PAGE_SHIFT - HV_HYP_PAGE_SHIFT;
+		page_count >>= large_shift;
+	}
+
+	while (done < page_count) {
+		ulong i, completed, remain = page_count - done;
+		int rep_count = min(
+			remain,
 			HV_MODIFY_SPARSE_SPA_PAGE_HOST_ACCESS_MAX_PAGE_COUNT);
 
 		local_irq_save(irq_flags);
@@ -1228,26 +1237,34 @@ int hv_call_modify_spa_host_access(u64 partition_id, struct page **page_list,
 		input_page->flags = flags;
 		input_page->host_access = host_access;
 
-		for (i = 0; i < rep_count; i++)
-			input_page->spa_page_list[i] = page_to_pfn(page_list[i]);
+		for (i = 0; i < rep_count; i++) {
+			u64 index = (done + i) << large_shift;
+
+			if (index >= page_struct_count) {
+				WARN(true, "Bad index\n");
+				return -EINVAL;
+			}
+			input_page->spa_page_list[i] =
+						page_to_pfn(pages[index]);
+		}
 
 		status = hv_do_rep_hypercall(code, rep_count, 0, input_page,
 					     NULL);
 		local_irq_restore(irq_flags);
 
+		completed = hv_repcomp(status);
+
 		if (!hv_result_success(status)) {
-			pr_err("%s: completed %llu out of %llu, %s\n", __func__,
-			       spa_list_size - remaining, spa_list_size,
+			pr_err("%s: completed %u out of %llu, %s\n", __func__,
+			       done, page_count,
 			       hv_status_to_string(status));
-			if (remaining < spa_list_size)
+			if (done)
 				pr_err("%s: Partially succeeded; spa host access may be in invalid state",
 				       __func__);
 			return hv_status_to_errno(status);
 		}
 
-		completed = hv_repcomp(status);
-		page_list += completed;
-		remaining -= completed;
+		done += completed;
 	}
 
 	return 0;

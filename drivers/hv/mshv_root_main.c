@@ -1202,9 +1202,12 @@ static int mshv_partition_chk_snp_map_ram(struct mshv_partition *partition,
 {
 	struct page **pages = region->pages;
 	int ret, shrc, numpgs = HVPFN_DOWN(region->size);
+	u32 access_flags = 0;
 
-	if (region->flags.large_pages)
+	if (region->flags.large_pages) {
 		map_flags |= HV_MAP_GPA_LARGE_PAGE;
+		access_flags = HV_MODIFY_SPA_PAGE_HOST_ACCESS_LARGE_PAGE;
+	}
 
 	/*
 	 * For an SNP partition it is a requirement that for every memory region
@@ -1214,9 +1217,10 @@ static int mshv_partition_chk_snp_map_ram(struct mshv_partition *partition,
 	 * access to guest memory regions.
 	 */
 	if (mshv_partition_isolation_type_snp(partition)) {
+		u32 excl_flags = access_flags | HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_EXCLUSIVE;
 		ret = hv_call_modify_spa_host_access(
 				partition->id, pages, numpgs, 0,
-				HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_EXCLUSIVE,
+				excl_flags,
 				false);
 		if (ret) {
 			pr_err("%s: Failed to mark the region (guest_pfn: %llu) as exclusive.\n",
@@ -1231,10 +1235,11 @@ static int mshv_partition_chk_snp_map_ram(struct mshv_partition *partition,
 				    map_flags, pages);
 
 	if (ret && mshv_partition_isolation_type_snp(partition)) {
+		u32 share_flags = access_flags | HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_SHARED;
 		shrc = hv_call_modify_spa_host_access(partition->id, pages,
 				     numpgs,
 				     HV_MAP_GPA_READABLE | HV_MAP_GPA_WRITABLE,
-				     HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_SHARED,
+				     share_flags,
 				     true);
 		if (shrc)
 			pr_err("%s: Failed to mark shared. gfn:%llu rc:%d\n",
