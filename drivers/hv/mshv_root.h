@@ -25,7 +25,7 @@
 #define MSHV_PARTITIONS_HASH_BITS	9
 #define MSHV_MAX_VPS			256
 
-#define PIN_PAGES_BATCH_SIZE	(0x10000000 / HV_HYP_PAGE_SIZE)
+#define MSHV_PIN_PAGES_BATCH_SIZE	(0x10000000 / HV_HYP_PAGE_SIZE)
 
 struct mshv_vp {
 	u32 index;
@@ -57,6 +57,10 @@ struct mshv_mem_region {
 	u64 size; /* bytes */
 	u64 guest_pfn;
 	u64 userspace_addr; /* start of the userspace allocated memory */
+	struct {
+		u64 large_pages:  1; /* 2MiB */
+		u64 reserved:    63;
+	} flags;
 	struct page *pages[];
 };
 

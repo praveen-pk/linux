@@ -33,6 +33,7 @@
 #include <linux/notifier.h>
 #include <linux/reboot.h>
 #include <linux/kexec.h>
+#include <linux/page-flags.h>
 
 #include <trace/events/mshv.h>
 
@@ -1149,30 +1150,34 @@ static int mshv_partition_create_region(struct mshv_partition *partition,
 	region->size = mem->size;
 	region->guest_pfn = mem->guest_pfn;
 	region->userspace_addr = mem->userspace_addr;
+	/* Note: large_pages flag populated when we pin the pages */
+
 	*regionpp = region;
 
 	return 0;
 }
 
-static int mshv_partition_pin_ram(struct mshv_partition *partition,
-				  struct mshv_user_mem_region *mem,
-				  struct page **pages)
+static int mshv_region_pin(struct mshv_mem_region *region)
 {
 	unsigned long offs, remaining, batch_size;
 	int ret;
-	u64 page_count = HVPFN_DOWN(mem->size);
+	u64 page_count = HVPFN_DOWN(region->size);
+	struct page **pages = region->pages;
 
 	/*
-	 * NB: pin requests are batched because pin_user_pages_fast with the
+	 * NB: Pinning assuming 4k pages works for large pages too.
+	 *     All page structs within the large page are returned.
+	 *
+	 *     Pin requests are batched because pin_user_pages_fast with the
 	 *     FOLL_LONGTERM flag does a large temporary allocation of
 	 *     contiguous memory
 	 */
 	for (remaining = page_count; remaining; remaining -= ret) {
-		batch_size = min(remaining, PIN_PAGES_BATCH_SIZE);
+		batch_size = min(remaining, MSHV_PIN_PAGES_BATCH_SIZE);
 		offs = (page_count - remaining) * HV_HYP_PAGE_SIZE;
-		ret = pin_user_pages_fast(mem->userspace_addr + offs,
-					 batch_size, FOLL_WRITE | FOLL_LONGTERM,
-					 &pages[page_count - remaining]);
+		ret = pin_user_pages_fast(region->userspace_addr + offs,
+					  batch_size, FOLL_WRITE | FOLL_LONGTERM,
+					  &pages[page_count - remaining]);
 		if (ret < 0) {
 			pr_err("%s: failed to pin user pages error %lli/%i\n",
 			       __func__, page_count, ret);
@@ -1181,19 +1186,28 @@ static int mshv_partition_pin_ram(struct mshv_partition *partition,
 		}
 	}
 
+	if (page_count && PageHeadHuge(pages[0]))
+		region->flags.large_pages = true;
+
 	return 0;
 }
 
 /*
- * map guest ram. if snp, make sure to release that from the host first
+ * Map guest ram. if snp, make sure to release that from the host first
  * Side Effects: In case of failure, pages are unpinned when feasible.
  */
 static int mshv_partition_chk_snp_map_ram(struct mshv_partition *partition,
-					  __u32 flags,
+					  u32 map_flags,
 					  struct mshv_mem_region *region)
 {
 	struct page **pages = region->pages;
 	int ret, shrc, numpgs = HVPFN_DOWN(region->size);
+	u32 access_flags = 0;
+
+	if (region->flags.large_pages) {
+		map_flags |= HV_MAP_GPA_LARGE_PAGE;
+		access_flags = HV_MODIFY_SPA_PAGE_HOST_ACCESS_LARGE_PAGE;
+	}
 
 	/*
 	 * For an SNP partition it is a requirement that for every memory region
@@ -1203,9 +1217,10 @@ static int mshv_partition_chk_snp_map_ram(struct mshv_partition *partition,
 	 * access to guest memory regions.
 	 */
 	if (mshv_partition_isolation_type_snp(partition)) {
+		u32 excl_flags = access_flags | HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_EXCLUSIVE;
 		ret = hv_call_modify_spa_host_access(
 				partition->id, pages, numpgs, 0,
-				HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_EXCLUSIVE,
+				excl_flags,
 				false);
 		if (ret) {
 			pr_err("%s: Failed to mark the region (guest_pfn: %llu) as exclusive.\n",
@@ -1217,20 +1232,22 @@ static int mshv_partition_chk_snp_map_ram(struct mshv_partition *partition,
 
 	/* ask the hypervisor to map guest ram */
 	ret = hv_call_map_gpa_pages(partition->id, region->guest_pfn, numpgs,
-				    flags, pages);
+				    map_flags, pages);
 
 	if (ret && mshv_partition_isolation_type_snp(partition)) {
+		u32 share_flags = access_flags | HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_SHARED;
 		shrc = hv_call_modify_spa_host_access(partition->id, pages,
 				     numpgs,
 				     HV_MAP_GPA_READABLE | HV_MAP_GPA_WRITABLE,
-				     HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_SHARED,
+				     share_flags,
 				     true);
 		if (shrc)
 			pr_err("%s: Failed to mark shared. gfn:%llu rc:%d\n",
 			       __func__, region->guest_pfn, shrc);
 	}
 
-	/* don't unpin if marking shared failed because pages are no longer
+	/*
+	 * Don't unpin if marking shared failed because pages are no longer
 	 * mapped in the host, ie root, anymore.
 	 */
 	if (ret)
@@ -1290,7 +1307,7 @@ mshv_partition_ioctl_map_memory(struct mshv_partition *partition,
 		ret = hv_call_map_mmio_pages(partition->id, mem.guest_pfn,
 					     mmio_pfn, HVPFN_DOWN(mem.size));
 	} else {
-		ret = mshv_partition_pin_ram(partition, &mem, region->pages);
+		ret = mshv_region_pin(region);
 		if (ret)
 			goto errout;
 
@@ -1321,6 +1338,7 @@ mshv_partition_ioctl_unmap_memory(struct mshv_partition *partition,
 	u64 page_count;
 	struct vm_area_struct *vma;
 	bool is_mmio;
+	u32 unmap_flags = 0;
 
 	if (hlist_empty(&partition->mem_regions))
 		return -EINVAL;
@@ -1342,9 +1360,12 @@ mshv_partition_ioctl_unmap_memory(struct mshv_partition *partition,
 	hlist_del(&region->hnode);
 	page_count = HVPFN_DOWN(region->size);
 
+	if (region->flags.large_pages)
+		unmap_flags |= HV_UNMAP_GPA_LARGE_PAGE;
+
 	/* ignore unmap failures and continue as process may be exiting */
 	hv_call_unmap_gpa_pages(partition->id, region->guest_pfn,
-				page_count, 0);
+				page_count, unmap_flags);
 
 	mmap_read_lock(current->mm);
 	vma = vma_lookup(current->mm, mem.userspace_addr);
@@ -2218,11 +2239,11 @@ remove_partition(struct mshv_partition *partition)
 
 static int destroy_snp_partition_state(struct mshv_partition *partition)
 {
-	int ret = 0;
+	int i, ret = 0;
 	unsigned long page_count;
 	struct mshv_vp *vp;
 	struct mshv_mem_region *region;
-	int i;
+	u32 unmap_flags;
 	struct hlist_node *n;
 	struct hv_register_assoc explicit_suspend = {
 		.name = HV_REGISTER_EXPLICIT_SUSPEND,
@@ -2231,8 +2252,12 @@ static int destroy_snp_partition_state(struct mshv_partition *partition)
 
 	hlist_for_each_entry_safe(region, n, &partition->mem_regions, hnode) {
 		page_count = HVPFN_DOWN(region->size);
+		if (region->flags.large_pages)
+			unmap_flags = HV_UNMAP_GPA_LARGE_PAGE;
+		else
+			unmap_flags = 0;
 		ret = hv_call_unmap_gpa_pages(partition->id, region->guest_pfn,
-					      page_count, 0);
+					      page_count, unmap_flags);
 		if (ret) {
 			pr_err("%s: failed to unmap guest memory region for partition %lld\n",
 			       __func__, vp->partition->id);
