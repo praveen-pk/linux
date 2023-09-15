@@ -402,9 +402,6 @@ static void __init hv_smp_prepare_cpus(unsigned int max_cpus)
 }
 #endif
 
-static int hv_snp_set_rtc_noop(const struct timespec64 *now) { return -EINVAL; }
-static void hv_snp_get_rtc_noop(struct timespec64 *now) { }
-
 static u32 processor_count;
 
 static __init void hv_snp_get_smp_config(unsigned int early)
@@ -659,8 +656,6 @@ static void __init ms_hyperv_init_platform(void)
 
 	if (cc_platform_has(CC_ATTR_GUEST_SEV_SNP)) {
 		x86_platform.legacy.reserve_bios_regions = 0;
-		x86_platform.set_wallclock = hv_snp_set_rtc_noop;
-		x86_platform.get_wallclock = hv_snp_get_rtc_noop;
 		x86_init.resources.probe_roms = x86_init_noop;
 		x86_init.resources.reserve_resources = x86_init_noop;
 		x86_init.mpparse.find_smp_config = x86_init_noop;
