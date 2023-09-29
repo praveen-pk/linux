@@ -533,8 +533,13 @@ static int hv_initialize_sleep_states(void)
 static int hv_call_enter_sleep_state(u32 sleep_state)
 {
 	u64 status;
+	int ret;
 	unsigned long flags;
 	struct hv_input_enter_sleep_state *in;
+
+	ret = hv_initialize_sleep_states();
+	if (ret)
+		return ret;
 
 	local_irq_save(flags);
 	in = (struct hv_input_enter_sleep_state *)(*this_cpu_ptr(
@@ -586,16 +591,13 @@ int hv_sleep_notifiers_register(void)
 {
 	int ret;
 
-	ret = hv_initialize_sleep_states();
-	if (!ret) {
-		acpi_os_set_prepare_sleep(&hv_acpi_sleep_handler);
-		acpi_os_set_prepare_extended_sleep(&hv_acpi_extended_sleep_handler);
+	acpi_os_set_prepare_sleep(&hv_acpi_sleep_handler);
+	acpi_os_set_prepare_extended_sleep(&hv_acpi_extended_sleep_handler);
 
-		ret = register_reboot_notifier(&hv_reboot_notifier);
-		if (ret)
-			pr_err("%s: cannot register reboot notifier %d\n",
-				__func__, ret);
-	}
+	ret = register_reboot_notifier(&hv_reboot_notifier);
+	if (ret)
+		pr_err("%s: cannot register reboot notifier %d\n",
+			__func__, ret);
 
 	return ret;
 }
