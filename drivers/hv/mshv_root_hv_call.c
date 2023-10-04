@@ -234,6 +234,11 @@ static int hv_do_map_gpa_hcall(u64 partition_id, u64 gfn, u64 page_struct_count,
 		return -EINVAL;
 
 	if (flags & HV_MAP_GPA_LARGE_PAGE) {
+		if (mmio_spa) {
+			pr_err("%s: HV_MAP_GPA_LARGE_PAGE not supported with mmio\n",
+			       __func__);
+			return -EINVAL;
+		}
 		if (!HV_PAGE_COUNT_2M_ALIGNED(page_count)) {
 			pr_err("%s: HV_MAP_GPA_LARGE_PAGE, but page_count %llx not aligned\n",
 			       __func__, page_count);
@@ -260,13 +265,17 @@ static int hv_do_map_gpa_hcall(u64 partition_id, u64 gfn, u64 page_struct_count,
 				u64 index = (done + i) << large_shift;
 
 				if (index >= page_struct_count) {
-					WARN(true, "Bad index\n");
-					return -EINVAL;
+					pr_err("%s: Bad index %lu\n",
+					       __func__, i);
+					ret = -EINVAL;
+					break;
 				}
 				pfnlist[i] = page_to_pfn(pages[index]);
 			} else {
 				pfnlist[i] = mmio_spa++;
 			}
+		if (ret)
+			break;
 
 		status = hv_do_rep_hypercall(HVCALL_MAP_GPA_PAGES, rep_count, 0,
 					     input_page, NULL);
@@ -376,8 +385,6 @@ int hv_call_unmap_gpa_pages(
 
 		done += completed;
 	}
-
-	WARN(ret && done, "%s: Partial success\n", __func__);
 
 	return ret;
 }
@@ -1241,7 +1248,7 @@ int hv_call_modify_spa_host_access(u64 partition_id, struct page **pages,
 			u64 index = (done + i) << large_shift;
 
 			if (index >= page_struct_count) {
-				WARN(true, "Bad index\n");
+				pr_err("%s: Bad index %lu\n", __func__, i);
 				return -EINVAL;
 			}
 			input_page->spa_page_list[i] =
