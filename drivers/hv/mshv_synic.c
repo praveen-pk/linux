@@ -356,8 +356,10 @@ mshv_intercept_isr(struct hv_message *msg)
 		 * to handle the VMEXIT. So we need not pass this message
 		 * to vcpu thread.
 		 */
-		if (mshv_notify_acked_gsi(partition,
-				hv_get_interrupt_vector_from_payload(msg->u.payload[0]))) {
+		struct hv_x64_apic_eoi_message *eoi_msg =
+			(struct hv_x64_apic_eoi_message *)&msg->u.payload[0];
+
+		if (mshv_notify_acked_gsi(partition, eoi_msg->interrupt_vector)) {
 			handled = true;
 			goto unlock_out;
 		}
