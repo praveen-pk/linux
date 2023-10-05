@@ -1118,18 +1118,6 @@ struct hv_x64_apic_eoi_message {
 	__u32 interrupt_vector;
 } __packed;
 
-static inline int hv_get_interrupt_vector_from_payload(__u64 payload)
-{
-#if defined(__x86_64__)
-	struct hv_x64_apic_eoi_message *eoi_msg =
-		(struct hv_x64_apic_eoi_message *)payload;
-
-	return eoi_msg->interrupt_vector;
-#else
-	return 0;
-#endif
-}
-
 struct hv_opaque_intercept_message {
 	__u32 vp_index;
 } __packed;
