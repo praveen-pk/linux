@@ -167,11 +167,11 @@ enum hv_system_property {
 
 #define HV_PFN_RNG_PAGEBITS 24  /* HV_SPA_PAGE_RANGE_ADDITIONAL_PAGES_BITS */
 union hv_pfn_range {            /* HV_SPA_PAGE_RANGE */
-	u64 as_uint64;
+	__u64 as_uint64;
 	struct {
 		/* 39:0: base pfn.  63:40: additional pages */
-		u64 base_pfn : 64 - HV_PFN_RNG_PAGEBITS;
-		u64 add_pfns : HV_PFN_RNG_PAGEBITS;
+		__u64 base_pfn : 64 - HV_PFN_RNG_PAGEBITS;
+		__u64 add_pfns : HV_PFN_RNG_PAGEBITS;
 	};
 } __packed;
 
@@ -227,7 +227,7 @@ struct hv_output_get_system_property { /* HV_OUTPUT_GET_SYSTEM_PROPERTY */
 		__u64 hv_processor_feature_value;
 #endif
 		union hv_pfn_range hv_cda_info; /* CrashdumpAreaAddress */
-		u64 hv_tramp_pa;                /* CrashdumpTrampolineAddress */
+		__u64 hv_tramp_pa;                /* CrashdumpTrampolineAddress */
 	};
 } __packed;
 
@@ -394,17 +394,17 @@ struct hv_partition_event_root_crashdump_input {
 } __packed;
 
 struct hv_input_disable_hyp_ex {   /* HV_X64_INPUT_DISABLE_HYPERVISOR_EX */
-	u64 rip;
-	u64 arg;
+	__u64 rip;
+	__u64 arg;
 } __packed;
 
 struct hv_crashdump_area {         /* HV_CRASHDUMP_AREA */
-	u32 version;
+	__u32 version;
 	union {
-		u32 flags_as_uint32;
+		__u32 flags_as_uint32;
 		struct {
-			u32 cda_valid : 1;
-			u32 cda_unused : 31;
+			__u32 cda_valid : 1;
+			__u32 cda_unused : 31;
 		};
 	};
 	/* more unused fields */
