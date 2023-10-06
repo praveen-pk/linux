@@ -272,7 +272,7 @@ static int hv_do_map_gpa_hcall(u64 partition_id, u64 gfn, u64 page_struct_count,
 				}
 				pfnlist[i] = page_to_pfn(pages[index]);
 			} else {
-				pfnlist[i] = mmio_spa++;
+				pfnlist[i] = mmio_spa + done + i;
 			}
 		if (ret)
 			break;
