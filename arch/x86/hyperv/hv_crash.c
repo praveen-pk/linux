@@ -482,6 +482,19 @@ static int hv_crash_trampoline_setup(void)
 	return 0;
 }
 
+static bool hv_supports_devirt(void)
+{
+	union hv_hypervisor_version_info version_info;
+
+	if (hv_get_hypervisor_version(&version_info))
+		return false;
+
+	if (version_info.build_number < 0x99999)
+		return false;
+
+	return true;
+}
+
 /* Do the setup for kdump kexec to collect core when running as mshv root */
 void hv_root_crash_init(void)
 {
@@ -491,6 +504,9 @@ void hv_root_crash_init(void)
 	unsigned long flags;
 	u64 status;
 	union hv_pfn_range cda_info;
+
+	if (!hv_supports_devirt())
+		return;
 
 	local_irq_save(flags);
 	input = *this_cpu_ptr(hyperv_pcpu_input_arg);

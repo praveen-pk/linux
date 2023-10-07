@@ -34,6 +34,7 @@
 #include <linux/reboot.h>
 #include <linux/kexec.h>
 #include <linux/page-flags.h>
+#include <linux/crash_dump.h>
 
 #include <trace/events/mshv.h>
 
@@ -2834,7 +2835,7 @@ int __init mshv_root_init(void)
 	int ret;
 	union hv_hypervisor_version_info version_info;
 
-	if (!hv_root_partition)
+	if (!hv_root_partition || is_kdump_kernel())
 		return -ENODEV;
 
 	if (hv_get_hypervisor_version(&version_info))
