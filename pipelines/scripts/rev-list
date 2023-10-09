@@ -11,7 +11,7 @@ from lsgtools import log
 
 log.set_verbosity(log.DEBUG)
 
-base = "1bf4cc356030"
+base = "830b3c68c1fb"
 
 threads_max = int(len(os.sched_getaffinity(0))*1.3)
 
