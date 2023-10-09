@@ -39,6 +39,7 @@ union hv_ghcb_dbgprint {
 	};
 };
 
+#ifdef CONFIG_SEV_GUEST
 int hv_sev_printf(const char *fmt, va_list ap)
 {
 	char buf[1024];
@@ -82,6 +83,7 @@ void hv_sev_debugbreak(u32 val)
 	asm volatile ("wrmsr" :: "c" (MSR_AMD64_SEV_ES_GHCB), "a" (low), "d" (high));
 }
 EXPORT_SYMBOL_GPL(hv_sev_debugbreak);
+#endif
 
 asmlinkage int vprintk(const char *fmt, va_list args)
 {
@@ -93,12 +95,14 @@ asmlinkage int vprintk(const char *fmt, va_list args)
 		return vkdb_printf(KDB_MSGSRC_PRINTK, fmt, args);
 #endif
 
+#ifdef CONFIG_SEV_GUEST
 	// can't use hv_isolation_type_en_snp() yet, it is not initialized
 	if (cc_platform_has(CC_ATTR_GUEST_SEV_SNP)) {
 		va_copy(args2, args);
 		hv_sev_printf(fmt, args2);
 		va_end(args2);
 	}
+#endif
 
 	/*
 	 * Use the main logbuf even in NMI. But avoid calling console
