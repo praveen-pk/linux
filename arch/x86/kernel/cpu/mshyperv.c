@@ -309,6 +309,10 @@ static void __init hv_smp_prepare_cpus(unsigned int max_cpus)
 #endif
 	native_smp_prepare_cpus(max_cpus);
 
+	/* If AP LPs exist, we are in kexec kernel and VPs already exist */
+	if (num_present_cpus() == 1 || hv_lp_exists(1))
+		return;
+
 #ifdef CONFIG_X86_64
 	BUG_ON(ccpu != 0);
 
@@ -324,13 +328,6 @@ static void __init hv_smp_prepare_cpus(unsigned int max_cpus)
 	}
 
 	i = next_smallest_apicid(apicids, 0);
-
-	/*
-	 * If we are in a kexec'd kernel, the LPs have already been added
-	 * and VPs already created. Skip doing that again.
-	 */
-	if (i != INT_MAX && hv_lp_exists(1))
-		return;
 
 	for (lpidx = 1; i != INT_MAX; lpidx++) {
 #ifdef CONFIG_NUMA
