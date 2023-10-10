@@ -48,17 +48,17 @@ def is_version_valid(version):
 
 
 def patch_config(tarball_local_path, kernel_conf, conf_patch, kernel_basename):
-    for k in kernel_conf:
-        cf = kernel_conf[k]["path"]
+    for arch in kernel_conf:
+        cf = kernel_conf[arch]["path"]
 
         # Extract configs from the tarball into the SPEC
-        config_path_in_tar = "arch/{}/configs/{}".format(kernel_conf[k]["kernel_arch"], kernel_basename)
+        config_path_in_tar = "arch/{}/configs/{}".format(kernel_conf[arch]["kernel_arch"], kernel_basename)
         conf = None
         with tarfile.open(tarball_local_path, "r") as tar:
             # Expect just one root member in the tarball which is a dir
-            for ti in tar:
-                if ti.isdir():
-                    config_path_in_tar = "{}/{}".format(ti.name, config_path_in_tar)
+            for tar_item in tar:
+                if tar_item.isdir():
+                    config_path_in_tar = "{}/{}".format(tar_item.name, config_path_in_tar)
                     log.info("Reading '{}' from '{}'".format(config_path_in_tar, tarball_local_path))
                     conf = tar.extractfile(config_path_in_tar).read().decode("utf-8")
                     break
@@ -66,14 +66,14 @@ def patch_config(tarball_local_path, kernel_conf, conf_patch, kernel_basename):
         if not bool(conf):
             raise Exception("Read empty config from '{}' in '{}".format(config_path_in_tar, tarball_local_path))
 
-        for sr in conf_patch:
-            conf = re.sub(re.compile(sr[0]), sr[1], conf)
+        for re_data in conf_patch:
+            conf = re.sub(re.compile(re_data[0]), re_data[1], conf)
 
         with open(cf, "w") as f:
             f.write(conf)
         f.close()
 
-        kernel_conf[k]["sha256"] = hashlib.sha256(conf.encode()).hexdigest()
+        kernel_conf[arch]["sha256"] = hashlib.sha256(conf.encode()).hexdigest()
 
     return kernel_conf
 
