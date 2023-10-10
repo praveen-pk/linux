@@ -31,7 +31,7 @@ else:
     log.info(cmd)
     target_branch = os.popen(cmd).read().strip()
 
-feature_branch = "autoupdate/version-{}".format(args.new_version)
+feature_branch = "autoupdate/version-{}-{}".format(args.new_version, target_branch)
 
 cmds = [
     ["git", "checkout", "-b", feature_branch, target_branch],

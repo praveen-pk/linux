@@ -5,10 +5,6 @@ resources:
       type: git
       name: LSG/lsg-virt-mariner
       ref: refs/heads/main
-    - repository: lisa
-      type: git
-      name: LSG/lsg-lisa
-      ref: refs/tags/virtstack/stable
 
 trigger:
   batch: false
@@ -43,8 +39,8 @@ stages:
       value: docker
     - name: BUILDING_TAG
       value: $[startsWith(variables['Build.SourceBranch'], 'refs/tags')]
-    - name: BUILDING_MAIN
-      value: $[or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/msft/mshv-stable'))]
+    - name: BUILDING_MSFT_UVM_MAIN
+      value: $[eq(variables['Build.SourceBranch'], 'refs/heads/msft-uvm-main')]
     - name: SOURCES_STORAGE_URL
       value: https://lsgvirtstorage.blob.core.windows.net/dom0-mariner-sources-public
 
@@ -223,7 +219,7 @@ stages:
 
   - job: Checkpatch
     timeoutInMinutes: 30
-    condition: not(or(eq(variables.BUILDING_MAIN, 'true'), eq(variables.BUILDING_TAG, 'true')))
+    condition: not(or(eq(variables.BUILDING_MSFT_UVM_MAIN, 'true'), eq(variables.BUILDING_TAG, 'true')))
     pool:
       name: lsg-virt-amd64-1es-agent-pool-3
 
@@ -249,7 +245,7 @@ stages:
 
   - job: Revisions
     timeoutInMinutes: 60
-    condition: or(eq(variables.BUILDING_TAG, 'true'), eq(variables.BUILDING_MAIN, 'true'))
+    condition: or(eq(variables.BUILDING_TAG, 'true'), eq(variables.BUILDING_MSFT_UVM_MAIN, 'true'))
     pool:
       name: lsg-virt-amd64-1es-agent-pool-1
 
@@ -376,7 +372,7 @@ stages:
           SOURCES_STORAGE_URL: $(SOURCES_STORAGE_URL)
 
   - job: CHECK_SCRIPTS
-    condition: not(or(eq(variables.BUILDING_MAIN, 'true'), eq(variables.BUILDING_TAG, 'true')))
+    condition: not(or(eq(variables.BUILDING_MSFT_UVM_MAIN, 'true'), eq(variables.BUILDING_TAG, 'true')))
     timeoutInMinutes: 30
     pool:
       name: 'lsg-virt-amd64-1es-agent-pool-3'

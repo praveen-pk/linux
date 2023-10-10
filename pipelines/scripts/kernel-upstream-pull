@@ -103,7 +103,7 @@ def version_mshv_from_upstream(version_upstream):
     return ".".join(segs)
 
 
-upstream_tag = tag_get_latest("rolling-lts/mariner-2/*")
+upstream_tag = tag_get_latest("rolling-lts/mariner-3/*")
 log.msg("Latest tag is '{}'".format(upstream_tag))
 
 # Check if the upstream tag is already merged into the target branch
@@ -134,6 +134,10 @@ cmds = [
     ["git", "merge", "--no-ff", "--log", "--allow-unrelated-histories", upstream_tag],
     ["git", "checkout", "--theirs", "Makefile"],
     ["git", "add", "Makefile"],
+    ["git", "checkout", "--theirs", "MSFT-Merge/log"],
+    ["git", "add", "MSFT-Merge/log"],
+    ["git", "checkout", "--theirs", "Documentation"],
+    ["git", "add", "Documentation"],
     ["git", "commit", "--no-edit"]
 ]
 

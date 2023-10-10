@@ -5,7 +5,6 @@ __copyright__ = "Copyright (c) Microsoft Corporation."
 import os
 import sys
 import requests
-import hashlib
 import subprocess
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))  # noqa E402
 
@@ -30,7 +29,7 @@ if len(rev_hash) < 8:
     log.err("Git revision '{}' is invalid".format(rev_hash))
     exit(1)
 
-derivative_branch = "autoupdate/kernel-mshv-{}".format(version)
+derivative_branch = "autoupdate/kernel-uvm-{}".format(version)
 storage_url = os.getenv("SOURCES_STORAGE_URL")
 if storage_url is None:
     storage_url = conf.default_storage_url
@@ -66,37 +65,6 @@ res = subprocess.run(cmd)
 if 0 != res.returncode:
     err = res.stderr.decode("ascii")
     raise Exception(err)
-
-
-# Update kernel-mshv.spec
-kernel_spec_path = "SPECS/kernel/kernel-mshv.spec"
-kernel_sums_path = "SPECS/kernel/kernel-mshv.signatures.json"
-kernel_conf = {
-        "x86": {"path": "SPECS/kernel/config_x86", "sha256": None, "kernel_arch": "x86"},
-        "aarch64": {"path": "SPECS/kernel/config_aarch64", "sha256": None, "kernel_arch": "arm64"}
-        }
-kernel_conf_patch = [
-    ["CONFIG_SYSTEM_TRUSTED_KEYS=.*", 'CONFIG_SYSTEM_TRUSTED_KEYS="certs/mariner.pem"'],
-    ["Linux/(.*) (.*) Kernel Configuration", "Linux/\\1 {} Kernel Configuration".format(version)]
-]
-kernel_conf = kernel.patch_config(tarball_local_path, kernel_conf, kernel_conf_patch, "mshv_defconfig")
-# Recalculate sum
-pem_path = "SPECS/kernel/cbl-mariner-ca-20211013.pem"
-with open(pem_path, "rb") as f:
-    pem_sha256 = hashlib.sha256(f.read()).hexdigest()
-f.close()
-# Re-create signatures file
-sums_struct = {
-    "Signatures": {
-        os.path.basename(pem_path): pem_sha256,
-        os.path.basename(kernel_conf["x86"]["path"]): kernel_conf["x86"]["sha256"],
-        os.path.basename(kernel_conf["aarch64"]["path"]): kernel_conf["aarch64"]["sha256"],
-        tarball_name: tarball_sha256,
-            }
-    }
-kernel.update_spec_sums(kernel_sums_path, sums_struct)
-# Update spec
-kernel.update_spec(kernel_spec_path, version, rev_hash)
 
 
 # Update kernel-uvm.spec

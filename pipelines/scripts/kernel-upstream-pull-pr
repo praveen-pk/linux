@@ -32,7 +32,7 @@ if not source_branch.startswith("refs/heads/"):
     source_branch = "refs/heads/{}".format(source_branch)
 payload = {
     "sourceRefName": source_branch,
-    "targetRefName": "refs/heads/main",
+    "targetRefName": "refs/heads/msft-uvm-main",
     "title": "rolling: Autoupdate pull {}".format(kernel.get_version_from_tag(args.tag)),
     "description": "Upstream tag: {}".format(args.tag),
     "completionOptions": {

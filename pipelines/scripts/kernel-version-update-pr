@@ -35,7 +35,7 @@ if not source_branch.startswith("refs/heads/"):
     source_branch = "refs/heads/{}".format(source_branch)
 payload = {
     "sourceRefName": source_branch,
-    "targetRefName": "refs/heads/main",
+    "targetRefName": "refs/heads/msft-uvm-main",
     "title": "makefile: config: Update version {}".format(kernel.get_version_from_tag(args.new_version)),
     "description": "Prepare to tag: msft/mshv-rolling/{}".format(args.new_version),
     "completionOptions": {

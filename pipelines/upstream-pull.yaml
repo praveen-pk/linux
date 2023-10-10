@@ -1,7 +1,7 @@
 
 variables:
   TAG_FLAG_FILE: /tmp/upstream-latest.txt
-  TARGET_BRANCH: main
+  TARGET_BRANCH: msft-uvm-main
 
 trigger: none
 
@@ -10,7 +10,7 @@ schedules:
   displayName: Daily automated SPEC update
   branches:
     include:
-    - main
+    - msft-uvm-main
   always: true
 
 jobs:
