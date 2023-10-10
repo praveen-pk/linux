@@ -62,7 +62,6 @@ def patch_config(tarball_local_path, kernel_conf, conf_patch, kernel_basename):
                     log.info("Reading '{}' from '{}'".format(config_path_in_tar, tarball_local_path))
                     conf = tar.extractfile(config_path_in_tar).read().decode("utf-8")
                     break
-        tar.close()
         if not bool(conf):
             raise Exception("Read empty config from '{}' in '{}".format(config_path_in_tar, tarball_local_path))
 
@@ -71,7 +70,6 @@ def patch_config(tarball_local_path, kernel_conf, conf_patch, kernel_basename):
 
         with open(cf, "w") as f:
             f.write(conf)
-        f.close()
 
         kernel_conf[arch]["sha256"] = hashlib.sha256(conf.encode()).hexdigest()
 
