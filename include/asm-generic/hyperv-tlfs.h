@@ -1002,6 +1002,7 @@ struct hv_output_get_system_property {
 
 struct hv_input_set_system_property {
 	u32 property_id; /* enum hv_system_property */
+	u32 reserved;
 	union {
 		/* More fields to be filled in when needed */
 		struct hv_sleep_state_info set_sleep_state_info;
