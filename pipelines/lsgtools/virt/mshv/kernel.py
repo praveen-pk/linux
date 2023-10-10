@@ -22,7 +22,7 @@ def build_tarball_prefix(version):
 
 
 def build_tar_name(version):
-    tarball_format = "tar"
+    tarball_format = get_tarball_format()
     return "{}.{}".format(build_tarball_prefix(version), tarball_format)
 
 
