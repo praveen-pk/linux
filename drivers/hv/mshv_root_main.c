@@ -946,10 +946,8 @@ mshv_partition_ioctl_create_vp(struct mshv_partition *partition,
 {
 	struct mshv_create_vp args;
 	struct mshv_vp *vp;
-	struct file *file;
-	int fd;
+	struct page *page;
 	long ret;
-	struct page *intercept_message_page;
 
 	if (copy_from_user(&args, arg, sizeof(args)))
 		return -EFAULT;
@@ -960,15 +958,20 @@ mshv_partition_ioctl_create_vp(struct mshv_partition *partition,
 	if (partition->vps.array[args.vp_index])
 		return -EEXIST;
 
+	ret = hv_call_create_vp(NUMA_NO_NODE, partition->id, args.vp_index,
+				0 /* Only valid for root partition VPs */);
+	if (ret)
+		return ret;
+
+	ret = hv_call_map_vp_state_page(partition->id, args.vp_index,
+					HV_VP_STATE_PAGE_INTERCEPT_MESSAGE,
+					&page);
+	if (ret)
+		goto destroy_vp;
+
 	vp = kzalloc(sizeof(*vp), GFP_KERNEL);
-
 	if (!vp)
-		return -ENOMEM;
-
-	mutex_init(&vp->mutex);
-	init_waitqueue_head(&vp->run.suspend_queue);
-
-	atomic64_set(&vp->run.signaled_count, 0);
+		goto unmap_vp_state;
 
 	vp->registers = kmalloc_array(MSHV_VP_MAX_REGISTERS,
 				      sizeof(*vp->registers), GFP_KERNEL);
@@ -977,67 +980,53 @@ mshv_partition_ioctl_create_vp(struct mshv_partition *partition,
 		goto free_vp;
 	}
 
-	vp->index = args.vp_index;
 	vp->partition = mshv_partition_get(partition);
 	if (!vp->partition) {
 		ret = -EBADF;
 		goto free_registers;
 	}
 
-	fd = get_unused_fd_flags(O_CLOEXEC);
-	if (fd < 0) {
-		ret = fd;
+	mutex_init(&vp->mutex);
+	init_waitqueue_head(&vp->run.suspend_queue);
+	atomic64_set(&vp->run.signaled_count, 0);
+
+	vp->index = args.vp_index;
+	vp->intercept_message_page = page_to_virt(page);
+
+	ret = mshv_debugfs_vp_create(vp);
+	if (ret)
 		goto put_partition;
-	}
 
-	file = anon_inode_getfile("mshv_vp", &mshv_vp_fops, vp, O_RDWR);
-	if (IS_ERR(file)) {
-		ret = PTR_ERR(file);
-		goto put_fd;
-	}
-
-	ret = hv_call_create_vp(
-			NUMA_NO_NODE,
-			partition->id,
-			args.vp_index,
-			0 /* Only valid for root partition VPs */
-			);
-	if (ret)
-		goto release_file;
-
-	ret = hv_call_map_vp_state_page(partition->id, vp->index,
-					HV_VP_STATE_PAGE_INTERCEPT_MESSAGE,
-					&intercept_message_page);
-	if (ret)
-		goto release_file;
-
-	vp->intercept_message_page = page_to_virt(intercept_message_page);
+	/*
+	 * Keep anon_inode_getfd last: it installs fd in the file struct and
+	 * thus makes the state accessible in user space.
+	 */
+	ret = anon_inode_getfd("mshv_vp", &mshv_vp_fops, vp, O_RDWR | O_CLOEXEC);
+	if (ret < 0)
+		goto remove_debugfs_vp;
 
 	/* already exclusive with the partition mutex for all ioctls */
 	partition->vps.count++;
 	partition->vps.array[args.vp_index] = vp;
 
-	mshv_debugfs_vp_create(vp);
+	trace_mshv_create_vp(ret, partition->id, vp->index, ret);
 
-	fd_install(fd, file);
+	return ret;
 
-	trace_mshv_create_vp(ret, partition->id, vp->index, fd);
-
-	return fd;
-
-release_file:
-	file->f_op->release(file->f_inode, file);
-put_fd:
-	put_unused_fd(fd);
+remove_debugfs_vp:
+	mshv_debugfs_vp_remove(vp);
 put_partition:
 	mshv_partition_put(partition);
 free_registers:
 	kfree(vp->registers);
 free_vp:
 	kfree(vp);
-
-	trace_mshv_create_vp(ret, partition->id, vp->index, -1);
-
+unmap_vp_state:
+	hv_call_unmap_vp_state_page(partition->id, args.vp_index,
+				    HV_VP_STATE_PAGE_INTERCEPT_MESSAGE);
+destroy_vp:
+	hv_call_delete_vp(partition->id, args.vp_index);
+	trace_mshv_create_vp(ret, partition->id, args.vp_index, -1);
 	return ret;
 }
 
