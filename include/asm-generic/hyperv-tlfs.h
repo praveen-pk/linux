@@ -161,6 +161,7 @@ union hv_reference_tsc_msr {
 #define HVCALL_GET_PARTITION_ID			0x0046
 #define HVCALL_DEPOSIT_MEMORY			0x0048
 #define HVCALL_CREATE_VP			0x004e
+#define HVCALL_DELETE_VP			0x004f
 #define HVCALL_GET_VP_REGISTERS			0x0050
 #define HVCALL_SET_VP_REGISTERS			0x0051
 #define HVCALL_POST_MESSAGE			0x005c
@@ -589,6 +590,15 @@ struct hv_create_vp {
 	u64 subnode_id;
 	union hv_proximity_domain_info proximity_domain_info;
 	u64 flags;
+} __packed;
+
+union hv_delete_vp {
+	__u64 as_uint64[2];
+	struct {
+		u64 partition_id;
+		u32 vp_index;
+		u8 reserved[4];
+	} __packed;
 } __packed;
 
 enum hv_interrupt_source {
