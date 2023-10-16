@@ -382,6 +382,26 @@ int hv_call_create_vp(int node, u64 partition_id, u32 vp_index, u32 flags)
 }
 EXPORT_SYMBOL_GPL(hv_call_create_vp);
 
+int hv_call_delete_vp(u64 partition_id, u32 vp_index)
+{
+	union hv_delete_vp input = { 0 };
+	u64 status;
+
+	input.partition_id = partition_id;
+	input.vp_index = vp_index;
+
+	status = hv_do_fast_hypercall16(HVCALL_DELETE_VP,
+					input.as_uint64[0], input.as_uint64[1]);
+	if (!hv_result_success(status)) {
+		pr_err("%s: %s\n",
+			__func__, hv_status_to_string(status));
+		return hv_status_to_errno(status);
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(hv_call_delete_vp);
+
 /*
  * See struct hv_deposit_memory. The first u64 is partition ID, the rest
  * are GPAs.
