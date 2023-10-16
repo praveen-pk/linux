@@ -552,7 +552,7 @@ static int mshv_trace_buffer_map(struct mshv_trace_state *state,
 	return 0;
 
 unmap_buffer:
-	hv_call_unmap_event_log_buffer(state->type, i);
+	hv_call_unmap_event_log_buffer(state->type, buffer_index);
 	return err;
 }
 
