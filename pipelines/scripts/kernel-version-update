@@ -1,0 +1,58 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+import subprocess
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))  # noqa E402
+
+from lsgtools import cli
+from lsgtools import log
+from lsgtools import git
+from lsgtools.virt.mshv import kernel
+
+arg_parser = cli.create_arg_parser(prog="kernel-version-update",
+                                   description="Update the kernel version in optionally created feature branch")
+arg_parser.add_argument("--target-branch", help="Target branch to base the merge on", required=False)
+arg_parser.add_argument("--new-version", help="New version to update to", action="store", required=True)
+args = arg_parser.parse_args()
+log.set_verbosity(args.verbose)
+
+if not kernel.is_version_valid(args.new_version):
+    log.fatal("Invalid kernel version '{}'".format(args.new_version))
+    exit(1)
+
+if args.target_branch is not None:
+    target_branch = args.target_branch
+    if not git.checkout(target_branch):
+        exit(1)
+else:
+    # Read the current branch name
+    cmd = "git rev-parse --abbrev-ref HEAD"
+    log.info(cmd)
+    target_branch = os.popen(cmd).read().strip()
+
+feature_branch = "autoupdate/version-{}-{}".format(args.new_version, target_branch)
+
+cmds = [
+    ["git", "checkout", "-b", feature_branch, target_branch],
+]
+
+for cmd in cmds:
+    log.info("{}".format(" ".join(cmd)))
+    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, )
+    log.debug(res.stdout.decode("utf-8"))
+    if 0 != res.returncode:
+        log.fatal(res.stderr.decode("utf-8"))
+        exit(1)
+
+
+# Update Makefile and defconfigs
+kernel.update_kernel_version(".", args.new_version)
+
+cmd = ["git", "commit", "-a", "-m", "'makefile: config: Set MSHV version'"]
+log.info("{}".format(" ".join(cmd)))
+res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, )
+log.info(res.stdout.decode("utf-8"))
+if 0 != res.returncode:
+    log.fatal(res.stderr.decode("utf-8"))
+    exit(1)
