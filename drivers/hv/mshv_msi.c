@@ -102,7 +102,7 @@ mshv_msi_map_gsi(struct mshv_partition *partition, u32 gsi)
 	msi_rt = srcu_dereference_check(partition->msi_routing,
 					&partition->irq_srcu,
 					lockdep_is_held(&partition->irq_lock));
-	if (!msi_rt) {
+	if (!msi_rt || gsi >= msi_rt->nr_rt_entries) {
 		/*
 		 * Premature register_irqfd, setting valid_entry = 0
 		 * would ignore this entry anyway
