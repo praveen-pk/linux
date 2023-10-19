@@ -31,9 +31,9 @@ else:
 
 
 tarball_format = kernel.get_tarball_format()
-tarball_prefix = kernel.build_tarball_prefix(version)
-tarball_tar = kernel.build_tar_name(version)
-tarball_name = kernel.build_tgz_name(version)
+tarball_prefix = kernel.build_tarball_prefix(version, "uvm")
+tarball_tar = kernel.build_tar_name(version, "uvm")
+tarball_name = kernel.build_tgz_name(version, "uvm")
 
 log.info("Packaging '{}' based on '{}'".format(tarball_name, ref))
 

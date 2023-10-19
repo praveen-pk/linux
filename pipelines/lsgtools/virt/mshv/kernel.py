@@ -17,17 +17,17 @@ def get_tarball_format():
     return "tar"
 
 
-def build_tarball_prefix(version):
-    return "kernel-mshv-{}".format(version)
+def build_tarball_prefix(version, suffix="mshv"):
+    return "kernel-{}-{}".format(suffix, version)
 
 
-def build_tar_name(version):
+def build_tar_name(version, suffix="mshv"):
     tarball_format = get_tarball_format()
-    return "{}.{}".format(build_tarball_prefix(version), tarball_format)
+    return "{}.{}".format(build_tarball_prefix(version, suffix), tarball_format)
 
 
-def build_tgz_name(version):
-    tarball_name = "{}.gz".format(build_tar_name(version))
+def build_tgz_name(version, suffix="mshv"):
+    tarball_name = "{}.gz".format(build_tar_name(version, suffix))
     return tarball_name
 
 
