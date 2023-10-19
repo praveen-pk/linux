@@ -165,7 +165,19 @@ void hv_remove_crash_handler(void);
 extern int vmbus_interrupt;
 extern int vmbus_irq;
 
-extern bool hv_root_partition;
+enum hv_partition_type {
+	HV_PARTITION_GUEST,
+	HV_PARTITION_ROOT,
+	HV_PARTITION_MAX
+};
+
+extern enum hv_partition_type hv_current_partition;
+
+static inline int hv_root_partition(void)
+{
+	return hv_current_partition == HV_PARTITION_ROOT;
+}
+
 extern bool hv_nested;
 
 #ifdef HV_SUPPORTS_NESTED

@@ -28,7 +28,7 @@
 #include <acpi/acpi.h>
 
 /*
- * hv_root_partition and ms_hyperv are defined here with other Hyper-V
+ * hv_current_partition and ms_hyperv are defined here with other Hyper-V
  * specific globals so they are shared across all architectures and are
  * built only when CONFIG_HYPERV is defined.  But on x86,
  * ms_hyperv_init_platform() is built even when CONFIG_HYPERV is not
@@ -36,8 +36,8 @@
  * here, allowing for an overriding definition in the module containing
  * ms_hyperv_init_platform().
  */
-bool __weak hv_root_partition;
-EXPORT_SYMBOL_GPL(hv_root_partition);
+enum hv_partition_type __weak hv_current_partition = HV_PARTITION_GUEST;
+EXPORT_SYMBOL_GPL(hv_current_partition);
 
 bool __weak hv_nested;
 EXPORT_SYMBOL_GPL(hv_nested);
@@ -111,7 +111,7 @@ int __init hv_common_init(void)
 	hyperv_pcpu_output_arg = alloc_percpu(void *);
 	BUG_ON(!hyperv_pcpu_output_arg);
 
-	if (hv_root_partition) {
+	if (hv_root_partition()) {
 		hv_synic_eventring_tail = alloc_percpu(u8 *);
 		BUG_ON(hv_synic_eventring_tail == NULL);
 	}
@@ -153,7 +153,7 @@ int hv_common_cpu_init(unsigned int cpu)
 	outputarg = (void **)this_cpu_ptr(hyperv_pcpu_output_arg);
 	*outputarg = (char *)(*inputarg) + HV_HYP_PAGE_SIZE;
 
-	if (hv_root_partition) {
+	if (hv_root_partition()) {
 		synic_eventring_tail = (u8 **)this_cpu_ptr(hv_synic_eventring_tail);
 		*synic_eventring_tail = kcalloc(HV_SYNIC_SINT_COUNT, sizeof(u8),
 						flags);
@@ -190,7 +190,7 @@ int hv_common_cpu_die(unsigned int cpu)
 	outputarg = (void **)this_cpu_ptr(hyperv_pcpu_output_arg);
 	*outputarg = NULL;
 
-	if (hv_root_partition) {
+	if (hv_root_partition()) {
 		synic_eventring_tail = (u8 **)this_cpu_ptr(hv_synic_eventring_tail);
 		kfree(*synic_eventring_tail);
 		*synic_eventring_tail = NULL;
@@ -261,7 +261,7 @@ EXPORT_SYMBOL_GPL(hv_setup_dma_ops);
 
 bool hv_is_hibernation_supported(void)
 {
-	return !hv_root_partition && acpi_sleep_state_supported(ACPI_STATE_S4);
+	return !hv_root_partition() && acpi_sleep_state_supported(ACPI_STATE_S4);
 }
 EXPORT_SYMBOL_GPL(hv_is_hibernation_supported);
 

@@ -2824,7 +2824,7 @@ int __init mshv_root_init(void)
 	int ret;
 	union hv_hypervisor_version_info version_info;
 
-	if (!hv_root_partition || is_kdump_kernel())
+	if (!hv_root_partition() || is_kdump_kernel())
 		return -ENODEV;
 
 	if (hv_get_hypervisor_version(&version_info))

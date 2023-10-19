@@ -537,7 +537,7 @@ static bool __init hv_init_tsc_clocksource(void)
 	 *   page later in hv_remap_tsc_clocksource().
 	 */
 	tsc_msr.as_uint64 = hv_get_register(HV_SYN_REG_REFERENCE_TSC);
-	if (hv_root_partition)
+	if (hv_root_partition())
 		tsc_pfn = tsc_msr.pfn;
 	else
 		tsc_pfn = __phys_to_pfn(virt_to_phys(tsc_page));
@@ -581,7 +581,7 @@ void __init hv_remap_tsc_clocksource(void)
 	if (!(ms_hyperv.features & HV_MSR_REFERENCE_TSC_AVAILABLE))
 		return;
 
-	if (!hv_root_partition)
+	if (!hv_root_partition())
 		return;
 
 	tsc_page = memremap(__pfn_to_phys(tsc_pfn), PAGE_SIZE, MEMREMAP_WB);
