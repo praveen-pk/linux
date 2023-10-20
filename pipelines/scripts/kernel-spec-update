@@ -34,7 +34,7 @@ storage_url = os.getenv("SOURCES_STORAGE_URL")
 if storage_url is None:
     storage_url = conf.default_storage_url
 
-tarball_name = kernel.build_tgz_name(version)
+tarball_name = kernel.build_tgz_name(version, "uvm")
 tarball_local_path = "/tmp/{}".format(tarball_name)
 tarball_url = "{}/{}".format(storage_url, tarball_name)
 tarball_sum_url = "{}/{}.sha256".format(storage_url, tarball_name)
