@@ -91,8 +91,24 @@ kernel.update_spec_sums(kernel_sums_path, sums_struct)
 kernel.update_spec(kernel_spec_path, version, rev_hash)
 
 
+# Update kernel-uvm-cvm.spec
+kernel_spec_path = "SPECS/kernel/kernel-uvm-cvm.spec"
+kernel_sums_path = "SPECS/kernel/kernel-uvm-cvm.signatures.json"
+del kernel_conf["aarch64"]
+# Re-create signatures file
+sums_struct = {
+    "Signatures": {
+        os.path.basename(kernel_conf["x86"]["path"]): kernel_conf["x86"]["sha256"],
+        tarball_name: tarball_sha256,
+            }
+    }
+kernel.update_spec_sums(kernel_sums_path, sums_struct)
+# Update spec
+kernel.update_spec(kernel_spec_path, version, rev_hash)
+
+
 # Commit the branch
-commit_msg = """kernel-msft: Autoupdate to {}
+commit_msg = """kernel-uvm: Autoupdate to {}
 
 Kernel revision: {}
 """.format(version, rev_hash)
