@@ -956,6 +956,13 @@ struct hv_output_map_vp_state_page {
 	__u64 map_location; /* GPA page number */
 } __packed;
 
+struct hv_input_map_vp_state_page_ex {
+	__u64 partition_id;
+	__u32 vp_index;
+	__u32 type; /* enum hv_vp_state_page_type */
+	__u64 map_location;
+} __packed;
+
 struct hv_input_unmap_vp_state_page {
 	__u64 partition_id;
 	__u32 vp_index;

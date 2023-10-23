@@ -55,7 +55,7 @@ static int __init mshv_diag_init(void)
 {
 	int ret;
 
-	if (!hv_root_partition)
+	if (!hv_root_partition())
 		return -EPERM;
 
 	ret = misc_register(&mshv_diag_dev);

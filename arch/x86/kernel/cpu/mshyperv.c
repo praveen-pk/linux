@@ -36,8 +36,8 @@
 #include <asm/numa.h>
 #include <asm/e820/api.h>
 
-/* Is Linux running as the root partition? */
-bool hv_root_partition;
+/* Linux partition type: guest, root or l1vh */
+enum hv_partition_type hv_current_partition;
 /* Is Linux running on nested Microsoft Hypervisor */
 bool hv_nested;
 struct ms_hyperv_info ms_hyperv;
@@ -602,7 +602,7 @@ static void __init ms_hyperv_init_platform(void)
 	 */
 	if ((ms_hyperv.priv_high & HV_CPU_MANAGEMENT) &&
 	    !(ms_hyperv.priv_high & HV_ISOLATION)) {
-		hv_root_partition = true;
+		hv_current_partition = HV_PARTITION_ROOT;
 		pr_info("Hyper-V: running as root partition\n");
 
 
@@ -674,7 +674,7 @@ static void __init ms_hyperv_init_platform(void)
 
 #if IS_ENABLED(CONFIG_HYPERV) && defined(CONFIG_KEXEC_CORE)
 	machine_ops.shutdown = hv_machine_shutdown;
-	if (!hv_root_partition)
+	if (!hv_root_partition())
 		machine_ops.crash_shutdown = hv_guest_crash_shutdown;
 #endif
 	if (ms_hyperv.features & HV_ACCESS_TSC_INVARIANT) {
@@ -731,7 +731,7 @@ static void __init ms_hyperv_init_platform(void)
 
 # ifdef CONFIG_SMP
 	smp_ops.smp_prepare_boot_cpu = hv_smp_prepare_boot_cpu;
-	if (hv_root_partition)
+	if (hv_root_partition())
 		smp_ops.smp_prepare_cpus = hv_smp_prepare_cpus;
 # endif
 

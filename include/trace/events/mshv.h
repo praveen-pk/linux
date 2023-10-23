@@ -254,6 +254,35 @@ TRACE_EVENT(mshv_hvcall_map_vp_state_page,
 	)
 );
 
+TRACE_EVENT(mshv_hvcall_map_vp_state_page_ex,
+		TP_PROTO(u64 status, u64 partition_id, u32 vp_index, u32 page_type, u64 map_pfn),
+		TP_ARGS(status, partition_id, vp_index, page_type, map_pfn),
+
+	TP_STRUCT__entry(
+		__field(u64, status)
+		__field(u64, partition_id)
+		__field(u32, vp_index)
+		__field(u32, page_type)
+		__field(u64, map_pfn)
+	),
+
+	TP_fast_assign(
+		__entry->status = status;
+		__entry->partition_id = partition_id;
+		__entry->vp_index = vp_index;
+		__entry->page_type = page_type;
+		__entry->map_pfn = map_pfn;
+	),
+
+	TP_printk("status=0x%llx partition_id=%llu vp_index=%u page_type=%u map_pfn=%llx",
+		__entry->status,
+		__entry->partition_id,
+		__entry->vp_index,
+		__entry->page_type,
+		__entry->map_pfn
+	)
+);
+
 TRACE_EVENT(mshv_drain_vp_signals,
 		TP_PROTO(u64 partition_id, u32 vp_index),
 		TP_ARGS(partition_id, vp_index),

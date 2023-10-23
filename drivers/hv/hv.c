@@ -168,7 +168,7 @@ int hv_synic_alloc(void)
 			goto err;
 		}
 
-		if (hv_root_partition)
+		if (hv_root_partition())
 			continue;
 
 		hv_cpu->synic_message_page =
@@ -203,7 +203,7 @@ void hv_synic_free(void)
 		struct hv_per_cpu_context *hv_cpu
 			= per_cpu_ptr(hv_context.cpu_context, cpu);
 
-		if (hv_root_partition) {
+		if (hv_root_partition()) {
 			if (hv_cpu->synic_event_page != NULL)
 				memunmap(hv_cpu->synic_event_page);
 
@@ -238,7 +238,7 @@ void hv_synic_enable_regs(unsigned int cpu)
 	/* Setup the Synic's message page */
 	simp.as_uint64 = hv_get_register(REG_SIMP);
 	simp.simp_enabled = 1;
-	if (hv_root_partition)
+	if (hv_root_partition())
 		hv_cpu->synic_message_page =
 			memremap(simp.base_simp_gpa << HV_HYP_PAGE_SHIFT,
 				 HV_HYP_PAGE_SIZE, MEMREMAP_WB);
@@ -251,7 +251,7 @@ void hv_synic_enable_regs(unsigned int cpu)
 	/* Setup the Synic's event page */
 	siefp.as_uint64 = hv_get_register(REG_SIEFP);
 	siefp.siefp_enabled = 1;
-	if (hv_root_partition)
+	if (hv_root_partition())
 		hv_cpu->synic_event_page =
 			memremap(siefp.base_siefp_gpa << HV_HYP_PAGE_SHIFT,
 				 HV_HYP_PAGE_SIZE, MEMREMAP_WB);
@@ -317,14 +317,14 @@ void hv_synic_disable_regs(unsigned int cpu)
 
 	simp.as_uint64 = hv_get_register(REG_SIMP);
 	simp.simp_enabled = 0;
-	if (!hv_root_partition)
+	if (!hv_root_partition())
 		simp.base_simp_gpa = 0;
 
 	hv_set_register(REG_SIMP, simp.as_uint64);
 
 	siefp.as_uint64 = hv_get_register(REG_SIEFP);
 	siefp.siefp_enabled = 0;
-	if (!hv_root_partition)
+	if (!hv_root_partition())
 		siefp.base_siefp_gpa = 0;
 
 	hv_set_register(REG_SIEFP, siefp.as_uint64);
