@@ -588,7 +588,7 @@ static void __init ms_hyperv_init_platform(void)
 
 	/*
 	 * Check partitions creation privilege.
-	 * Only root partition can have this privilege.
+	 * Only root of L1VH partitions can have this privilege.
 	 *
 	 * Hyper-V should never specify running as root and as a Confidential
 	 * VM. But to protect against a compromised/malicious Hyper-V trying
@@ -597,15 +597,19 @@ static void __init ms_hyperv_init_platform(void)
 	 */
 	if ((ms_hyperv.priv_high & HV_CREATE_PARTITIONS) &&
 	    !(ms_hyperv.priv_high & HV_ISOLATION)) {
-		hv_current_partition = HV_PARTITION_ROOT;
-		pr_info("Hyper-V: running as root partition\n");
+		if (ms_hyperv.priv_high & HV_CPU_MANAGEMENT) {
+			hv_current_partition = HV_PARTITION_ROOT;
+			pr_info("Hyper-V: running as root partition\n");
 
-
-		/* very first thing, reserve/log exclusive hypervisor memory */
-		if (mshv_loader_new)
-			hv_dump_mshv_memory();
-		else
-			hv_resv_mshv_memory();
+			/* very first thing, reserve/log exclusive hypervisor memory */
+			if (mshv_loader_new)
+				hv_dump_mshv_memory();
+			else
+				hv_resv_mshv_memory();
+		} else {
+			hv_current_partition = HV_PARTITION_L1VH;
+			pr_info("Hyper-V: running as L1VH partition\n");
+		}
 	}
 
 	if (ms_hyperv.hints & HV_X64_HYPERV_NESTED) {
