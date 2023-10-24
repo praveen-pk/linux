@@ -2936,8 +2936,48 @@ static void mshv_crashdump_init(void) {}
 static void mshv_crashdump_deinit(void) {}
 #endif /* #if defined(__x86_64__) */
 
+static void __exit mshv_root_partition_exit(void)
+{
+	mshv_crashdump_deinit();
+	mshv_debugfs_exit();
+	unregister_reboot_notifier(&mshv_reboot_nb);
+	root_scheduler_deinit();
+}
 
-int __init mshv_root_init(void)
+static int __init mshv_root_partition_init(void)
+{
+	int err;
+
+	if (mshv_retrieve_scheduler_type())
+		return -ENODEV;
+
+	if (mshv_check_sev_snp_support())
+		return -ENODEV;
+
+	err = root_scheduler_init();
+	if (err)
+		return err;
+
+	err = register_reboot_notifier(&mshv_reboot_nb);
+	if (err)
+		goto root_sched_deinit;
+
+	err = mshv_debugfs_init();
+	if (err)
+		goto unregister_reboot_notifier;
+
+	mshv_crashdump_init();
+
+	return 0;
+
+unregister_reboot_notifier:
+	unregister_reboot_notifier(&mshv_reboot_nb);
+root_sched_deinit:
+	root_scheduler_deinit();
+	return err;
+}
+
+int __init mshv_parent_partition_init(void)
 {
 	int ret;
 	union hv_hypervisor_version_info version_info;
@@ -2953,8 +2993,8 @@ int __init mshv_root_init(void)
 		pr_warn("%s: Hypervisor version %u not supported!\n",
 				__func__, version_info.build_number);
 		pr_warn("%s: Min version: %u, max version: %u\n",
-		       __func__, MSHV_HV_MIN_VERSION,
-		       MSHV_HV_MAX_VERSION);
+			__func__, MSHV_HV_MIN_VERSION,
+			MSHV_HV_MAX_VERSION);
 		if (ignore_hv_version) {
 			pr_warn("%s: Continuing because param mshv_root.ignore_hv_version is set\n",
 				__func__);
@@ -2965,21 +3005,10 @@ int __init mshv_root_init(void)
 		}
 	}
 
-	if (mshv_retrieve_scheduler_type())
-		return -ENODEV;
-
-	if (mshv_check_sev_snp_support())
-		return -ENODEV;
-
-	ret = root_scheduler_init();
-	if (ret)
-		goto out;
-
 	mshv_root.synic_pages = alloc_percpu(struct hv_synic_pages);
 	if (!mshv_root.synic_pages) {
 		pr_err("%s: failed to allocate percpu synic page\n", __func__);
-		ret = -ENOMEM;
-		goto root_sched_deinit;
+		return -ENOMEM;
 	}
 
 	ret = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN, "mshv_synic",
@@ -2993,59 +3022,51 @@ int __init mshv_root_init(void)
 
 	mshv_cpuhp_online = ret;
 
-	ret = register_reboot_notifier(&mshv_reboot_nb);
+	ret = mshv_root_partition_init();
 	if (ret)
 		goto remove_cpu_state;
 
+	ret = mshv_irqfd_wq_init();
+	if (ret)
+		goto exit_partition;
+
+	ret = mshv_vfio_ops_init();
+	if (ret)
+		goto destroy_irqds_wq;
+
 	ret = mshv_set_create_partition_func(__mshv_ioctl_create_partition);
 	if (ret)
-		goto unregister_reboot_nb;
+		goto exit_vfio_ops;
 
 	spin_lock_init(&mshv_root.partitions.lock);
 	hash_init(mshv_root.partitions.items);
 
-	if (mshv_irqfd_wq_init())
-		mshv_irqfd_wq_cleanup();
-
-	mshv_vfio_ops_init();
-
-	mshv_debugfs_init();
-	mshv_crashdump_init();
-
 	return 0;
 
-unregister_reboot_nb:
-	unregister_reboot_notifier(&mshv_reboot_nb);
+exit_vfio_ops:
+	mshv_vfio_ops_exit();
+destroy_irqds_wq:
+	mshv_irqfd_wq_cleanup();
+exit_partition:
+	if (hv_root_partition())
+		mshv_root_partition_exit();
 remove_cpu_state:
 	cpuhp_remove_state(mshv_cpuhp_online);
 free_synic_pages:
 	free_percpu(mshv_root.synic_pages);
-root_sched_deinit:
-	root_scheduler_deinit();
-out:
 	return ret;
 }
 
-void __exit mshv_root_exit(void)
+void __exit mshv_parent_partition_exit(void)
 {
-	unregister_reboot_notifier(&mshv_reboot_nb);
-
+	mshv_port_table_fini();
 	mshv_set_create_partition_func(NULL);
-
-	mshv_debugfs_exit();
-
+	mshv_vfio_ops_exit();
 	mshv_irqfd_wq_cleanup();
-
-	root_scheduler_deinit();
-
+	mshv_root_partition_exit();
 	cpuhp_remove_state(mshv_cpuhp_online);
 	free_percpu(mshv_root.synic_pages);
-
-	mshv_port_table_fini();
-
-	mshv_vfio_ops_exit();
-	mshv_crashdump_deinit();
 }
 
-module_init(mshv_root_init);
-module_exit(mshv_root_exit);
+module_init(mshv_parent_partition_init);
+module_exit(mshv_parent_partition_exit);
