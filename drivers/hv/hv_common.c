@@ -111,7 +111,7 @@ int __init hv_common_init(void)
 	hyperv_pcpu_output_arg = alloc_percpu(void *);
 	BUG_ON(!hyperv_pcpu_output_arg);
 
-	if (hv_root_partition()) {
+	if (hv_parent_partition()) {
 		hv_synic_eventring_tail = alloc_percpu(u8 *);
 		BUG_ON(hv_synic_eventring_tail == NULL);
 	}
@@ -153,7 +153,7 @@ int hv_common_cpu_init(unsigned int cpu)
 	outputarg = (void **)this_cpu_ptr(hyperv_pcpu_output_arg);
 	*outputarg = (char *)(*inputarg) + HV_HYP_PAGE_SIZE;
 
-	if (hv_root_partition()) {
+	if (hv_parent_partition()) {
 		synic_eventring_tail = (u8 **)this_cpu_ptr(hv_synic_eventring_tail);
 		*synic_eventring_tail = kcalloc(HV_SYNIC_SINT_COUNT, sizeof(u8),
 						flags);
@@ -190,7 +190,7 @@ int hv_common_cpu_die(unsigned int cpu)
 	outputarg = (void **)this_cpu_ptr(hyperv_pcpu_output_arg);
 	*outputarg = NULL;
 
-	if (hv_root_partition()) {
+	if (hv_parent_partition()) {
 		synic_eventring_tail = (u8 **)this_cpu_ptr(hv_synic_eventring_tail);
 		kfree(*synic_eventring_tail);
 		*synic_eventring_tail = NULL;
