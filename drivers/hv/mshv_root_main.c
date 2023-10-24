@@ -2936,6 +2936,14 @@ static void mshv_crashdump_init(void) {}
 static void mshv_crashdump_deinit(void) {}
 #endif /* #if defined(__x86_64__) */
 
+static int __init mshv_l1vh_partition_init(void)
+{
+	hv_scheduler_type = HV_SCHEDULER_TYPE_CORE_SMT;
+	pr_info("mshv: hypervisor using %s\n", scheduler_type_to_string(hv_scheduler_type));
+
+	return 0;
+}
+
 static void __exit mshv_root_partition_exit(void)
 {
 	mshv_crashdump_deinit();
@@ -2982,7 +2990,7 @@ int __init mshv_parent_partition_init(void)
 	int ret;
 	union hv_hypervisor_version_info version_info;
 
-	if (!hv_root_partition() || is_kdump_kernel())
+	if (!hv_parent_partition() || is_kdump_kernel())
 		return -ENODEV;
 
 	if (hv_get_hypervisor_version(&version_info))
@@ -3022,7 +3030,10 @@ int __init mshv_parent_partition_init(void)
 
 	mshv_cpuhp_online = ret;
 
-	ret = mshv_root_partition_init();
+	if (hv_root_partition())
+		ret = mshv_root_partition_init();
+	else
+		ret = mshv_l1vh_partition_init();
 	if (ret)
 		goto remove_cpu_state;
 
@@ -3063,7 +3074,8 @@ void __exit mshv_parent_partition_exit(void)
 	mshv_set_create_partition_func(NULL);
 	mshv_vfio_ops_exit();
 	mshv_irqfd_wq_cleanup();
-	mshv_root_partition_exit();
+	if (hv_root_partition())
+		mshv_root_partition_exit();
 	cpuhp_remove_state(mshv_cpuhp_online);
 	free_percpu(mshv_root.synic_pages);
 }
