@@ -587,20 +587,15 @@ static void __init ms_hyperv_init_platform(void)
 		 ms_hyperv.max_vp_index, ms_hyperv.max_lp_index);
 
 	/*
-	 * Check CPU management privilege.
-	 *
-	 * To mirror what Windows does we should extract CPU management
-	 * features and use the ReservedIdentityBit to detect if Linux is the
-	 * root partition. But that requires negotiating CPU management
-	 * interface (a process to be finalized). For now, use the privilege
-	 * flag as the indicator for running as root.
+	 * Check partitions creation privilege.
+	 * Only root partition can have this privilege.
 	 *
 	 * Hyper-V should never specify running as root and as a Confidential
 	 * VM. But to protect against a compromised/malicious Hyper-V trying
 	 * to exploit root behavior to expose Confidential VM memory, ignore
 	 * the root partition setting if also a Confidential VM.
 	 */
-	if ((ms_hyperv.priv_high & HV_CPU_MANAGEMENT) &&
+	if ((ms_hyperv.priv_high & HV_CREATE_PARTITIONS) &&
 	    !(ms_hyperv.priv_high & HV_ISOLATION)) {
 		hv_current_partition = HV_PARTITION_ROOT;
 		pr_info("Hyper-V: running as root partition\n");
