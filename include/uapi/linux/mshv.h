@@ -3,22 +3,33 @@
 #define _UAPI_LINUX_MSHV_H
 
 /*
+ * Microsoft Hypervisor root + vtl partition APIs
  * Userspace interface for /dev/mshv
- * Microsoft Hypervisor root partition APIs
- * NOTE: This API is not yet stable!
  */
 
 #include <linux/types.h>
 #include <hyperv/hvhdk.h>
 
-#define MSHV_CAP_CORE_API_STABLE	0x0
-#define MSHV_CAP_REGISTER_PAGE		0x1
-#define MSHV_CAP_VTL_RETURN_ACTION	0x2
-#define MSHV_CAP_DR6_SHARED		0x3
+#define MSHV_API_VERSION		0
 
-
-#define MSHV_VP_MMAP_REGISTERS_OFFSET (HV_VP_STATE_PAGE_REGISTERS * 0x1000)
+#define MSHV_VP_MMAP_REGISTERS_OFFSET	(HV_VP_STATE_PAGE_REGISTERS * 0x1000)
 #define MAX_RUN_MSG_SIZE		256
+
+enum {
+	MSHV_CAP_RSVD = 0,
+	MSHV_CAP_VTL_REGISTER_PAGE,
+	MSHV_CAP_VTL_RETURN_ACTION,
+	MSHV_CAP_VTL_DR6_SHARED,
+};
+
+struct mshv_version_info {
+	__u32 mshv_uapi_version; /* must contain MSHV_API_VERSION */
+	__u32 rsvd_0[3];	 /* Must Be Zero (MBZ) */
+	/* output - MBZ on ioctl call */
+	__u32 mshv_api_version;	 /* kernel api version */
+	__u32 rsvd_1;		 /* MBZ */
+	__u64 mshv_capabilities; /* bitmask of 1 << MSHV_CAP_* */
+};
 
 struct mshv_create_partition {
 	__u64 flags;
@@ -216,7 +227,7 @@ struct mshv_issue_psp_guest_request {
 #define MSHV_IOCTL 0xB8
 
 /* mshv device */
-#define MSHV_CHECK_EXTENSION    _IOW(MSHV_IOCTL, 0x00, __u32)
+#define MSHV_GET_VERSION_INFO	_IOWR(MSHV_IOCTL, 0x00, struct mshv_version_info)
 #define MSHV_CREATE_PARTITION	_IOW(MSHV_IOCTL, 0x01, struct mshv_create_partition)
 
 /* partition device */
