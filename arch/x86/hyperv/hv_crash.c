@@ -21,6 +21,9 @@
 #include <asm/reboot.h>
 #include <asm/intel_pt.h>
 
+int hv_crash_enabled;
+EXPORT_SYMBOL_GPL(hv_crash_enabled);
+
 struct hv_crash_ctxt {
 	ulong rsp;
 	ulong cr0;
@@ -61,7 +64,7 @@ BUILD_BUG_ON_MSG(1, "FIXME: pgtable levels greater than 4\n");
 static u32 hv_tramp32_cr3, trampoline_pa, trampoline_arg;
 static atomic_t crash_cpus_wait;
 static void *hv_crash_ptpgs[HV_CRASH_PT_PGS];
-static int hv_crash_enabled, hv_has_crashed, lx_has_crashed;
+static int hv_has_crashed, lx_has_crashed;
 
 /* This cannot be inlined as it needs stack */
 static noinline __noclone void hv_crash_restore_tss(void)
@@ -506,7 +509,7 @@ void hv_root_crash_init(void)
 	union hv_pfn_range cda_info;
 
 	if (!hv_supports_devirt())
-		return;
+		goto err_out;
 
 	local_irq_save(flags);
 	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
@@ -536,7 +539,7 @@ void hv_root_crash_init(void)
 	smp_ops.crash_stop_other_cpus = hv_crash_stop_other_cpus;
 
 	hv_crash_enabled = 1;
-	pr_info("Hyper-V: kdump support enabled\n");
+	pr_info("Hyper-V: linux and hv kdump support enabled\n");
 
 	return;
 
@@ -545,6 +548,7 @@ prop_err_out:
 	pr_err("Hyper-V: %s: property:%d %s\n", __func__, input->property_id,
 	       hv_status_to_string(status));
 err_out:
-	pr_err("Hyper-V: hv crash core support is unavailable\n");
+	pr_err("Hyper-V: only linux (but not hv) kdump support enabled\n");
+	crash_kexec_post_notifiers = true;
 }
 

@@ -35,6 +35,7 @@
 #include <linux/kexec.h>
 #include <linux/page-flags.h>
 #include <linux/crash_dump.h>
+#include <linux/panic_notifier.h>
 
 #include <trace/events/mshv.h>
 
@@ -2819,6 +2820,80 @@ struct notifier_block mshv_reboot_nb = {
 	.notifier_call = mshv_reboot_notify,
 };
 
+#if defined(__x86_64__)
+static void mshv_panic_unlock_snp(struct mshv_partition *vm)
+{
+	struct mshv_mem_region *memreg;
+	u64 numpgs;
+	int ret;
+	u32 access = HV_MAP_GPA_READABLE | HV_MAP_GPA_WRITABLE;
+	u32 flags = HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_SHARED;
+
+	hlist_for_each_entry(memreg, &vm->mem_regions, hnode) {
+		numpgs = HVPFN_DOWN(memreg->size);
+		hv_call_unmap_gpa_pages(vm->id, memreg->guest_pfn, numpgs, 0);
+		ret = hv_call_modify_spa_host_access(vm->id, memreg->pages,
+						     numpgs, access, flags,
+						     true);
+		if (ret)
+			pr_err("Hyper-V: unlock snp failed. ret:0x%x gfn:%llx "
+			       "numpgs:%lld\n", ret, memreg->guest_pfn, numpgs);
+	}
+}
+
+static int mshv_root_panic_cb(struct notifier_block *this, unsigned long event,
+			      void *ptr)
+{
+	int i, done = 0;
+	struct mshv_partition *vm;
+
+	hash_for_each_rcu(mshv_root.partitions.items, i, vm, hnode) {
+		if (!mshv_partition_isolation_type_snp(vm))
+			continue;
+
+		done = 1;
+		mshv_panic_unlock_snp(vm);
+	}
+	if (done)
+		pr_info("Hyper-V: snp pages are unlocked for panic\n");
+
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block mshv_root_panic_blk = {
+	.notifier_call = mshv_root_panic_cb,
+};
+
+/*
+ * If mshv devirt setup failed during boot, or the feature itself is not
+ * available, allow the system to at least collect linux root vmcore. For
+ * that, snp guest pages must be made readable in the panic path so kexec can
+ * collect them.
+ */
+static void mshv_crashdump_init(void)
+{
+	if (hv_crash_enabled)
+		return;
+
+	atomic_notifier_chain_register(&panic_notifier_list,
+				       &mshv_root_panic_blk);
+}
+
+static void mshv_crashdump_deinit(void)
+{
+	if (hv_crash_enabled)
+		return;
+
+	atomic_notifier_chain_unregister(&panic_notifier_list,
+					 &mshv_root_panic_blk);
+}
+#else  /* #if defined(__x86_64__) */
+
+static void mshv_crashdump_init(void) {}
+static void mshv_crashdump_deinit(void) {}
+#endif /* #if defined(__x86_64__) */
+
+
 int __init mshv_root_init(void)
 {
 	int ret;
@@ -2892,6 +2967,7 @@ int __init mshv_root_init(void)
 	mshv_vfio_ops_init();
 
 	mshv_debugfs_init();
+	mshv_crashdump_init();
 
 	return 0;
 
@@ -2925,6 +3001,7 @@ void __exit mshv_root_exit(void)
 	mshv_port_table_fini();
 
 	mshv_vfio_ops_exit();
+	mshv_crashdump_deinit();
 }
 
 module_init(mshv_root_init);

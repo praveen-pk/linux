@@ -36,6 +36,7 @@ void hyperv_vector_handler(struct pt_regs *regs);
 
 #if IS_ENABLED(CONFIG_HYPERV)
 extern int hyperv_init_cpuhp;
+extern int hv_crash_enabled;
 
 extern void *hv_hypercall_pg;
 
