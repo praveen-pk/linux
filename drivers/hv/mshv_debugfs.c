@@ -777,6 +777,9 @@ int mshv_debugfs_vp_create(struct mshv_vp *vp)
 	struct mshv_partition *p = vp->partition;
 	struct dentry *d;
 
+	if (!mshv_debugfs)
+		return 0;
+
 	d = vp_debugfs_create(p->id, vp->index, p->debugfs_vp_dentry);
 	if (IS_ERR(d))
 		return PTR_ERR(d);
@@ -788,12 +791,18 @@ int mshv_debugfs_vp_create(struct mshv_vp *vp)
 
 void mshv_debugfs_vp_remove(struct mshv_vp *vp)
 {
+	if (!mshv_debugfs)
+		return;
+
 	vp_debugfs_remove(vp->partition->id, vp->index, vp->debugfs_dentry);
 }
 
 int mshv_debugfs_partition_create(struct mshv_partition *partition)
 {
 	struct dentry *part_id_dir;
+
+	if (!mshv_debugfs)
+		return 0;
 
 	part_id_dir = partition_debugfs_create(partition->id,
 					       &partition->debugfs_vp_dentry,
@@ -808,6 +817,9 @@ int mshv_debugfs_partition_create(struct mshv_partition *partition)
 
 void mshv_debugfs_partition_remove(struct mshv_partition *partition)
 {
+	if (!mshv_debugfs)
+		return;
+
 	partition_debugfs_remove(partition->id, partition->debugfs_dentry);
 }
 
