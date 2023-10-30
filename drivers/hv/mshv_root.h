@@ -269,7 +269,7 @@ extern struct mshv_root mshv_root;
 
 #ifdef CONFIG_DEBUG_FS
 extern int __init mshv_debugfs_init(void);
-extern void __exit mshv_debugfs_exit(void);
+extern void mshv_debugfs_exit(void);
 
 extern int mshv_debugfs_partition_create(struct mshv_partition *partition);
 extern void mshv_debugfs_partition_remove(struct mshv_partition *partition);
@@ -280,7 +280,7 @@ static inline int __init mshv_debugfs_init(void)
 {
 	return 0;
 }
-static inline void __exit mshv_debugfs_exit(void) { }
+static inline void mshv_debugfs_exit(void) { }
 
 static inline int mshv_debugfs_partition_create(struct mshv_partition *partition)
 {

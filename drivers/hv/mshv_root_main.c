@@ -2944,7 +2944,7 @@ static int __init mshv_l1vh_partition_init(void)
 	return 0;
 }
 
-static void __exit mshv_root_partition_exit(void)
+static void mshv_root_partition_exit(void)
 {
 	mshv_crashdump_deinit();
 	mshv_debugfs_exit();
