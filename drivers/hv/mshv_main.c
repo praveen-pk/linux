@@ -30,79 +30,29 @@
 MODULE_AUTHOR("Microsoft");
 MODULE_LICENSE("GPL");
 
-static long mshv_ioctl_dummy(void __user *user_arg)
-{
-	return -ENOTTY;
-}
-
-static long mshv_check_ext_dummy(u32 arg)
-{
-	return -EOPNOTSUPP;
-}
-
-static struct mshv {
-	struct mutex		mutex;
-	mshv_create_func_t	create_vtl;
-	mshv_create_func_t	create_partition;
-	mshv_check_ext_func_t	check_extension;
-} mshv = {
-	.create_vtl		= mshv_ioctl_dummy,
-	.create_partition	= mshv_ioctl_dummy,
-	.check_extension	= mshv_check_ext_dummy,
-};
+static struct mutex mshv_ops_mutex;
+static const struct mshv_ops *module_ops;
 
 static int mshv_register_dev(void);
 static void mshv_deregister_dev(void);
 
-int mshv_setup_vtl_func(const mshv_create_func_t create_vtl,
-			const mshv_check_ext_func_t check_ext)
+int mshv_set_ops(const struct mshv_ops *ops)
 {
-	int ret;
+	int ret = 0;
 
-	mutex_lock(&mshv.mutex);
-	if (create_vtl && check_ext) {
+	mutex_lock(&mshv_ops_mutex);
+	if (ops)
 		ret = mshv_register_dev();
-		if (ret)
-			goto unlock;
-		mshv.create_vtl = create_vtl;
-		mshv.check_extension = check_ext;
-	} else {
-		mshv.create_vtl = mshv_ioctl_dummy;
-		mshv.check_extension = mshv_check_ext_dummy;
+	else
 		mshv_deregister_dev();
-		ret = 0;
-	}
 
-unlock:
-	mutex_unlock(&mshv.mutex);
+	if (!ret)
+		module_ops = ops;
+	mutex_unlock(&mshv_ops_mutex);
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(mshv_setup_vtl_func);
-
-int mshv_set_create_partition_func(const mshv_create_func_t func)
-{
-	int ret;
-
-	mutex_lock(&mshv.mutex);
-	if (func) {
-		ret = mshv_register_dev();
-		if (ret)
-			goto unlock;
-		mshv.create_partition = func;
-	} else {
-		mshv.create_partition = mshv_ioctl_dummy;
-		mshv_deregister_dev();
-		ret = 0;
-	}
-	mshv.check_extension = mshv_check_ext_dummy;
-
-unlock:
-	mutex_unlock(&mshv.mutex);
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(mshv_set_create_partition_func);
+EXPORT_SYMBOL_GPL(mshv_set_ops);
 
 static int mshv_dev_open(struct inode *inode, struct file *filp);
 static int mshv_dev_release(struct inode *inode, struct file *filp);
@@ -146,31 +96,40 @@ static void mshv_deregister_dev(void)
 }
 
 static long
-mshv_ioctl_check_extension(void __user *user_arg)
+mshv_ioctl_get_api_version(void __user *user_arg)
 {
-	u32 arg;
+	long ret;
+	struct mshv_version_info arg;
 
 	if (copy_from_user(&arg, user_arg, sizeof(arg)))
 		return -EFAULT;
 
-	switch (arg) {
-	case MSHV_CAP_CORE_API_STABLE:
-		return 0;
-	}
+	if (memchr_inv(&arg.rsvd_0, 0,
+		       sizeof(arg) - offsetof(struct mshv_version_info, rsvd_0)))
+		return -EINVAL;
 
-	return mshv.check_extension(arg);
+	ret = module_ops->get_version_info(&arg);
+	if (ret)
+		return ret;
+
+	if (copy_to_user(user_arg, &arg, sizeof(arg)))
+		return -EFAULT;
+
+	return 0;
 }
 
 static long
 mshv_dev_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 {
+	if (!module_ops)
+		return -ENODEV;
+
 	switch (ioctl) {
-	case MSHV_CHECK_EXTENSION:
-		return mshv_ioctl_check_extension((void __user *)arg);
+	case MSHV_GET_VERSION_INFO:
+		return mshv_ioctl_get_api_version((void __user *)arg);
 	case MSHV_CREATE_PARTITION:
-		return mshv.create_partition((void __user *)arg);
 	case MSHV_CREATE_VTL:
-		return mshv.create_vtl((void __user *)arg);
+		return module_ops->create((void __user *)arg);
 	}
 
 	return -ENOTTY;
@@ -194,7 +153,7 @@ __init mshv_init(void)
 	if (!hv_is_hyperv_initialized())
 		return -ENODEV;
 
-	mutex_init(&mshv.mutex);
+	mutex_init(&mshv_ops_mutex);
 
 	return 0;
 }

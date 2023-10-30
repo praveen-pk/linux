@@ -2952,6 +2952,18 @@ static void __exit mshv_root_partition_exit(void)
 	root_scheduler_deinit();
 }
 
+static long __mshv_ioctl_get_version_info(struct mshv_version_info *info)
+{
+	info->mshv_api_version = MSHV_API_VERSION;
+	info->mshv_capabilities = 0;
+	return 0;
+}
+
+static const struct mshv_ops mshv_root_ops = {
+	.create			= __mshv_ioctl_create_partition,
+	.get_version_info	= __mshv_ioctl_get_version_info,
+};
+
 static int __init mshv_root_partition_init(void)
 {
 	int err;
@@ -3045,7 +3057,7 @@ int __init mshv_parent_partition_init(void)
 	if (ret)
 		goto destroy_irqds_wq;
 
-	ret = mshv_set_create_partition_func(__mshv_ioctl_create_partition);
+	ret = mshv_set_ops(&mshv_root_ops);
 	if (ret)
 		goto exit_vfio_ops;
 
@@ -3071,7 +3083,7 @@ free_synic_pages:
 void __exit mshv_parent_partition_exit(void)
 {
 	mshv_port_table_fini();
-	mshv_set_create_partition_func(NULL);
+	mshv_set_ops(NULL);
 	mshv_vfio_ops_exit();
 	mshv_irqfd_wq_cleanup();
 	if (hv_root_partition())

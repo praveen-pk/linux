@@ -132,18 +132,15 @@ static struct page *mshv_cpu_reg_page(int cpu)
 	return *per_cpu_ptr(&mshv_vtl_per_cpu.reg_page, cpu);
 }
 
-static long __mshv_vtl_ioctl_check_extension(u32 arg)
+static long __mshv_vtl_ioctl_get_version_info(struct mshv_version_info *info)
 {
-	switch (arg) {
-	case MSHV_CAP_REGISTER_PAGE:
-		return mshv_has_reg_page;
-	case MSHV_CAP_VTL_RETURN_ACTION:
-		return mshv_vsm_capabilities.return_action_available;
-	case MSHV_CAP_DR6_SHARED:
-		return mshv_vsm_capabilities.dr6_shared;
-	}
+	info->mshv_api_version = MSHV_API_VERSION;
+	info->mshv_capabilities =
+		((!!mshv_has_reg_page) << MSHV_CAP_VTL_REGISTER_PAGE) |
+		((!!mshv_vsm_capabilities.return_action_available) << MSHV_CAP_VTL_RETURN_ACTION) |
+		((!!mshv_vsm_capabilities.dr6_shared) << MSHV_CAP_VTL_DR6_SHARED);
 
-	return -EOPNOTSUPP;
+	return 0;
 }
 
 static void mshv_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
@@ -1558,6 +1555,11 @@ static struct miscdevice mshv_vtl_low = {
 	.minor = MISC_DYNAMIC_MINOR,
 };
 
+static const struct mshv_ops mshv_vtl_ops = {
+	.create			= __mshv_ioctl_create_vtl,
+	.get_version_info	= __mshv_vtl_ioctl_get_version_info,
+};
+
 static int __init mshv_vtl_init(void)
 {
 	int ret;
@@ -1596,8 +1598,7 @@ static int __init mshv_vtl_init(void)
 		goto free_low;
 	}
 
-	ret = mshv_setup_vtl_func(__mshv_ioctl_create_vtl,
-				  __mshv_vtl_ioctl_check_extension);
+	ret = mshv_set_ops(&mshv_vtl_ops);
 	if (ret)
 		goto free_mem;
 
@@ -1613,7 +1614,7 @@ static int __init mshv_vtl_init(void)
 	return 0;
 
 deregister_module:
-	mshv_setup_vtl_func(NULL, NULL);
+	mshv_set_ops(NULL);
 free_mem:
 	kfree(mem_dev);
 free_low:
@@ -1627,7 +1628,7 @@ free_sint:
 
 static void __exit mshv_vtl_exit(void)
 {
-	mshv_setup_vtl_func(NULL, NULL);
+	mshv_set_ops(NULL);
 	misc_deregister(&mshv_vtl_sint_dev);
 	misc_deregister(&mshv_vtl_hvcall);
 	misc_deregister(&mshv_vtl_low);
