@@ -163,7 +163,7 @@ remove_debugfs_lp_idx:
 	return err;
 }
 
-static void __exit mshv_debugfs_lp_remove(void)
+static void mshv_debugfs_lp_remove(void)
 {
 	int lp_index;
 
@@ -856,7 +856,7 @@ remove_mshv_dir:
 	return err;
 }
 
-void __exit mshv_debugfs_exit(void)
+void mshv_debugfs_exit(void)
 {
 	mshv_debugfs_lp_remove();
 
