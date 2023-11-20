@@ -184,7 +184,7 @@ static void kick_vp(struct mshv_vp *vp)
 static void
 handle_bitset_message(const struct hv_vp_signal_bitset_scheduler_message *msg)
 {
-	int bank_idx, vp_signaled, bank_mask_size;
+	int bank_idx, vps_signaled = 0, bank_mask_size;
 	struct mshv_partition *partition;
 	const struct hv_vpset *vpset;
 	const u64 *bank_contents;
@@ -215,8 +215,6 @@ handle_bitset_message(const struct hv_vp_signal_bitset_scheduler_message *msg)
 	bank_idx = -1;
 	bank_contents = vpset->bank_contents;
 	bank_mask_size = sizeof(vpset->valid_bank_mask) * BITS_PER_BYTE;
-
-	vp_signaled = 0;
 
 	while (true) {
 		int vp_bank_idx = -1;
@@ -252,7 +250,7 @@ handle_bitset_message(const struct hv_vp_signal_bitset_scheduler_message *msg)
 			}
 
 			kick_vp(vp);
-			vp_signaled++;
+			vps_signaled++;
 		}
 
 		bank_contents++;
@@ -261,9 +259,9 @@ handle_bitset_message(const struct hv_vp_signal_bitset_scheduler_message *msg)
 unlock_out:
 	rcu_read_unlock();
 
-	if (vp_signaled != msg->vp_count)
+	if (vps_signaled != msg->vp_count)
 		pr_debug("%s: asked to signal %u VPs but only did %u\n",
-			__func__, msg->vp_count, vp_signaled);
+			__func__, msg->vp_count, vps_signaled);
 }
 
 static void
