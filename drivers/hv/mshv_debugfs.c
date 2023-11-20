@@ -757,9 +757,9 @@ static int __init mshv_debugfs_hv_stats_create(struct dentry *parent)
 	dentry = debugfs_create_file("stats", 0400, parent,
 				     stats, &hv_stats_fops);
 	if (IS_ERR(dentry)) {
+		err = PTR_ERR(dentry);
 		pr_err("%s: failed to create hypervisor stats dentry: %d\n",
 				__func__, err);
-		err = PTR_ERR(dentry);
 		goto unmap_hv_stats;
 	}
 
