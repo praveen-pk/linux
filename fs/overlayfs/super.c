@@ -2161,7 +2161,7 @@ static int ovl_fill_super(struct super_block *sb, void *data, int silent)
 		pr_warn("POSIX ACLs are not yet supported with idmapped layers, mounting without ACL support.\n");
 	else
 		sb->s_flags |= SB_POSIXACL;
-	sb->s_iflags |= SB_I_SKIP_SYNC;
+	sb->s_iflags |= SB_I_SKIP_SYNC | SB_I_IMA_UNVERIFIABLE_SIGNATURE;
 
 	err = -ENOMEM;
 	root_dentry = ovl_get_root(sb, upperpath.dentry, oe);
