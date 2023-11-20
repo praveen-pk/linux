@@ -533,7 +533,7 @@ static int mshv_trace_buffer_map(struct mshv_trace_state *state,
 					   (void *)pfns);
 	if (err) {
 		pr_err("%s: failed to map trace buffer %u: %d\n",
-		       __func__, i, err);
+		       __func__, buffer_index, err);
 		return err;
 	}
 
