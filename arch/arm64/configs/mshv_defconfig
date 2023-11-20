@@ -1284,8 +1284,6 @@ CONFIG_NET_CLS_BASIC=m
 # CONFIG_NET_CLS_ROUTE4 is not set
 # CONFIG_NET_CLS_FW is not set
 # CONFIG_NET_CLS_U32 is not set
-# CONFIG_NET_CLS_RSVP is not set
-# CONFIG_NET_CLS_RSVP6 is not set
 # CONFIG_NET_CLS_FLOW is not set
 # CONFIG_NET_CLS_CGROUP is not set
 # CONFIG_NET_CLS_BPF is not set
@@ -7153,6 +7151,11 @@ CONFIG_ROCKCHIP_SARADC=m
 # CONFIG_VF610_ADC is not set
 # CONFIG_XILINX_XADC is not set
 # end of Analog to digital converters
+
+#
+# Analog to digital and digital to analog converters
+#
+# end of Analog to digital and digital to analog converters
 
 #
 # Analog Front Ends
