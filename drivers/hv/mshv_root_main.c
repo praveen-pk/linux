@@ -2295,7 +2295,7 @@ static int destroy_snp_partition_state(struct mshv_partition *partition)
 					      page_count, unmap_flags);
 		if (ret) {
 			pr_err("%s: failed to unmap guest memory region for partition %lld\n",
-			       __func__, vp->partition->id);
+			       __func__, partition->id);
 			goto out;
 		}
 	}
@@ -2388,7 +2388,7 @@ static void destroy_partition(struct mshv_partition *partition)
 		ret = destroy_snp_partition_state(partition);
 		if (ret) {
 			pr_err("%s: failed to destroy SNP partition=%lld state, error=%d\n",
-			       __func__, vp->partition->id, ret);
+			       __func__, partition->id, ret);
 			return;
 		}
 	}
