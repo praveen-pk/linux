@@ -59,7 +59,8 @@ struct mshv_mem_region {
 	u64 userspace_addr; /* start of the userspace allocated memory */
 	struct {
 		u64 large_pages:  1; /* 2MiB */
-		u64 reserved:    63;
+		u64 range_pinned: 1;
+		u64 reserved:    62;
 	} flags;
 	struct page *pages[];
 };

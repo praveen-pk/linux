@@ -1346,6 +1346,8 @@ mshv_partition_ioctl_map_memory(struct mshv_partition *partition,
 		if (ret)
 			goto errout;
 
+		region->flags.range_pinned = true;
+
 		ret = mshv_partition_chk_snp_map_ram(partition, mem.flags,
 						     region);
 	}
@@ -1371,8 +1373,6 @@ mshv_partition_ioctl_unmap_memory(struct mshv_partition *partition,
 	struct mshv_user_mem_region mem;
 	struct mshv_mem_region *region;
 	u64 page_count;
-	struct vm_area_struct *vma;
-	bool is_mmio;
 	u32 unmap_flags = 0;
 
 	if (hlist_empty(&partition->mem_regions))
@@ -1402,12 +1402,7 @@ mshv_partition_ioctl_unmap_memory(struct mshv_partition *partition,
 	hv_call_unmap_gpa_pages(partition->id, region->guest_pfn,
 				page_count, unmap_flags);
 
-	mmap_read_lock(current->mm);
-	vma = vma_lookup(current->mm, mem.userspace_addr);
-	is_mmio = vma ? !!(vma->vm_flags & (VM_IO | VM_PFNMAP)) : 0;
-	mmap_read_unlock(current->mm);
-
-	if (!is_mmio)
+	if (region->flags.range_pinned)
 		unpin_user_pages(&region->pages[0], page_count);
 
 	vfree(region);
@@ -2445,7 +2440,9 @@ static void destroy_partition(struct mshv_partition *partition)
 			}
 		}
 
-		unpin_user_pages(&region->pages[0], page_count);
+		if (region->flags.range_pinned)
+			unpin_user_pages(&region->pages[0], page_count);
+
 		vfree(region);
 	}
 
