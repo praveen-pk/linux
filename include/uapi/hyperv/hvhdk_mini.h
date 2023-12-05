@@ -172,8 +172,8 @@ union hv_pfn_range {            /* HV_SPA_PAGE_RANGE */
 		/* 39:0: base pfn.  63:40: additional pages */
 		__u64 base_pfn : 64 - HV_PFN_RNG_PAGEBITS;
 		__u64 add_pfns : HV_PFN_RNG_PAGEBITS;
-	};
-} __packed;
+	} __packed;
+};
 
 struct hv_sleep_state_info {
 	__u32 sleep_state; /* enum hv_sleep_state */
@@ -406,7 +406,7 @@ struct hv_crashdump_area {         /* HV_CRASHDUMP_AREA */
 		struct {
 			__u32 cda_valid : 1;
 			__u32 cda_unused : 31;
-		};
+		} __packed;
 	};
 	/* more unused fields */
 } __packed;
