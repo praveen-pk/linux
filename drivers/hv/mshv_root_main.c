@@ -63,6 +63,8 @@ static int mshv_partition_release(struct inode *inode, struct file *filp);
 static long mshv_partition_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg);
 static int mshv_vp_mmap(struct file *file, struct vm_area_struct *vma);
 static vm_fault_t mshv_vp_fault(struct vm_fault *vmf);
+static int mshv_init_async_handler(struct mshv_partition *partition);
+static void mshv_async_hvcall_handler(void *data, u64 *status);
 
 static const struct vm_operations_struct mshv_vp_vm_ops = {
 	.fault = mshv_vp_fault,
@@ -82,6 +84,154 @@ static const struct file_operations mshv_partition_fops = {
 	.unlocked_ioctl = mshv_partition_ioctl,
 	.llseek = noop_llseek,
 };
+
+/*
+ * Only allow hypercalls that have a u64 partition id as the first member of
+ * the input structure.
+ * These are sorted by value.
+ */
+static u16 mshv_passthru_hvcalls[] = {
+	HVCALL_GET_PARTITION_PROPERTY,
+	HVCALL_SET_PARTITION_PROPERTY,
+	HVCALL_INSTALL_INTERCEPT,
+	HVCALL_GET_VP_REGISTERS,
+	HVCALL_SET_VP_REGISTERS,
+	HVCALL_TRANSLATE_VIRTUAL_ADDRESS,
+	HVCALL_READ_GPA,
+	HVCALL_WRITE_GPA,
+	HVCALL_CLEAR_VIRTUAL_INTERRUPT,
+	HVCALL_REGISTER_INTERCEPT_RESULT,
+	HVCALL_ASSERT_VIRTUAL_INTERRUPT,
+	HVCALL_GET_GPA_PAGES_ACCESS_STATES,
+	HVCALL_SIGNAL_EVENT_DIRECT,
+	HVCALL_POST_MESSAGE_DIRECT,
+	HVCALL_IMPORT_ISOLATED_PAGES,
+	HVCALL_COMPLETE_ISOLATED_IMPORT,
+	HVCALL_ISSUE_SNP_PSP_GUEST_REQUEST,
+	HVCALL_GET_VP_CPUID_VALUES,
+};
+
+static bool mshv_hvcall_is_async(u16 code)
+{
+	switch (code) {
+	case HVCALL_SET_PARTITION_PROPERTY:
+	case HVCALL_IMPORT_ISOLATED_PAGES:
+	case HVCALL_ISSUE_SNP_PSP_GUEST_REQUEST:
+		return true;
+	default:
+		break;
+	}
+	return false;
+}
+
+static int mshv_ioctl_passthru_hvcall(struct mshv_partition *partition,
+				      bool partition_locked,
+				      void __user *user_args)
+{
+	u64 status;
+	int ret, i;
+	bool is_async;
+	struct mshv_root_hvcall args;
+	struct page *page;
+	unsigned int pages_order;
+	void *input_pg = NULL;
+	void *output_pg = NULL;
+
+	if (copy_from_user(&args, user_args, sizeof(args)))
+		return -EFAULT;
+
+	if (args.status || !args.in_ptr || args.in_sz < sizeof(u64) ||
+	    args.in_sz > HV_HYP_PAGE_SIZE)
+		return -EINVAL;
+
+	if (args.out_ptr && (!args.out_sz || args.out_sz > HV_HYP_PAGE_SIZE))
+		return -EINVAL;
+
+	for (i = 0; i < ARRAY_SIZE(mshv_passthru_hvcalls); ++i)
+		if (args.code == mshv_passthru_hvcalls[i])
+			break;
+
+	if (i >= ARRAY_SIZE(mshv_passthru_hvcalls))
+		return -EINVAL;
+
+	is_async = mshv_hvcall_is_async(args.code);
+	if (is_async) {
+		/* async hypercalls can only be called from partition fd */
+		if (!partition_locked)
+			return -EINVAL;
+		ret = mshv_init_async_handler(partition);
+		if (ret)
+			return ret;
+	}
+
+	/* Setup input/output. Set input header */
+	pages_order = args.out_ptr ? 1 : 0;
+	page = alloc_pages(GFP_KERNEL, pages_order);
+	if (!page)
+		return -ENOMEM;
+	input_pg = page_address(page);
+
+	if (args.out_ptr)
+		output_pg = (char *)input_pg + PAGE_SIZE;
+	else
+		output_pg = NULL;
+
+	if (copy_from_user(input_pg, (void __user *)args.in_ptr,
+			   args.in_sz)) {
+		ret = -EFAULT;
+		goto free_pages_out;
+	}
+
+	/*
+	 * Set the partition id.
+	 * NOTE: This only works because all the allowed hypercalls' input
+	 * structs begin with a u64 partition_id field.
+	 */
+	*(u64 *)input_pg = partition->id;
+
+	if (args.reps)
+		status = hv_do_rep_hypercall(args.code, args.reps, 0,
+					     input_pg, output_pg);
+	else
+		status = hv_do_hypercall(args.code, input_pg, output_pg);
+
+	if (hv_result(status) == HV_STATUS_CALL_PENDING) {
+		if (is_async) {
+			mshv_async_hvcall_handler(partition, &status);
+		} else { /* Paranoia check. This shouldn't happen! */
+			ret = -EBADFD;
+			goto free_pages_out;
+		}
+	}
+
+	if (hv_result(status) == HV_STATUS_INSUFFICIENT_MEMORY) {
+		ret = hv_call_deposit_pages(NUMA_NO_NODE, partition->id, 1);
+		if (!ret)
+			ret = -EAGAIN;
+	} else if (!hv_result_success(status)) {
+		ret = hv_status_to_errno(status);
+	}
+
+	/*
+	 * Always return the status and output data regardless of result.
+	 * The VMM may need it to determine how to proceed. E.g. the status may
+	 * contain the number of reps completed if a rep hypercall partially
+	 * succeeded.
+	 */
+	args.status = hv_result(status);
+	args.reps = args.reps ? hv_repcomp(status) : 0;
+	if (copy_to_user(user_args, &args, sizeof(args)))
+		ret = -EFAULT;
+
+	if (output_pg &&
+	    copy_to_user((void __user *)args.out_ptr, output_pg, args.out_sz))
+		ret = -EFAULT;
+
+free_pages_out:
+	free_pages((unsigned long)input_pg, pages_order);
+
+	return ret;
+}
 
 static int mshv_get_vp_registers(u32 vp_index, u64 partition_id, u16 count,
 				 struct hv_register_assoc *registers)
@@ -882,6 +1032,10 @@ mshv_vp_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 	case MSHV_WRITE_GPA:
 		r = mshv_vp_ioctl_write_gpa(vp, (void __user *)arg);
 		break;
+	case MSHV_ROOT_HVCALL:
+		r = mshv_ioctl_passthru_hvcall(vp->partition, false,
+						  (void __user *)arg);
+		break;
 	default:
 		printk("%s: invalid ioctl: %#x\n", __func__, ioctl);
 		break;
@@ -1099,7 +1253,7 @@ mshv_partition_ioctl_get_property(struct mshv_partition *partition,
 	return 0;
 }
 
-static int mshv_root_init_async_handler(struct mshv_partition *partition)
+static int mshv_init_async_handler(struct mshv_partition *partition)
 {
 	if (completion_done(&partition->async_hypercall)) {
 		pr_err("Cannot issue another async hypercall, while another one in progress!\n");
@@ -1110,7 +1264,7 @@ static int mshv_root_init_async_handler(struct mshv_partition *partition)
 	return 0;
 }
 
-static void mshv_root_async_hypercall_handler(void *data, u64 *status)
+static void mshv_async_hvcall_handler(void *data, u64 *status)
 {
 	struct mshv_partition *partition = data;
 
@@ -1131,7 +1285,7 @@ mshv_partition_ioctl_set_property(struct mshv_partition *partition,
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
 
-	ret = mshv_root_init_async_handler(partition);
+	ret = mshv_init_async_handler(partition);
 	if (ret)
 		return ret;
 
@@ -1139,7 +1293,7 @@ mshv_partition_ioctl_set_property(struct mshv_partition *partition,
 			partition->id,
 			args.property_code,
 			args.property_value,
-			mshv_root_async_hypercall_handler,
+			mshv_async_hvcall_handler,
 			partition);
 }
 
@@ -1932,14 +2086,14 @@ static long mshv_partition_ioctl_import_isolated_pages(
 		goto out;
 	}
 
-	ret = mshv_root_init_async_handler(partition);
+	ret = mshv_init_async_handler(partition);
 	if (ret)
 		goto out;
 
 	ret = hv_call_import_isolated_pages(partition->id, pages,
 					    args.num_pages, args.page_type,
 					    args.page_size,
-					    mshv_root_async_hypercall_handler,
+					    mshv_async_hvcall_handler,
 					    partition);
 
 	kvfree(pages);
@@ -1965,12 +2119,12 @@ mshv_partition_ioctl_complete_isolated_import(struct mshv_partition *partition,
 		goto out;
 	}
 
-	ret = mshv_root_init_async_handler(partition);
+	ret = mshv_init_async_handler(partition);
 	if (ret)
 		goto out;
 
 	ret = hv_call_complete_isolated_import(
-		partition->id, &args->import_data, mshv_root_async_hypercall_handler,
+		partition->id, &args->import_data, mshv_async_hvcall_handler,
 		partition);
 	if (ret)
 		goto out;
@@ -2017,13 +2171,13 @@ mshv_partition_ioctl_issue_psp_guest_request(struct mshv_partition *partition,
 	if (ret)
 		goto clear_page_list;
 
-	ret = mshv_root_init_async_handler(partition);
+	ret = mshv_init_async_handler(partition);
 	if (ret)
 		goto clear_page_list;
 
 	ret = hv_call_issue_psp_guest_request(
 		partition->id, HVPFN_DOWN(req.req_gpa), HVPFN_DOWN(req.rsp_gpa),
-		mshv_root_async_hypercall_handler, partition);
+		mshv_async_hvcall_handler, partition);
 
 clear_page_list:
 	kfree(page_list);
@@ -2145,6 +2299,10 @@ mshv_partition_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 			partition, (void __user *)arg);
 		break;		
 #endif
+	case MSHV_ROOT_HVCALL:
+		ret = mshv_ioctl_passthru_hvcall(partition, true,
+						 (void __user *)arg);
+		break;
 	case MSHV_MODIFY_GPA_HOST_ACCESS:
 	case MSHV_IMPORT_ISOLATED_PAGES:
 	case MSHV_COMPLETE_ISOLATED_IMPORT:
@@ -2332,14 +2490,14 @@ static int destroy_snp_partition_state(struct mshv_partition *partition)
 		/* Clear the runnable bit before destroying SNP partition */
 		union hv_partition_isolation_control isolation_control = { 0 };
 
-		ret = mshv_root_init_async_handler(partition);
+		ret = mshv_init_async_handler(partition);
 		if (ret)
 			goto out;
 
 		ret = hv_call_set_partition_property(
 			partition->id, HV_PARTITION_PROPERTY_ISOLATION_CONTROL,
 			isolation_control.as_uint64,
-			mshv_root_async_hypercall_handler, partition);
+			mshv_async_hvcall_handler, partition);
 		if (ret) {
 			pr_err("%s: failed to clear runnable bit for partition %lld\n",
 			       __func__, vp->partition->id);
@@ -2347,7 +2505,7 @@ static int destroy_snp_partition_state(struct mshv_partition *partition)
 		}
 	}
 
-	ret = mshv_root_init_async_handler(partition);
+	ret = mshv_init_async_handler(partition);
 	if (ret)
 		goto out;
 
@@ -2359,7 +2517,7 @@ static int destroy_snp_partition_state(struct mshv_partition *partition)
 	ret = hv_call_set_partition_property(
 		partition->id, HV_PARTITION_PROPERTY_ISOLATION_STATE,
 		HV_PARTITION_ISOLATION_INSECURE_DIRTY,
-		mshv_root_async_hypercall_handler, partition);
+		mshv_async_hvcall_handler, partition);
 	if (ret) {
 		pr_err("%s: failed to set isolation state to INSECURE_DIRTY for partition %lld\n",
 		       __func__, vp->partition->id);
@@ -2569,7 +2727,7 @@ __mshv_ioctl_create_partition(void __user *user_arg)
 	if (ret)
 		goto delete_partition;
 
-	ret = mshv_root_init_async_handler(partition);
+	ret = mshv_init_async_handler(partition);
 	if (ret)
 		goto remove_partition;
 
@@ -2577,7 +2735,7 @@ __mshv_ioctl_create_partition(void __user *user_arg)
 				partition->id,
 				HV_PARTITION_PROPERTY_SYNTHETIC_PROC_FEATURES,
 				args.synthetic_processor_features.as_uint64[0],
-				mshv_root_async_hypercall_handler,
+				mshv_async_hvcall_handler,
 				partition);
 
 	if (ret)

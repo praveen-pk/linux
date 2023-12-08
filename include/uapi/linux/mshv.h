@@ -224,6 +224,18 @@ struct mshv_issue_psp_guest_request {
 	__u64 rsp_gpa;
 };
 
+/* Passthrough hypercall - partition id is added by the kernel */
+struct mshv_root_hvcall {
+	__u16 code;	/* HV_CALL_CODE */
+	__u16 reps;	/* in(repcount)/out(repcomp). MBZ unless rep hvcall */
+	__u16 in_sz;	/* <= HV_HYP_PAGE_SIZE. size of input incl rep data */
+	__u16 out_sz;	/* <= HV_HYP_PAGE_SIZE. MBZ iff out_ptr is 0 */
+	__u16 status;	/* out(HV_STATUS). MBZ */
+	__u16 rsvd[3];	/* MBZ */
+	__u64 in_ptr;	/* HV_INPUT_* struct */
+	__u64 out_ptr;	/* Optional buffer for hypercall output */
+};
+
 #define MSHV_IOCTL 0xB8
 
 /* mshv device */
@@ -273,6 +285,9 @@ struct mshv_issue_psp_guest_request {
 
 /* ioctl for creating APs for SEV-SNP enabled partitions */
 #define MSHV_SEV_SNP_AP_CREATE	_IOW(MSHV_IOCTL, 0x34, struct mshv_sev_snp_ap_create)
+
+/* partition OR vcpu hvcalls */
+#define MSHV_ROOT_HVCALL	_IOWR(MSHV_IOCTL, 0x35, struct mshv_root_hvcall)
 
 /* vtl device */
 #define MSHV_CREATE_VTL			_IOR(MSHV_IOCTL, 0x1D, char)
