@@ -17,6 +17,7 @@
 #include <linux/fs.h>
 #include <linux/errno.h>
 #include <linux/reboot.h>
+#include <linux/crash_dump.h>
 #include <uapi/linux/mshv.h>
 
 #include "mshv_diag.h"
@@ -71,7 +72,7 @@ static int __init mshv_diag_init(void)
 {
 	int ret;
 
-	if (!hv_root_partition())
+	if (!hv_root_partition() || is_kdump_kernel())
 		return -EPERM;
 
 	ret = misc_register(&mshv_diag_dev);
