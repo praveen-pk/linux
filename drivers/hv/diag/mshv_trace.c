@@ -1035,3 +1035,22 @@ int mshv_trace_get_fd(void)
 
 	return fd;
 }
+
+void mshv_trace_disable(void)
+{
+	struct mshv_trace_state *state = mshv_trace_state;
+
+	mutex_lock(&mshv_trace_state_lock);
+
+	if (state) {
+		/*
+		 * The trace needs to be disabled before kexec, otherwise the
+		 * hypervisor won't allow to reinitialize it
+		 */
+		if (state->trace)
+			mshv_trace_trace_stop(state->trace, state);
+		mshv_trace_state_destroy(&state);
+	}
+
+	mutex_unlock(&mshv_trace_state_lock);
+}
