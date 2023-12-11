@@ -388,7 +388,7 @@ out:
 	return ret;
 }
 
-int __exit mshv_diaglog_exit(void)
+int mshv_diaglog_exit(void)
 {
 	int ret;
 

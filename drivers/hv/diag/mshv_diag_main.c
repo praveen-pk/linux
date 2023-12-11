@@ -55,8 +55,10 @@ static struct miscdevice mshv_diag_dev = {
 static int mshv_diag_reboot(struct notifier_block *nb,
 			    unsigned long action, void *data)
 {
-	if (action == SYS_RESTART)
+	if (action == SYS_RESTART) {
 		mshv_trace_disable();
+		mshv_diaglog_exit();
+	}
 
 	return NOTIFY_DONE;
 }
@@ -100,9 +102,9 @@ unregister_misc:
 
 static void __exit mshv_diag_exit(void)
 {
-	misc_deregister(&mshv_diag_dev);
 	mshv_diaglog_exit();
 	unregister_reboot_notifier(&mshv_diag_reboot_notifier);
+	misc_deregister(&mshv_diag_dev);
 }
 
 module_init(mshv_diag_init);
