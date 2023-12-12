@@ -16,6 +16,8 @@
 #include <linux/miscdevice.h>
 #include <linux/fs.h>
 #include <linux/errno.h>
+#include <linux/reboot.h>
+#include <linux/crash_dump.h>
 #include <uapi/linux/mshv.h>
 
 #include "mshv_diag.h"
@@ -51,11 +53,26 @@ static struct miscdevice mshv_diag_dev = {
 	.mode = 0400,
 };
 
+static int mshv_diag_reboot(struct notifier_block *nb,
+			    unsigned long action, void *data)
+{
+	if (action == SYS_RESTART) {
+		mshv_trace_disable();
+		mshv_diaglog_exit();
+	}
+
+	return NOTIFY_DONE;
+}
+
+struct notifier_block mshv_diag_reboot_notifier = {
+	.notifier_call = mshv_diag_reboot,
+};
+
 static int __init mshv_diag_init(void)
 {
 	int ret;
 
-	if (!hv_root_partition())
+	if (!hv_root_partition() || is_kdump_kernel())
 		return -EPERM;
 
 	ret = misc_register(&mshv_diag_dev);
@@ -64,19 +81,31 @@ static int __init mshv_diag_init(void)
 		return ret;
 	}
 
-	ret = mshv_diaglog_init();
-	if (ret < 0) {
-		misc_deregister(&mshv_diag_dev);
-		return ret;
+	ret = register_reboot_notifier(&mshv_diag_reboot_notifier);
+	if (ret) {
+		pr_err("%s: failed to register reboot notifier: %d\n",
+		       __func__, ret);
+		goto unregister_misc;
 	}
 
+	ret = mshv_diaglog_init();
+	if (ret < 0)
+		goto unregister_reboot_notifier;
+
+	return 0;
+
+unregister_reboot_notifier:
+	unregister_reboot_notifier(&mshv_diag_reboot_notifier);
+unregister_misc:
+	misc_deregister(&mshv_diag_dev);
 	return ret;
 }
 
 static void __exit mshv_diag_exit(void)
 {
-	misc_deregister(&mshv_diag_dev);
 	mshv_diaglog_exit();
+	unregister_reboot_notifier(&mshv_diag_reboot_notifier);
+	misc_deregister(&mshv_diag_dev);
 }
 
 module_init(mshv_diag_init);
