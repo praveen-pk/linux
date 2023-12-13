@@ -43,6 +43,8 @@
 
 static cpumask_t ioapic_max_cpumask = { CPU_BITS_NONE };
 static struct irq_domain *ioapic_ir_domain;
+static size_t hv_iommu_unmap(struct iommu_domain *d, unsigned long iova,
+			     size_t size, struct iommu_iotlb_gather *gather);
 
 static int hyperv_ir_set_affinity(struct irq_data *data,
 		const struct cpumask *mask, bool force)
@@ -356,7 +358,8 @@ static const struct irq_domain_ops hyperv_root_ir_domain_ops = {
 
 /* The IOMMU will not claim these PCI devices. */
 static char *pci_devs_to_skip;
-static int __init mshv_iommu_setup_skip(char *str) {
+static int __init mshv_iommu_setup_skip(char *str)
+{
 	pci_devs_to_skip = str;
 
 	return 0;
@@ -454,7 +457,7 @@ static bool is_null_domain(struct hv_iommu_domain *d)
 	return d->device_domain.domain_id.id == HV_DEVICE_DOMAIN_ID_S2_NULL;
 }
 
-static struct iommu_domain *hv_iommu_domain_alloc(unsigned type)
+static struct iommu_domain *hv_iommu_domain_alloc(unsigned int type)
 {
 	struct hv_iommu_domain *domain;
 	int ret;
@@ -541,7 +544,7 @@ static void hv_iommu_domain_free(struct iommu_domain *d)
 	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
 	memset(input, 0, sizeof(*input));
 
-	input->device_domain= domain->device_domain;
+	input->device_domain = domain->device_domain;
 
 	status = hv_do_hypercall(HVCALL_DELETE_DEVICE_DOMAIN, input, NULL);
 
@@ -678,28 +681,15 @@ static size_t hv_iommu_del_mappings(struct hv_iommu_domain *domain,
 	return unmapped;
 }
 
-static int hv_iommu_map(struct iommu_domain *d, unsigned long iova,
-			phys_addr_t paddr, size_t size, int prot, gfp_t gfp)
+/* Return: must return exact status from the hypercall without changes */
+static u64 hv_iommu_map_pgs(struct hv_iommu_domain *domain,
+			      unsigned long iova, phys_addr_t paddr,
+			      unsigned long npages, u32 map_flags)
 {
-	u32 map_flags;
-	unsigned long flags, pfn, npages;
-	int ret, i;
-	struct hv_iommu_domain *domain = to_hv_iommu_domain(d);
-	struct hv_input_map_device_gpa_pages *input;
 	u64 status;
-
-	/* Reject size that's not a whole page */
-	if (size & ~HV_HYP_PAGE_MASK)
-		return -EINVAL;
-
-	map_flags = HV_MAP_GPA_READABLE; /* Always required */
-	map_flags |= prot & IOMMU_WRITE ? HV_MAP_GPA_WRITABLE : 0;
-
-	ret = hv_iommu_add_mapping(domain, iova, paddr, size, flags);
-	if (ret)
-		return ret;
-
-	npages = size >> HV_HYP_PAGE_SHIFT;
+	int i;
+	struct hv_input_map_device_gpa_pages *input;
+	unsigned long flags, pfn = paddr >> HV_HYP_PAGE_SHIFT;
 
 	local_irq_save(flags);
 	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
@@ -710,19 +700,75 @@ static int hv_iommu_map(struct iommu_domain *d, unsigned long iova,
 	input->target_device_va_base = iova;
 
 	pfn = paddr >> HV_HYP_PAGE_SHIFT;
-	for (i = 0; i < npages; i++) {
+	for (i = 0; i < npages; i++, pfn++)
 		input->gpa_page_list[i] = pfn;
-		pfn += 1;
-	}
 
 	status = hv_do_rep_hypercall(HVCALL_MAP_DEVICE_GPA_PAGES, npages, 0,
-			input, NULL);
+				     input, NULL);
 
 	local_irq_restore(flags);
+	return status;
+}
+
+/*
+ * At present Cloud Hyp maps the entire guest ram, say 32G, into the
+ * iommu. The core vfio loops over huge ranges calling this function with
+ * the largest size from HV_IOMMU_PGSIZES. cond_resched() in vfio_iommu_map.
+ */
+static int hv_iommu_map(struct iommu_domain *d, unsigned long iova,
+			phys_addr_t paddr, size_t size, int prot, gfp_t gfp)
+{
+	u32 map_flags;
+	unsigned long npages, done = 0;
+	int ret;
+	struct hv_iommu_domain *domain = to_hv_iommu_domain(d);
+	u64 status;
+
+	/* Reject size that's not a whole page */
+	if (size & ~HV_HYP_PAGE_MASK)
+		return -EINVAL;
+
+	map_flags = HV_MAP_GPA_READABLE; /* Always required */
+	map_flags |= prot & IOMMU_WRITE ? HV_MAP_GPA_WRITABLE : 0;
+
+	ret = hv_iommu_add_mapping(domain, iova, paddr, size, map_flags);
+	if (ret)
+		return ret;
+
+	npages = size >> HV_HYP_PAGE_SHIFT;
+	while (done < npages) {
+		ulong completed, remain = npages - done;
+
+		status = hv_iommu_map_pgs(domain, iova, paddr, remain,
+					  map_flags);
+
+		completed = hv_repcomp(status);
+		done = done + completed;
+		iova = iova + (completed << HV_HYP_PAGE_SHIFT);
+		paddr = paddr + (completed << HV_HYP_PAGE_SHIFT);
+
+		if (hv_result(status) == HV_STATUS_INSUFFICIENT_MEMORY) {
+			status = hv_call_deposit_pages(NUMA_NO_NODE,
+						       hv_current_partition_id,
+						       256);
+			if (!hv_result_success(status)) {
+				pr_err("iommu map deposit failed: %llx\n",
+				       status);
+				break;
+			}
+		}
+		if (!hv_result_success(status))
+			break;
+	}
 
 	if (!hv_result_success(status)) {
-		pr_err("%s: hypercall failed, status %lld\n", __func__, status);
-		hv_iommu_del_mappings(domain, iova, size);
+		pr_err("%s: iommu map failed. pgs:%lx/%lx iova:%lx st:%llx\n",
+		       __func__, done, npages, iova, status);
+
+		size = done << HV_HYP_PAGE_SHIFT;
+
+		/* following will call hv_iommu_del_mappings() */
+		hv_iommu_unmap(d, iova - size, size, NULL);
 	}
 
 	return hv_status_to_errno(status);
@@ -895,22 +941,22 @@ static int hv_iommu_def_domain_type(struct device *dev)
 }
 
 static struct iommu_ops hv_iommu_ops = {
-	.domain_alloc     = hv_iommu_domain_alloc,
-	.domain_free      = hv_iommu_domain_free,
-	.attach_dev       = hv_iommu_attach_dev,
-	.detach_dev       = hv_iommu_detach_dev,
-	.map              = hv_iommu_map,
-	.unmap            = hv_iommu_unmap,
-	.iova_to_phys     = hv_iommu_iova_to_phys,
-	.probe_device     = hv_iommu_probe_device,
+	.domain_alloc	  = hv_iommu_domain_alloc,
+	.domain_free	  = hv_iommu_domain_free,
+	.attach_dev	  = hv_iommu_attach_dev,
+	.detach_dev	  = hv_iommu_detach_dev,
+	.map		  = hv_iommu_map,
+	.unmap		  = hv_iommu_unmap,
+	.iova_to_phys	  = hv_iommu_iova_to_phys,
+	.probe_device	  = hv_iommu_probe_device,
 	.probe_finalize   = hv_iommu_probe_finalize,
 	.release_device   = hv_iommu_release_device,
 	.def_domain_type  = hv_iommu_def_domain_type,
-	.device_group     = hv_iommu_device_group,
+	.device_group	  = hv_iommu_device_group,
 	.get_resv_regions = hv_iommu_get_resv_regions,
 	.put_resv_regions = generic_iommu_put_resv_regions,
-	.pgsize_bitmap    = HV_IOMMU_PGSIZES,
-	.owner            = THIS_MODULE,
+	.pgsize_bitmap	  = HV_IOMMU_PGSIZES,
+	.owner		  = THIS_MODULE,
 };
 
 static void __init hv_initalize_resv_regions_intel(void)
