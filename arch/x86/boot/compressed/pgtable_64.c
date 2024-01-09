@@ -108,6 +108,7 @@ static unsigned long find_trampoline_placement(void)
 
 struct paging_config paging_prepare(void *rmode)
 {
+
 	struct paging_config paging_config = {};
 
 	/* Initialize boot_params. Required for cmdline_find_option_bool(). */
