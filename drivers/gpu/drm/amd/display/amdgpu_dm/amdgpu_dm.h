@@ -31,6 +31,7 @@
 #include <drm/drm_connector.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_plane.h>
+#include "link_service_types.h"
 
 /*
  * This file contains the definition for amdgpu_display_manager
@@ -51,12 +52,6 @@
 #define AMDGPU_DMUB_NOTIFICATION_MAX 5
 
 /*
- * DMUB Async to Sync Mechanism Status
- */
-#define DMUB_ASYNC_TO_SYNC_ACCESS_FAIL 1
-#define DMUB_ASYNC_TO_SYNC_ACCESS_TIMEOUT 2
-#define DMUB_ASYNC_TO_SYNC_ACCESS_SUCCESS 3
-/*
 #include "include/amdgpu_dal_power_if.h"
 #include "amdgpu_dm_irq.h"
 */
@@ -65,7 +60,9 @@
 #include "signal_types.h"
 #include "amdgpu_dm_crc.h"
 struct aux_payload;
+struct set_config_cmd_payload;
 enum aux_return_code_type;
+enum set_config_status;
 
 /* Forward declarations */
 struct amdgpu_device;
@@ -196,6 +193,11 @@ struct hpd_rx_irq_offload_work_queue {
 	 * we're handling link loss
 	 */
 	bool is_handling_link_loss;
+	/**
+	 * @is_handling_mst_msg_rdy_event: Used to prevent inserting mst message
+	 * ready event when we're already handling mst message ready event
+	 */
+	bool is_handling_mst_msg_rdy_event;
 	/**
 	 * @aconnector: The aconnector that this work queue is attached to
 	 */
@@ -555,6 +557,13 @@ struct amdgpu_display_manager {
 	 * occurred on certain intel platform
 	 */
 	bool aux_hpd_discon_quirk;
+
+	/**
+	 * @dpia_aux_lock:
+	 *
+	 * Guards access to DPIA AUX
+	 */
+	struct mutex dpia_aux_lock;
 };
 
 enum dsc_clock_force_state {
@@ -610,6 +619,8 @@ struct amdgpu_dm_connector {
 	struct drm_dp_mst_port *port;
 	struct amdgpu_dm_connector *mst_port;
 	struct drm_dp_aux *dsc_aux;
+	struct mutex handle_mst_msg_ready;
+
 	/* TODO see if we can merge with ddc_bus or make a dm_connector */
 	struct amdgpu_i2c_adapter *i2c;
 
@@ -647,6 +658,10 @@ struct amdgpu_dm_connector {
 
 	/* Record progress status of mst*/
 	uint8_t mst_status;
+
+	/* Automated testing */
+	bool timing_changed;
+	struct dc_crtc_timing *timing_requested;
 };
 
 static inline void amdgpu_dm_set_mst_status(uint8_t *status,
@@ -798,9 +813,11 @@ void amdgpu_dm_update_connector_after_detect(
 
 extern const struct drm_encoder_helper_funcs amdgpu_dm_encoder_helper_funcs;
 
-int amdgpu_dm_process_dmub_aux_transfer_sync(bool is_cmd_aux,
-					struct dc_context *ctx, unsigned int link_index,
-					void *payload, void *operation_result);
+int amdgpu_dm_process_dmub_aux_transfer_sync(struct dc_context *ctx, unsigned int link_index,
+					struct aux_payload *payload, enum aux_return_code_type *operation_result);
+
+int amdgpu_dm_process_dmub_set_config_sync(struct dc_context *ctx, unsigned int link_index,
+					struct set_config_cmd_payload *payload, enum set_config_status *operation_result);
 
 bool check_seamless_boot_capability(struct amdgpu_device *adev);
 

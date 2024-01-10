@@ -38,11 +38,12 @@ static const struct sof_dev_desc mtl_desc = {
 		[SOF_INTEL_IPC4] = "intel/sof-ace-tplg",
 	},
 	.default_fw_filename = {
-		[SOF_INTEL_IPC4] = "dsp_basefw.bin",
+		[SOF_INTEL_IPC4] = "sof-mtl.ri",
 	},
 	.nocodec_tplg_filename = "sof-mtl-nocodec.tplg",
 	.ops = &sof_mtl_ops,
 	.ops_init = sof_mtl_ops_init,
+	.ops_free = hda_ops_free,
 };
 
 /* PCI IDs */

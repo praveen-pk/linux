@@ -45,11 +45,10 @@ static unsigned int dccp_v4_pernet_id __read_mostly;
 int dccp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 {
 	const struct sockaddr_in *usin = (struct sockaddr_in *)uaddr;
-	struct inet_bind_hashbucket *prev_addr_hashbucket = NULL;
-	__be32 daddr, nexthop, prev_sk_rcv_saddr;
 	struct inet_sock *inet = inet_sk(sk);
 	struct dccp_sock *dp = dccp_sk(sk);
 	__be16 orig_sport, orig_dport;
+	__be32 daddr, nexthop;
 	struct flowi4 *fl4;
 	struct rtable *rt;
 	int err;
@@ -91,26 +90,13 @@ int dccp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 		daddr = fl4->daddr;
 
 	if (inet->inet_saddr == 0) {
-		if (inet_csk(sk)->icsk_bind2_hash) {
-			prev_addr_hashbucket =
-				inet_bhashfn_portaddr(&dccp_hashinfo, sk,
-						      sock_net(sk),
-						      inet->inet_num);
-			prev_sk_rcv_saddr = sk->sk_rcv_saddr;
-		}
-		inet->inet_saddr = fl4->saddr;
-	}
-
-	sk_rcv_saddr_set(sk, inet->inet_saddr);
-
-	if (prev_addr_hashbucket) {
-		err = inet_bhash2_update_saddr(prev_addr_hashbucket, sk);
+		err = inet_bhash2_update_saddr(sk,  &fl4->saddr, AF_INET);
 		if (err) {
-			inet->inet_saddr = 0;
-			sk_rcv_saddr_set(sk, prev_sk_rcv_saddr);
 			ip_rt_put(rt);
 			return err;
 		}
+	} else {
+		sk_rcv_saddr_set(sk, inet->inet_saddr);
 	}
 
 	inet->inet_dport = usin->sin_port;
@@ -144,7 +130,7 @@ int dccp_v4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 						    inet->inet_daddr,
 						    inet->inet_sport,
 						    inet->inet_dport);
-	inet->inet_id = get_random_u16();
+	atomic_set(&inet->inet_id, get_random_u16());
 
 	err = dccp_connect(sk);
 	rt = NULL;
@@ -157,6 +143,7 @@ failure:
 	 * This unhashes the socket and releases the local port, if necessary.
 	 */
 	dccp_set_state(sk, DCCP_CLOSED);
+	inet_bhash2_reset_saddr(sk);
 	ip_rt_put(rt);
 	sk->sk_route_caps = 0;
 	inet->inet_dport = 0;
@@ -268,12 +255,12 @@ static int dccp_v4_err(struct sk_buff *skb, u32 info)
 	int err;
 	struct net *net = dev_net(skb->dev);
 
-	/* Only need dccph_dport & dccph_sport which are the first
-	 * 4 bytes in dccp header.
-	 * Our caller (icmp_socket_deliver()) already pulled 8 bytes for us.
-	 */
-	BUILD_BUG_ON(offsetofend(struct dccp_hdr, dccph_sport) > 8);
-	BUILD_BUG_ON(offsetofend(struct dccp_hdr, dccph_dport) > 8);
+	if (!pskb_may_pull(skb, offset + sizeof(*dh)))
+		return -EINVAL;
+	dh = (struct dccp_hdr *)(skb->data + offset);
+	if (!pskb_may_pull(skb, offset + __dccp_basic_hdr_len(dh)))
+		return -EINVAL;
+	iph = (struct iphdr *)skb->data;
 	dh = (struct dccp_hdr *)(skb->data + offset);
 
 	sk = __inet_lookup_established(net, &dccp_hashinfo,
@@ -443,7 +430,7 @@ struct sock *dccp_v4_request_recv_sock(const struct sock *sk,
 	RCU_INIT_POINTER(newinet->inet_opt, rcu_dereference(ireq->ireq_opt));
 	newinet->mc_index  = inet_iif(skb);
 	newinet->mc_ttl	   = ip_hdr(skb)->ttl;
-	newinet->inet_id   = get_random_u16();
+	atomic_set(&newinet->inet_id, get_random_u16());
 
 	if (dst == NULL && (dst = inet_csk_route_child_sock(sk, newsk, req)) == NULL)
 		goto put_and_exit;

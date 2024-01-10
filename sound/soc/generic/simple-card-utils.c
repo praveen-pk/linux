@@ -85,6 +85,21 @@ void asoc_simple_parse_convert(struct device_node *np,
 }
 EXPORT_SYMBOL_GPL(asoc_simple_parse_convert);
 
+/**
+ * asoc_simple_is_convert_required() - Query if HW param conversion was requested
+ * @data: Link data.
+ *
+ * Returns true if any HW param conversion was requested for this DAI link with
+ * any "convert-xxx" properties.
+ */
+bool asoc_simple_is_convert_required(const struct asoc_simple_data *data)
+{
+	return data->convert_rate ||
+	       data->convert_channels ||
+	       data->convert_sample_format;
+}
+EXPORT_SYMBOL_GPL(asoc_simple_is_convert_required);
+
 int asoc_simple_parse_daifmt(struct device *dev,
 			     struct device_node *node,
 			     struct device_node *codec,
@@ -320,7 +335,7 @@ int asoc_simple_startup(struct snd_pcm_substream *substream)
 		}
 		ret = snd_pcm_hw_constraint_minmax(substream->runtime, SNDRV_PCM_HW_PARAM_RATE,
 			fixed_rate, fixed_rate);
-		if (ret)
+		if (ret < 0)
 			goto codec_err;
 	}
 

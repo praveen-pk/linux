@@ -109,6 +109,7 @@ static int amdgpu_cs_p1_ib(struct amdgpu_cs_parser *p,
 		return r;
 
 	++(num_ibs[r]);
+	p->gang_leader_idx = r;
 	return 0;
 }
 
@@ -119,7 +120,6 @@ static int amdgpu_cs_p1_user_fence(struct amdgpu_cs_parser *p,
 	struct drm_gem_object *gobj;
 	struct amdgpu_bo *bo;
 	unsigned long size;
-	int r;
 
 	gobj = drm_gem_object_lookup(p->filp, data->handle);
 	if (gobj == NULL)
@@ -128,29 +128,17 @@ static int amdgpu_cs_p1_user_fence(struct amdgpu_cs_parser *p,
 	bo = amdgpu_bo_ref(gem_to_amdgpu_bo(gobj));
 	p->uf_entry.priority = 0;
 	p->uf_entry.tv.bo = &bo->tbo;
-	/* One for TTM and two for the CS job */
-	p->uf_entry.tv.num_shared = 3;
-
 	drm_gem_object_put(gobj);
 
 	size = amdgpu_bo_size(bo);
-	if (size != PAGE_SIZE || (data->offset + 8) > size) {
-		r = -EINVAL;
-		goto error_unref;
-	}
+	if (size != PAGE_SIZE || data->offset > (size - 8))
+		return -EINVAL;
 
-	if (amdgpu_ttm_tt_get_usermm(bo->tbo.ttm)) {
-		r = -EINVAL;
-		goto error_unref;
-	}
+	if (amdgpu_ttm_tt_get_usermm(bo->tbo.ttm))
+		return -EINVAL;
 
 	*offset = data->offset;
-
 	return 0;
-
-error_unref:
-	amdgpu_bo_unref(&bo);
-	return r;
 }
 
 static int amdgpu_cs_p1_bo_handles(struct amdgpu_cs_parser *p,
@@ -187,7 +175,7 @@ static int amdgpu_cs_pass1(struct amdgpu_cs_parser *p,
 	uint64_t *chunk_array_user;
 	uint64_t *chunk_array;
 	uint32_t uf_offset = 0;
-	unsigned int size;
+	size_t size;
 	int ret;
 	int i;
 
@@ -287,8 +275,10 @@ static int amdgpu_cs_pass1(struct amdgpu_cs_parser *p,
 		}
 	}
 
-	if (!p->gang_size)
-		return -EINVAL;
+	if (!p->gang_size) {
+		ret = -EINVAL;
+		goto free_all_kdata;
+	}
 
 	for (i = 0; i < p->gang_size; ++i) {
 		ret = amdgpu_job_alloc(p->adev, num_ibs[i], &p->jobs[i], vm);
@@ -300,7 +290,7 @@ static int amdgpu_cs_pass1(struct amdgpu_cs_parser *p,
 		if (ret)
 			goto free_all_kdata;
 	}
-	p->gang_leader = p->jobs[p->gang_size - 1];
+	p->gang_leader = p->jobs[p->gang_leader_idx];
 
 	if (p->ctx->vram_lost_counter != p->gang_leader->vram_lost_counter) {
 		ret = -ECANCELED;
@@ -880,14 +870,18 @@ static int amdgpu_cs_parser_bos(struct amdgpu_cs_parser *p,
 
 	mutex_lock(&p->bo_list->bo_list_mutex);
 
-	/* One for TTM and one for the CS job */
+	/* One for TTM and one for each CS job */
 	amdgpu_bo_list_for_each_entry(e, p->bo_list)
-		e->tv.num_shared = 2;
+		e->tv.num_shared = 1 + p->gang_size;
+	p->uf_entry.tv.num_shared = 1 + p->gang_size;
 
 	amdgpu_bo_list_get_list(p->bo_list, &p->validated);
 
 	INIT_LIST_HEAD(&duplicates);
 	amdgpu_vm_get_pd_bo(&fpriv->vm, &p->validated, &p->vm_pd);
+
+	/* Two for VM updates, one for TTM and one for each CS job */
+	p->vm_pd.tv.num_shared = 3 + p->gang_size;
 
 	if (p->uf_entry.tv.bo && !ttm_to_amdgpu_bo(p->uf_entry.tv.bo)->parent)
 		list_add(&p->uf_entry.tv.head, &p->validated);
@@ -910,7 +904,7 @@ static int amdgpu_cs_parser_bos(struct amdgpu_cs_parser *p,
 			goto out_free_user_pages;
 		}
 
-		r = amdgpu_ttm_tt_get_user_pages(bo, e->user_pages);
+		r = amdgpu_ttm_tt_get_user_pages(bo, e->user_pages, &e->range);
 		if (r) {
 			kvfree(e->user_pages);
 			e->user_pages = NULL;
@@ -988,10 +982,12 @@ out_free_user_pages:
 
 		if (!e->user_pages)
 			continue;
-		amdgpu_ttm_tt_get_user_pages_done(bo->tbo.ttm);
+		amdgpu_ttm_tt_get_user_pages_done(bo->tbo.ttm, e->range);
 		kvfree(e->user_pages);
 		e->user_pages = NULL;
+		e->range = NULL;
 	}
+	mutex_unlock(&p->bo_list->bo_list_mutex);
 	return r;
 }
 
@@ -1194,16 +1190,18 @@ static int amdgpu_cs_sync_rings(struct amdgpu_cs_parser *p)
 			return r;
 	}
 
-	for (i = 0; i < p->gang_size - 1; ++i) {
+	for (i = 0; i < p->gang_size; ++i) {
+		if (p->jobs[i] == leader)
+			continue;
+
 		r = amdgpu_sync_clone(&leader->sync, &p->jobs[i]->sync);
 		if (r)
 			return r;
 	}
 
-	r = amdgpu_ctx_wait_prev_fence(p->ctx, p->entities[p->gang_size - 1]);
+	r = amdgpu_ctx_wait_prev_fence(p->ctx, p->entities[p->gang_leader_idx]);
 	if (r && r != -ERESTARTSYS)
 		DRM_ERROR("amdgpu_ctx_wait_prev_fence failed.\n");
-
 	return r;
 }
 
@@ -1237,8 +1235,11 @@ static int amdgpu_cs_submit(struct amdgpu_cs_parser *p,
 	for (i = 0; i < p->gang_size; ++i)
 		drm_sched_job_arm(&p->jobs[i]->base);
 
-	for (i = 0; i < (p->gang_size - 1); ++i) {
+	for (i = 0; i < p->gang_size; ++i) {
 		struct dma_fence *fence;
+
+		if (p->jobs[i] == leader)
+			continue;
 
 		fence = &p->jobs[i]->base.s_fence->scheduled;
 		r = amdgpu_sync_fence(&leader->sync, fence);
@@ -1264,7 +1265,8 @@ static int amdgpu_cs_submit(struct amdgpu_cs_parser *p,
 	amdgpu_bo_list_for_each_userptr_entry(e, p->bo_list) {
 		struct amdgpu_bo *bo = ttm_to_amdgpu_bo(e->tv.bo);
 
-		r |= !amdgpu_ttm_tt_get_user_pages_done(bo->tbo.ttm);
+		r |= !amdgpu_ttm_tt_get_user_pages_done(bo->tbo.ttm, e->range);
+		e->range = NULL;
 	}
 	if (r) {
 		r = -EAGAIN;
@@ -1275,7 +1277,10 @@ static int amdgpu_cs_submit(struct amdgpu_cs_parser *p,
 	list_for_each_entry(e, &p->validated, tv.head) {
 
 		/* Everybody except for the gang leader uses READ */
-		for (i = 0; i < (p->gang_size - 1); ++i) {
+		for (i = 0; i < p->gang_size; ++i) {
+			if (p->jobs[i] == leader)
+				continue;
+
 			dma_resv_add_fence(e->tv.bo->base.resv,
 					   &p->jobs[i]->base.s_fence->finished,
 					   DMA_RESV_USAGE_READ);
@@ -1285,7 +1290,7 @@ static int amdgpu_cs_submit(struct amdgpu_cs_parser *p,
 		e->tv.num_shared = 0;
 	}
 
-	seq = amdgpu_ctx_add_fence(p->ctx, p->entities[p->gang_size - 1],
+	seq = amdgpu_ctx_add_fence(p->ctx, p->entities[p->gang_leader_idx],
 				   p->fence);
 	amdgpu_cs_post_dependencies(p);
 
@@ -1592,15 +1597,15 @@ static int amdgpu_cs_wait_all_fences(struct amdgpu_device *adev,
 			continue;
 
 		r = dma_fence_wait_timeout(fence, true, timeout);
+		if (r > 0 && fence->error)
+			r = fence->error;
+
 		dma_fence_put(fence);
 		if (r < 0)
 			return r;
 
 		if (r == 0)
 			break;
-
-		if (fence->error)
-			return fence->error;
 	}
 
 	memset(wait, 0, sizeof(*wait));

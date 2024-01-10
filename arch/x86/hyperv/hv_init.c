@@ -14,6 +14,7 @@
 #include <asm/apic.h>
 #include <asm/desc.h>
 #include <asm/sev.h>
+#include <asm/ibt.h>
 #include <asm/hypervisor.h>
 #include <asm/hyperv-tlfs.h>
 #include <asm/mshyperv.h>
@@ -78,7 +79,7 @@ static int hyperv_init_ghcb(void)
 static int hv_cpu_init(unsigned int cpu)
 {
 	union hv_vp_assist_msr_contents msr = { 0 };
-	struct hv_vp_assist_page **hvp = &hv_vp_assist_page[smp_processor_id()];
+	struct hv_vp_assist_page **hvp = &hv_vp_assist_page[cpu];
 	int ret;
 
 	ret = hv_common_cpu_init(cpu);
@@ -508,13 +509,33 @@ void __init hyperv_init(void)
 		src = memremap(hypercall_msr.guest_physical_address << PAGE_SHIFT, PAGE_SIZE,
 				MEMREMAP_WB);
 		BUG_ON(!(src && dst));
-		memcpy(dst, src, HV_HYP_PAGE_SIZE);
+		memcpy_to_page(pg, 0, src, HV_HYP_PAGE_SIZE);
 		memunmap(src);
 		kunmap_local(dst);
 	} else {
 		hypercall_msr.guest_physical_address = vmalloc_to_pfn(hv_hypercall_pg);
 		wrmsrl(HV_X64_MSR_HYPERCALL, hypercall_msr.as_uint64);
 	}
+
+	/*
+	 * Some versions of Hyper-V that provide IBT in guest VMs have a bug
+	 * in that there's no ENDBR64 instruction at the entry to the
+	 * hypercall page. Because hypercalls are invoked via an indirect call
+	 * to the hypercall page, all hypercall attempts fail when IBT is
+	 * enabled, and Linux panics. For such buggy versions, disable IBT.
+	 *
+	 * Fixed versions of Hyper-V always provide ENDBR64 on the hypercall
+	 * page, so if future Linux kernel versions enable IBT for 32-bit
+	 * builds, additional hypercall page hackery will be required here
+	 * to provide an ENDBR32.
+	 */
+#ifdef CONFIG_X86_KERNEL_IBT
+	if (cpu_feature_enabled(X86_FEATURE_IBT) &&
+	    *(u32 *)hv_hypercall_pg != gen_endbr()) {
+		setup_clear_cpu_cap(X86_FEATURE_IBT);
+		pr_warn("Hyper-V: Disabling IBT because of Hyper-V bug\n");
+	}
+#endif
 
 	/*
 	 * hyperv_init() is called before LAPIC is initialized: see
@@ -584,8 +605,7 @@ common_free:
 void hyperv_cleanup(void)
 {
 	union hv_x64_msr_hypercall_contents hypercall_msr;
-
-	unregister_syscore_ops(&hv_syscore_ops);
+	union hv_reference_tsc_msr tsc_msr;
 
 	/* Reset our OS id */
 	wrmsrl(HV_X64_MSR_GUEST_OS_ID, 0);
@@ -599,12 +619,14 @@ void hyperv_cleanup(void)
 	hv_hypercall_pg = NULL;
 
 	/* Reset the hypercall page */
-	hypercall_msr.as_uint64 = 0;
-	wrmsrl(HV_X64_MSR_HYPERCALL, hypercall_msr.as_uint64);
+	hypercall_msr.as_uint64 = hv_get_register(HV_X64_MSR_HYPERCALL);
+	hypercall_msr.enable = 0;
+	hv_set_register(HV_X64_MSR_HYPERCALL, hypercall_msr.as_uint64);
 
 	/* Reset the TSC page */
-	hypercall_msr.as_uint64 = 0;
-	wrmsrl(HV_X64_MSR_REFERENCE_TSC, hypercall_msr.as_uint64);
+	tsc_msr.as_uint64 = hv_get_register(HV_X64_MSR_REFERENCE_TSC);
+	tsc_msr.enable = 0;
+	hv_set_register(HV_X64_MSR_REFERENCE_TSC, tsc_msr.as_uint64);
 }
 
 void hyperv_report_panic(struct pt_regs *regs, long err, bool in_die)

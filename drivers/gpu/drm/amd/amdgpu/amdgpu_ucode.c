@@ -698,6 +698,7 @@ FW_VERSION_ATTR(rlc_srlg_fw_version, 0444, gfx.rlc_srlg_fw_version);
 FW_VERSION_ATTR(rlc_srls_fw_version, 0444, gfx.rlc_srls_fw_version);
 FW_VERSION_ATTR(mec_fw_version, 0444, gfx.mec_fw_version);
 FW_VERSION_ATTR(mec2_fw_version, 0444, gfx.mec2_fw_version);
+FW_VERSION_ATTR(imu_fw_version, 0444, gfx.imu_fw_version);
 FW_VERSION_ATTR(sos_fw_version, 0444, psp.sos.fw_version);
 FW_VERSION_ATTR(asd_fw_version, 0444, psp.asd_context.bin_desc.fw_version);
 FW_VERSION_ATTR(ta_ras_fw_version, 0444, psp.ras_context.context.bin_desc.fw_version);
@@ -719,7 +720,8 @@ static struct attribute *fw_attrs[] = {
 	&dev_attr_ta_ras_fw_version.attr, &dev_attr_ta_xgmi_fw_version.attr,
 	&dev_attr_smc_fw_version.attr, &dev_attr_sdma_fw_version.attr,
 	&dev_attr_sdma2_fw_version.attr, &dev_attr_vcn_fw_version.attr,
-	&dev_attr_dmcu_fw_version.attr, NULL
+	&dev_attr_dmcu_fw_version.attr, &dev_attr_imu_fw_version.attr,
+	NULL
 };
 
 static const struct attribute_group fw_attr_group = {
@@ -1088,4 +1090,40 @@ void amdgpu_ucode_ip_version_decode(struct amdgpu_device *adev, int block_type, 
 	rev = IP_VERSION_REV(version);
 
 	snprintf(ucode_prefix, len, "%s_%d_%d_%d", ip_name, maj, min, rev);
+}
+
+/*
+ * amdgpu_ucode_request - Fetch and validate amdgpu microcode
+ *
+ * @adev: amdgpu device
+ * @fw: pointer to load firmware to
+ * @fw_name: firmware to load
+ *
+ * This is a helper that will use request_firmware and amdgpu_ucode_validate
+ * to load and run basic validation on firmware. If the load fails, remap
+ * the error code to -ENODEV, so that early_init functions will fail to load.
+ */
+int amdgpu_ucode_request(struct amdgpu_device *adev, const struct firmware **fw,
+			 const char *fw_name)
+{
+	int err = request_firmware(fw, fw_name, adev->dev);
+
+	if (err)
+		return -ENODEV;
+	err = amdgpu_ucode_validate(*fw);
+	if (err)
+		dev_dbg(adev->dev, "\"%s\" failed to validate\n", fw_name);
+
+	return err;
+}
+
+/*
+ * amdgpu_ucode_release - Release firmware microcode
+ *
+ * @fw: pointer to firmware to release
+ */
+void amdgpu_ucode_release(const struct firmware **fw)
+{
+	release_firmware(*fw);
+	*fw = NULL;
 }

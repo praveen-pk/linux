@@ -97,7 +97,6 @@ int mlx5e_tc_set_attr_rx_tun(struct mlx5e_tc_flow *flow,
 #if IS_ENABLED(CONFIG_INET) && IS_ENABLED(CONFIG_IPV6)
 	else if (ip_version == 6) {
 		int ipv6_size = MLX5_FLD_SZ_BYTES(ipv6_layout, ipv6);
-		struct in6_addr zerov6 = {};
 
 		daddr = MLX5_ADDR_OF(fte_match_param, spec->match_value,
 				     outer_headers.dst_ipv4_dst_ipv6.ipv6_layout.ipv6);
@@ -105,8 +104,8 @@ int mlx5e_tc_set_attr_rx_tun(struct mlx5e_tc_flow *flow,
 				     outer_headers.src_ipv4_src_ipv6.ipv6_layout.ipv6);
 		memcpy(&tun_attr->dst_ip.v6, daddr, ipv6_size);
 		memcpy(&tun_attr->src_ip.v6, saddr, ipv6_size);
-		if (!memcmp(&tun_attr->dst_ip.v6, &zerov6, sizeof(zerov6)) ||
-		    !memcmp(&tun_attr->src_ip.v6, &zerov6, sizeof(zerov6)))
+		if (ipv6_addr_any(&tun_attr->dst_ip.v6) ||
+		    ipv6_addr_any(&tun_attr->src_ip.v6))
 			return 0;
 	}
 #endif
@@ -222,17 +221,25 @@ void mlx5e_tc_encap_flows_del(struct mlx5e_priv *priv,
 	int err;
 
 	list_for_each_entry(flow, flow_list, tmp_list) {
-		if (!mlx5e_is_offloaded_flow(flow) || flow_flag_test(flow, SLOW))
+		if (!mlx5e_is_offloaded_flow(flow))
 			continue;
-		spec = &flow->attr->parse_attr->spec;
-
-		/* update from encap rule to slow path rule */
-		rule = mlx5e_tc_offload_to_slow_path(esw, flow, spec);
 
 		attr = mlx5e_tc_get_encap_attr(flow);
 		esw_attr = attr->esw_attr;
 		/* mark the flow's encap dest as non-valid */
 		esw_attr->dests[flow->tmp_entry_index].flags &= ~MLX5_ESW_DEST_ENCAP_VALID;
+		esw_attr->dests[flow->tmp_entry_index].pkt_reformat = NULL;
+
+		/* Clear pkt_reformat before checking slow path flag. Because
+		 * in next iteration, the same flow is already set slow path
+		 * flag, but still need to clear the pkt_reformat.
+		 */
+		if (flow_flag_test(flow, SLOW))
+			continue;
+
+		/* update from encap rule to slow path rule */
+		spec = &flow->attr->parse_attr->spec;
+		rule = mlx5e_tc_offload_to_slow_path(esw, flow, spec);
 
 		if (IS_ERR(rule)) {
 			err = PTR_ERR(rule);
@@ -251,6 +258,7 @@ void mlx5e_tc_encap_flows_del(struct mlx5e_priv *priv,
 	/* we know that the encap is valid */
 	e->flags &= ~MLX5_ENCAP_ENTRY_VALID;
 	mlx5_packet_reformat_dealloc(priv->mdev, e->pkt_reformat);
+	e->pkt_reformat = NULL;
 }
 
 static void mlx5e_take_tmp_flow(struct mlx5e_tc_flow *flow,
@@ -762,8 +770,7 @@ int mlx5e_attach_encap(struct mlx5e_priv *priv,
 		       struct net_device *mirred_dev,
 		       int out_index,
 		       struct netlink_ext_ack *extack,
-		       struct net_device **encap_dev,
-		       bool *encap_valid)
+		       struct net_device **encap_dev)
 {
 	struct mlx5_eswitch *esw = priv->mdev->priv.eswitch;
 	struct mlx5e_tc_flow_parse_attr *parse_attr;
@@ -878,9 +885,8 @@ attach_flow:
 	if (e->flags & MLX5_ENCAP_ENTRY_VALID) {
 		attr->esw_attr->dests[out_index].pkt_reformat = e->pkt_reformat;
 		attr->esw_attr->dests[out_index].flags |= MLX5_ESW_DEST_ENCAP_VALID;
-		*encap_valid = true;
 	} else {
-		*encap_valid = false;
+		flow_flag_set(flow, SLOW);
 	}
 	mutex_unlock(&esw->offloads.encap_tbl_lock);
 
@@ -1331,11 +1337,13 @@ static void mlx5e_invalidate_encap(struct mlx5e_priv *priv,
 	struct mlx5e_tc_flow *flow;
 
 	list_for_each_entry(flow, encap_flows, tmp_list) {
-		struct mlx5_flow_attr *attr = flow->attr;
 		struct mlx5_esw_flow_attr *esw_attr;
+		struct mlx5_flow_attr *attr;
 
 		if (!mlx5e_is_offloaded_flow(flow))
 			continue;
+
+		attr = mlx5e_tc_get_encap_attr(flow);
 		esw_attr = attr->esw_attr;
 
 		if (flow_flag_test(flow, SLOW))

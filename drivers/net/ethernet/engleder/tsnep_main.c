@@ -65,8 +65,11 @@ static irqreturn_t tsnep_irq(int irq, void *arg)
 
 	/* handle TX/RX queue 0 interrupt */
 	if ((active & adapter->queue[0].irq_mask) != 0) {
-		tsnep_disable_irq(adapter, adapter->queue[0].irq_mask);
-		napi_schedule(&adapter->queue[0].napi);
+		if (napi_schedule_prep(&adapter->queue[0].napi)) {
+			tsnep_disable_irq(adapter, adapter->queue[0].irq_mask);
+			/* schedule after masking to avoid races */
+			__napi_schedule(&adapter->queue[0].napi);
+		}
 	}
 
 	return IRQ_HANDLED;
@@ -77,8 +80,11 @@ static irqreturn_t tsnep_irq_txrx(int irq, void *arg)
 	struct tsnep_queue *queue = arg;
 
 	/* handle TX/RX queue interrupt */
-	tsnep_disable_irq(queue->adapter, queue->irq_mask);
-	napi_schedule(&queue->napi);
+	if (napi_schedule_prep(&queue->napi)) {
+		tsnep_disable_irq(queue->adapter, queue->irq_mask);
+		/* schedule after masking to avoid races */
+		__napi_schedule(&queue->napi);
+	}
 
 	return IRQ_HANDLED;
 }
@@ -419,7 +425,7 @@ static netdev_tx_t tsnep_xmit_frame_ring(struct sk_buff *skb,
 		/* ring full, shall not happen because queue is stopped if full
 		 * below
 		 */
-		netif_stop_queue(tx->adapter->netdev);
+		netif_stop_subqueue(tx->adapter->netdev, tx->queue_index);
 
 		spin_unlock_irqrestore(&tx->lock, flags);
 
@@ -462,7 +468,7 @@ static netdev_tx_t tsnep_xmit_frame_ring(struct sk_buff *skb,
 
 	if (tsnep_tx_desc_available(tx) < (MAX_SKB_FRAGS + 1)) {
 		/* ring can get full with next frame */
-		netif_stop_queue(tx->adapter->netdev);
+		netif_stop_subqueue(tx->adapter->netdev, tx->queue_index);
 	}
 
 	spin_unlock_irqrestore(&tx->lock, flags);
@@ -472,11 +478,14 @@ static netdev_tx_t tsnep_xmit_frame_ring(struct sk_buff *skb,
 
 static bool tsnep_tx_poll(struct tsnep_tx *tx, int napi_budget)
 {
+	struct tsnep_tx_entry *entry;
+	struct netdev_queue *nq;
 	unsigned long flags;
 	int budget = 128;
-	struct tsnep_tx_entry *entry;
-	int count;
 	int length;
+	int count;
+
+	nq = netdev_get_tx_queue(tx->adapter->netdev, tx->queue_index);
 
 	spin_lock_irqsave(&tx->lock, flags);
 
@@ -533,13 +542,34 @@ static bool tsnep_tx_poll(struct tsnep_tx *tx, int napi_budget)
 	} while (likely(budget));
 
 	if ((tsnep_tx_desc_available(tx) >= ((MAX_SKB_FRAGS + 1) * 2)) &&
-	    netif_queue_stopped(tx->adapter->netdev)) {
-		netif_wake_queue(tx->adapter->netdev);
+	    netif_tx_queue_stopped(nq)) {
+		netif_tx_wake_queue(nq);
 	}
 
 	spin_unlock_irqrestore(&tx->lock, flags);
 
 	return (budget != 0);
+}
+
+static bool tsnep_tx_pending(struct tsnep_tx *tx)
+{
+	unsigned long flags;
+	struct tsnep_tx_entry *entry;
+	bool pending = false;
+
+	spin_lock_irqsave(&tx->lock, flags);
+
+	if (tx->read != tx->write) {
+		entry = &tx->entry[tx->read];
+		if ((__le32_to_cpu(entry->desc_wb->properties) &
+		     TSNEP_TX_DESC_OWNER_MASK) ==
+		    (entry->properties & TSNEP_TX_DESC_OWNER_MASK))
+			pending = true;
+	}
+
+	spin_unlock_irqrestore(&tx->lock, flags);
+
+	return pending;
 }
 
 static int tsnep_tx_open(struct tsnep_adapter *adapter, void __iomem *addr,
@@ -821,6 +851,19 @@ static int tsnep_rx_poll(struct tsnep_rx *rx, struct napi_struct *napi,
 	return done;
 }
 
+static bool tsnep_rx_pending(struct tsnep_rx *rx)
+{
+	struct tsnep_rx_entry *entry;
+
+	entry = &rx->entry[rx->read];
+	if ((__le32_to_cpu(entry->desc_wb->properties) &
+	     TSNEP_DESC_OWNER_COUNTER_MASK) ==
+	    (entry->properties & TSNEP_DESC_OWNER_COUNTER_MASK))
+		return true;
+
+	return false;
+}
+
 static int tsnep_rx_open(struct tsnep_adapter *adapter, void __iomem *addr,
 			 int queue_index, struct tsnep_rx *rx)
 {
@@ -866,6 +909,17 @@ static void tsnep_rx_close(struct tsnep_rx *rx)
 	tsnep_rx_ring_cleanup(rx);
 }
 
+static bool tsnep_pending(struct tsnep_queue *queue)
+{
+	if (queue->tx && tsnep_tx_pending(queue->tx))
+		return true;
+
+	if (queue->rx && tsnep_rx_pending(queue->rx))
+		return true;
+
+	return false;
+}
+
 static int tsnep_poll(struct napi_struct *napi, int budget)
 {
 	struct tsnep_queue *queue = container_of(napi, struct tsnep_queue,
@@ -875,6 +929,10 @@ static int tsnep_poll(struct napi_struct *napi, int budget)
 
 	if (queue->tx)
 		complete = tsnep_tx_poll(queue->tx, budget);
+
+	/* handle case where we are called by netpoll with a budget of 0 */
+	if (unlikely(budget <= 0))
+		return budget;
 
 	if (queue->rx) {
 		done = tsnep_rx_poll(queue->rx, napi, budget);
@@ -886,8 +944,18 @@ static int tsnep_poll(struct napi_struct *napi, int budget)
 	if (!complete)
 		return budget;
 
-	if (likely(napi_complete_done(napi, done)))
+	if (likely(napi_complete_done(napi, done))) {
 		tsnep_enable_irq(queue->adapter, queue->irq_mask);
+
+		/* reschedule if work is already pending, prevent rotten packets
+		 * which are transmitted or received after polling but before
+		 * interrupt enable
+		 */
+		if (tsnep_pending(queue)) {
+			tsnep_disable_irq(queue->adapter, queue->irq_mask);
+			napi_schedule(napi);
+		}
+	}
 
 	return min(done, budget - 1);
 }

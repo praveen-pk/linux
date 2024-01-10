@@ -882,6 +882,8 @@ efi_status_t efi_get_random_bytes(unsigned long size, u8 *out);
 efi_status_t efi_random_alloc(unsigned long size, unsigned long align,
 			      unsigned long *addr, unsigned long random_seed);
 
+efi_status_t efi_random_get_seed(void);
+
 efi_status_t check_platform_features(void);
 
 void *get_efi_config_table(efi_guid_t guid);
@@ -974,5 +976,68 @@ efi_enable_reset_attack_mitigation(void) { }
 #endif
 
 void efi_retrieve_tpm2_eventlog(void);
+
+struct efi_smbios_record {
+	u8	type;
+	u8	length;
+	u16	handle;
+};
+
+const struct efi_smbios_record *efi_get_smbios_record(u8 type);
+
+struct efi_smbios_type1_record {
+	struct efi_smbios_record	header;
+
+	u8				manufacturer;
+	u8				product_name;
+	u8				version;
+	u8				serial_number;
+	efi_guid_t			uuid;
+	u8				wakeup_type;
+	u8				sku_number;
+	u8				family;
+};
+
+struct efi_smbios_type4_record {
+	struct efi_smbios_record	header;
+
+	u8				socket;
+	u8				processor_type;
+	u8				processor_family;
+	u8				processor_manufacturer;
+	u8				processor_id[8];
+	u8				processor_version;
+	u8				voltage;
+	u16				external_clock;
+	u16				max_speed;
+	u16				current_speed;
+	u8				status;
+	u8				processor_upgrade;
+	u16				l1_cache_handle;
+	u16				l2_cache_handle;
+	u16				l3_cache_handle;
+	u8				serial_number;
+	u8				asset_tag;
+	u8				part_number;
+	u8				core_count;
+	u8				enabled_core_count;
+	u8				thread_count;
+	u16				processor_characteristics;
+	u16				processor_family2;
+	u16				core_count2;
+	u16				enabled_core_count2;
+	u16				thread_count2;
+	u16				thread_enabled;
+};
+
+#define efi_get_smbios_string(__record, __type, __name) ({		\
+	int size = sizeof(struct efi_smbios_type ## __type ## _record);	\
+	int off = offsetof(struct efi_smbios_type ## __type ## _record,	\
+			   __name);					\
+	__efi_get_smbios_string((__record), __type, off, size);		\
+})
+
+const u8 *__efi_get_smbios_string(const struct efi_smbios_record *record,
+				  u8 type, int offset, int recsize);
 
 #endif

@@ -562,6 +562,7 @@ static void tegra_xusb_port_unregister(struct tegra_xusb_port *port)
 		usb_role_switch_unregister(port->usb_role_sw);
 		cancel_work_sync(&port->usb_phy_work);
 		usb_remove_phy(&port->usb_phy);
+		port->usb_phy.dev->driver = NULL;
 	}
 
 	if (port->ops->remove)
@@ -669,6 +670,9 @@ static int tegra_xusb_setup_usb_role_switch(struct tegra_xusb_port *port)
 	port->dev.driver = devm_kzalloc(&port->dev,
 					sizeof(struct device_driver),
 					GFP_KERNEL);
+	if (!port->dev.driver)
+		return -ENOMEM;
+
 	port->dev.driver->owner	 = THIS_MODULE;
 
 	port->usb_role_sw = usb_role_switch_register(&port->dev,
@@ -782,6 +786,7 @@ static int tegra_xusb_add_usb2_port(struct tegra_xusb_padctl *padctl,
 	usb2->base.lane = usb2->base.ops->map(&usb2->base);
 	if (IS_ERR(usb2->base.lane)) {
 		err = PTR_ERR(usb2->base.lane);
+		tegra_xusb_port_unregister(&usb2->base);
 		goto out;
 	}
 
@@ -848,6 +853,7 @@ static int tegra_xusb_add_ulpi_port(struct tegra_xusb_padctl *padctl,
 	ulpi->base.lane = ulpi->base.ops->map(&ulpi->base);
 	if (IS_ERR(ulpi->base.lane)) {
 		err = PTR_ERR(ulpi->base.lane);
+		tegra_xusb_port_unregister(&ulpi->base);
 		goto out;
 	}
 
@@ -1461,8 +1467,14 @@ EXPORT_SYMBOL_GPL(tegra_phy_xusb_utmi_port_reset);
 
 void tegra_phy_xusb_utmi_pad_power_on(struct phy *phy)
 {
-	struct tegra_xusb_lane *lane = phy_get_drvdata(phy);
-	struct tegra_xusb_padctl *padctl = lane->pad->padctl;
+	struct tegra_xusb_lane *lane;
+	struct tegra_xusb_padctl *padctl;
+
+	if (!phy)
+		return;
+
+	lane = phy_get_drvdata(phy);
+	padctl = lane->pad->padctl;
 
 	if (padctl->soc->ops->utmi_pad_power_on)
 		padctl->soc->ops->utmi_pad_power_on(phy);
@@ -1471,8 +1483,14 @@ EXPORT_SYMBOL_GPL(tegra_phy_xusb_utmi_pad_power_on);
 
 void tegra_phy_xusb_utmi_pad_power_down(struct phy *phy)
 {
-	struct tegra_xusb_lane *lane = phy_get_drvdata(phy);
-	struct tegra_xusb_padctl *padctl = lane->pad->padctl;
+	struct tegra_xusb_lane *lane;
+	struct tegra_xusb_padctl *padctl;
+
+	if (!phy)
+		return;
+
+	lane = phy_get_drvdata(phy);
+	padctl = lane->pad->padctl;
 
 	if (padctl->soc->ops->utmi_pad_power_down)
 		padctl->soc->ops->utmi_pad_power_down(phy);

@@ -127,6 +127,8 @@ static int prepare_itcw(struct itcw *, unsigned int, unsigned int, int,
 			struct dasd_device *, struct dasd_device *,
 			unsigned int, int, unsigned int, unsigned int,
 			unsigned int, unsigned int);
+static int dasd_eckd_query_pprc_status(struct dasd_device *,
+				       struct dasd_pprc_data_sc4 *);
 
 /* initial attempt at a probe function. this can be simplified once
  * the other detection code is gone */
@@ -1077,12 +1079,12 @@ static void dasd_eckd_get_uid_string(struct dasd_conf *conf,
 
 	create_uid(conf, &uid);
 	if (strlen(uid.vduit) > 0)
-		snprintf(print_uid, sizeof(*print_uid),
+		snprintf(print_uid, DASD_UID_STRLEN,
 			 "%s.%s.%04x.%02x.%s",
 			 uid.vendor, uid.serial, uid.ssid,
 			 uid.real_unit_addr, uid.vduit);
 	else
-		snprintf(print_uid, sizeof(*print_uid),
+		snprintf(print_uid, DASD_UID_STRLEN,
 			 "%s.%s.%04x.%02x",
 			 uid.vendor, uid.serial, uid.ssid,
 			 uid.real_unit_addr);
@@ -1091,8 +1093,8 @@ static void dasd_eckd_get_uid_string(struct dasd_conf *conf,
 static int dasd_eckd_check_cabling(struct dasd_device *device,
 				   void *conf_data, __u8 lpm)
 {
+	char print_path_uid[DASD_UID_STRLEN], print_device_uid[DASD_UID_STRLEN];
 	struct dasd_eckd_private *private = device->private;
-	char print_path_uid[60], print_device_uid[60];
 	struct dasd_conf path_conf;
 
 	path_conf.data = conf_data;
@@ -1291,9 +1293,9 @@ static void dasd_eckd_path_available_action(struct dasd_device *device,
 	__u8 path_rcd_buf[DASD_ECKD_RCD_DATA_SIZE];
 	__u8 lpm, opm, npm, ppm, epm, hpfpm, cablepm;
 	struct dasd_conf_data *conf_data;
+	char print_uid[DASD_UID_STRLEN];
 	struct dasd_conf path_conf;
 	unsigned long flags;
-	char print_uid[60];
 	int rc, pos;
 
 	opm = 0;
@@ -3732,6 +3734,26 @@ static int count_exts(unsigned int from, unsigned int to, int trks_per_ext)
 	return count;
 }
 
+static int dasd_in_copy_relation(struct dasd_device *device)
+{
+	struct dasd_pprc_data_sc4 *temp;
+	int rc;
+
+	if (!dasd_eckd_pprc_enabled(device))
+		return 0;
+
+	temp = kzalloc(sizeof(*temp), GFP_KERNEL);
+	if (!temp)
+		return -ENOMEM;
+
+	rc = dasd_eckd_query_pprc_status(device, temp);
+	if (!rc)
+		rc = temp->dev_info[0].state;
+
+	kfree(temp);
+	return rc;
+}
+
 /*
  * Release allocated space for a given range or an entire volume.
  */
@@ -3748,6 +3770,7 @@ dasd_eckd_dso_ras(struct dasd_device *device, struct dasd_block *block,
 	int cur_to_trk, cur_from_trk;
 	struct dasd_ccw_req *cqr;
 	u32 beg_cyl, end_cyl;
+	int copy_relation;
 	struct ccw1 *ccw;
 	int trks_per_ext;
 	size_t ras_size;
@@ -3758,6 +3781,10 @@ dasd_eckd_dso_ras(struct dasd_device *device, struct dasd_block *block,
 
 	if (dasd_eckd_ras_sanity_checks(device, first_trk, last_trk))
 		return ERR_PTR(-EINVAL);
+
+	copy_relation = dasd_in_copy_relation(device);
+	if (copy_relation < 0)
+		return ERR_PTR(copy_relation);
 
 	rq = req ? blk_mq_rq_to_pdu(req) : NULL;
 
@@ -3787,9 +3814,11 @@ dasd_eckd_dso_ras(struct dasd_device *device, struct dasd_block *block,
 	/*
 	 * This bit guarantees initialisation of tracks within an extent that is
 	 * not fully specified, but is only supported with a certain feature
-	 * subset.
+	 * subset and for devices not in a copy relation.
 	 */
-	ras_data->op_flags.guarantee_init = !!(features->feature[56] & 0x01);
+	if (features->feature[56] & 0x01 && !copy_relation)
+		ras_data->op_flags.guarantee_init = 1;
+
 	ras_data->lss = private->conf.ned->ID;
 	ras_data->dev_addr = private->conf.ned->unit_addr;
 	ras_data->nr_exts = nr_exts;
@@ -4722,7 +4751,6 @@ static struct dasd_ccw_req *dasd_eckd_build_cp_raw(struct dasd_device *startdev,
 	struct dasd_device *basedev;
 	struct req_iterator iter;
 	struct dasd_ccw_req *cqr;
-	unsigned int first_offs;
 	unsigned int trkcount;
 	unsigned long *idaws;
 	unsigned int size;
@@ -4756,7 +4784,6 @@ static struct dasd_ccw_req *dasd_eckd_build_cp_raw(struct dasd_device *startdev,
 	last_trk = (blk_rq_pos(req) + blk_rq_sectors(req) - 1) /
 		DASD_RAW_SECTORS_PER_TRACK;
 	trkcount = last_trk - first_trk + 1;
-	first_offs = 0;
 
 	if (rq_data_dir(req) == READ)
 		cmd = DASD_ECKD_CCW_READ_TRACK;
@@ -4800,13 +4827,13 @@ static struct dasd_ccw_req *dasd_eckd_build_cp_raw(struct dasd_device *startdev,
 
 	if (use_prefix) {
 		prefix_LRE(ccw++, data, first_trk, last_trk, cmd, basedev,
-			   startdev, 1, first_offs + 1, trkcount, 0, 0);
+			   startdev, 1, 0, trkcount, 0, 0);
 	} else {
 		define_extent(ccw++, data, first_trk, last_trk, cmd, basedev, 0);
 		ccw[-1].flags |= CCW_FLAG_CC;
 
 		data += sizeof(struct DE_eckd_data);
-		locate_record_ext(ccw++, data, first_trk, first_offs + 1,
+		locate_record_ext(ccw++, data, first_trk, 0,
 				  trkcount, cmd, basedev, 0, 0);
 	}
 
@@ -5500,7 +5527,7 @@ dasd_eckd_ioctl(struct dasd_block *block, unsigned int cmd, void __user *argp)
  * Dump the range of CCWs into 'page' buffer
  * and return number of printed chars.
  */
-static int
+static void
 dasd_eckd_dump_ccw_range(struct ccw1 *from, struct ccw1 *to, char *page)
 {
 	int len, count;
@@ -5518,16 +5545,21 @@ dasd_eckd_dump_ccw_range(struct ccw1 *from, struct ccw1 *to, char *page)
 		else
 			datap = (char *) ((addr_t) from->cda);
 
-		/* dump data (max 32 bytes) */
-		for (count = 0; count < from->count && count < 32; count++) {
-			if (count % 8 == 0) len += sprintf(page + len, " ");
-			if (count % 4 == 0) len += sprintf(page + len, " ");
+		/* dump data (max 128 bytes) */
+		for (count = 0; count < from->count && count < 128; count++) {
+			if (count % 32 == 0)
+				len += sprintf(page + len, "\n");
+			if (count % 8 == 0)
+				len += sprintf(page + len, " ");
+			if (count % 4 == 0)
+				len += sprintf(page + len, " ");
 			len += sprintf(page + len, "%02x", datap[count]);
 		}
 		len += sprintf(page + len, "\n");
 		from++;
 	}
-	return len;
+	if (len > 0)
+		printk(KERN_ERR "%s", page);
 }
 
 static void
@@ -5619,37 +5651,33 @@ static void dasd_eckd_dump_sense_ccw(struct dasd_device *device,
 	if (req) {
 		/* req == NULL for unsolicited interrupts */
 		/* dump the Channel Program (max 140 Bytes per line) */
-		/* Count CCW and print first CCWs (maximum 1024 % 140 = 7) */
+		/* Count CCW and print first CCWs (maximum 7) */
 		first = req->cpaddr;
 		for (last = first; last->flags & (CCW_FLAG_CC | CCW_FLAG_DC); last++);
 		to = min(first + 6, last);
-		len = sprintf(page, PRINTK_HEADER
-			      " Related CP in req: %p\n", req);
-		dasd_eckd_dump_ccw_range(first, to, page + len);
-		printk(KERN_ERR "%s", page);
+		printk(KERN_ERR PRINTK_HEADER " Related CP in req: %p\n", req);
+		dasd_eckd_dump_ccw_range(first, to, page);
 
 		/* print failing CCW area (maximum 4) */
 		/* scsw->cda is either valid or zero  */
-		len = 0;
 		from = ++to;
 		fail = (struct ccw1 *)(addr_t)
 				irb->scsw.cmd.cpa; /* failing CCW */
 		if (from <  fail - 2) {
 			from = fail - 2;     /* there is a gap - print header */
-			len += sprintf(page, PRINTK_HEADER "......\n");
+			printk(KERN_ERR PRINTK_HEADER "......\n");
 		}
 		to = min(fail + 1, last);
-		len += dasd_eckd_dump_ccw_range(from, to, page + len);
+		dasd_eckd_dump_ccw_range(from, to, page + len);
 
 		/* print last CCWs (maximum 2) */
+		len = 0;
 		from = max(from, ++to);
 		if (from < last - 1) {
 			from = last - 1;     /* there is a gap - print header */
-			len += sprintf(page + len, PRINTK_HEADER "......\n");
+			printk(KERN_ERR PRINTK_HEADER "......\n");
 		}
-		len += dasd_eckd_dump_ccw_range(from, last, page + len);
-		if (len > 0)
-			printk(KERN_ERR "%s", page);
+		dasd_eckd_dump_ccw_range(from, last, page + len);
 	}
 	free_page((unsigned long) page);
 }
@@ -5828,8 +5856,8 @@ static void dasd_eckd_dump_sense(struct dasd_device *device,
 static int dasd_eckd_reload_device(struct dasd_device *device)
 {
 	struct dasd_eckd_private *private = device->private;
+	char print_uid[DASD_UID_STRLEN];
 	int rc, old_base;
-	char print_uid[60];
 	struct dasd_uid uid;
 	unsigned long flags;
 
@@ -6957,8 +6985,10 @@ dasd_eckd_init(void)
 		return -ENOMEM;
 	dasd_vol_info_req = kmalloc(sizeof(*dasd_vol_info_req),
 				    GFP_KERNEL | GFP_DMA);
-	if (!dasd_vol_info_req)
+	if (!dasd_vol_info_req) {
+		kfree(dasd_reserve_req);
 		return -ENOMEM;
+	}
 	pe_handler_worker = kmalloc(sizeof(*pe_handler_worker),
 				    GFP_KERNEL | GFP_DMA);
 	if (!pe_handler_worker) {

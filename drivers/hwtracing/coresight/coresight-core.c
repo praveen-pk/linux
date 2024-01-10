@@ -1446,13 +1446,8 @@ static int coresight_remove_match(struct device *dev, void *data)
 		if (csdev->dev.fwnode == conn->child_fwnode) {
 			iterator->orphan = true;
 			coresight_remove_links(iterator, conn);
-			/*
-			 * Drop the reference to the handle for the remote
-			 * device acquired in parsing the connections from
-			 * platform data.
-			 */
-			fwnode_handle_put(conn->child_fwnode);
-			conn->child_fwnode = NULL;
+
+			conn->child_dev = NULL;
 			/* No need to continue */
 			break;
 		}
@@ -1687,14 +1682,15 @@ struct coresight_device *coresight_register(struct coresight_desc *desc)
 		ret = coresight_fixup_device_conns(csdev);
 	if (!ret)
 		ret = coresight_fixup_orphan_conns(csdev);
-	if (!ret && cti_assoc_ops && cti_assoc_ops->add)
-		cti_assoc_ops->add(csdev);
 
 out_unlock:
 	mutex_unlock(&coresight_mutex);
 	/* Success */
-	if (!ret)
+	if (!ret) {
+		if (cti_assoc_ops && cti_assoc_ops->add)
+			cti_assoc_ops->add(csdev);
 		return csdev;
+	}
 
 	/* Unregister the device if needed */
 	if (registered) {

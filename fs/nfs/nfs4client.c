@@ -231,6 +231,8 @@ struct nfs_client *nfs4_alloc_client(const struct nfs_client_initdata *cl_init)
 	__set_bit(NFS_CS_DISCRTRY, &clp->cl_flags);
 	__set_bit(NFS_CS_NO_RETRANS_TIMEOUT, &clp->cl_flags);
 
+	if (test_bit(NFS_CS_DS, &cl_init->init_flags))
+		__set_bit(NFS_CS_DS, &clp->cl_flags);
 	/*
 	 * Set up the connection to the server before we add add to the
 	 * global list.
@@ -346,6 +348,7 @@ int nfs40_init_client(struct nfs_client *clp)
 	ret = nfs4_setup_slot_table(tbl, NFS4_MAX_SLOT_TABLE,
 					"NFSv4.0 transport Slot table");
 	if (ret) {
+		nfs4_shutdown_slot_table(tbl);
 		kfree(tbl);
 		return ret;
 	}
@@ -413,6 +416,8 @@ static void nfs4_add_trunk(struct nfs_client *clp, struct nfs_client *old)
 		.net = old->cl_net,
 		.servername = old->cl_hostname,
 	};
+	int max_connect = test_bit(NFS_CS_PNFS, &clp->cl_flags) ?
+		clp->cl_max_connect : old->cl_max_connect;
 
 	if (clp->cl_proto != old->cl_proto)
 		return;
@@ -426,7 +431,7 @@ static void nfs4_add_trunk(struct nfs_client *clp, struct nfs_client *old)
 	xprt_args.addrlen = clp_salen;
 
 	rpc_clnt_add_xprt(old->cl_rpcclient, &xprt_args,
-			  rpc_clnt_test_and_add_xprt, NULL);
+			  rpc_clnt_test_and_add_xprt, &max_connect);
 }
 
 /**
@@ -889,7 +894,7 @@ nfs4_find_client_sessionid(struct net *net, const struct sockaddr *addr,
  */
 static int nfs4_set_client(struct nfs_server *server,
 		const char *hostname,
-		const struct sockaddr *addr,
+		const struct sockaddr_storage *addr,
 		const size_t addrlen,
 		const char *ip_addr,
 		int proto, const struct rpc_timeout *timeparms,
@@ -924,7 +929,7 @@ static int nfs4_set_client(struct nfs_server *server,
 		__set_bit(NFS_CS_MIGRATION, &cl_init.init_flags);
 	if (test_bit(NFS_MIG_TSM_POSSIBLE, &server->mig_status))
 		__set_bit(NFS_CS_TSM_POSSIBLE, &cl_init.init_flags);
-	server->port = rpc_get_port(addr);
+	server->port = rpc_get_port((struct sockaddr *)addr);
 
 	/* Allocate or find a client reference we can use */
 	clp = nfs_get_client(&cl_init);
@@ -960,7 +965,7 @@ static int nfs4_set_client(struct nfs_server *server,
  * the MDS.
  */
 struct nfs_client *nfs4_set_ds_client(struct nfs_server *mds_srv,
-		const struct sockaddr *ds_addr, int ds_addrlen,
+		const struct sockaddr_storage *ds_addr, int ds_addrlen,
 		int ds_proto, unsigned int ds_timeo, unsigned int ds_retrans,
 		u32 minor_version)
 {
@@ -980,7 +985,7 @@ struct nfs_client *nfs4_set_ds_client(struct nfs_server *mds_srv,
 	};
 	char buf[INET6_ADDRSTRLEN + 1];
 
-	if (rpc_ntop(ds_addr, buf, sizeof(buf)) <= 0)
+	if (rpc_ntop((struct sockaddr *)ds_addr, buf, sizeof(buf)) <= 0)
 		return ERR_PTR(-EINVAL);
 	cl_init.hostname = buf;
 
@@ -992,6 +997,9 @@ struct nfs_client *nfs4_set_ds_client(struct nfs_server *mds_srv,
 	if (mds_srv->flags & NFS_MOUNT_NORESVPORT)
 		__set_bit(NFS_CS_NORESVPORT, &cl_init.init_flags);
 
+	__set_bit(NFS_CS_DS, &cl_init.init_flags);
+	__set_bit(NFS_CS_PNFS, &cl_init.init_flags);
+	cl_init.max_connect = NFS_MAX_TRANSPORTS;
 	/*
 	 * Set an authflavor equual to the MDS value. Use the MDS nfs_client
 	 * cl_ipaddr so as to use the same EXCHANGE_ID co_ownerid as the MDS
@@ -1148,7 +1156,7 @@ static int nfs4_init_server(struct nfs_server *server, struct fs_context *fc)
 	/* Get a client record */
 	error = nfs4_set_client(server,
 				ctx->nfs_server.hostname,
-				&ctx->nfs_server.address,
+				&ctx->nfs_server._address,
 				ctx->nfs_server.addrlen,
 				ctx->client_address,
 				ctx->nfs_server.protocol,
@@ -1238,7 +1246,7 @@ struct nfs_server *nfs4_create_referral_server(struct fs_context *fc)
 	rpc_set_port(&ctx->nfs_server.address, NFS_RDMA_PORT);
 	error = nfs4_set_client(server,
 				ctx->nfs_server.hostname,
-				&ctx->nfs_server.address,
+				&ctx->nfs_server._address,
 				ctx->nfs_server.addrlen,
 				parent_client->cl_ipaddr,
 				XPRT_TRANSPORT_RDMA,
@@ -1254,7 +1262,7 @@ struct nfs_server *nfs4_create_referral_server(struct fs_context *fc)
 	rpc_set_port(&ctx->nfs_server.address, NFS_PORT);
 	error = nfs4_set_client(server,
 				ctx->nfs_server.hostname,
-				&ctx->nfs_server.address,
+				&ctx->nfs_server._address,
 				ctx->nfs_server.addrlen,
 				parent_client->cl_ipaddr,
 				XPRT_TRANSPORT_TCP,
@@ -1303,14 +1311,14 @@ error:
  * Returns zero on success, or a negative errno value.
  */
 int nfs4_update_server(struct nfs_server *server, const char *hostname,
-		       struct sockaddr *sap, size_t salen, struct net *net)
+		       struct sockaddr_storage *sap, size_t salen, struct net *net)
 {
 	struct nfs_client *clp = server->nfs_client;
 	struct rpc_clnt *clnt = server->client;
 	struct xprt_create xargs = {
 		.ident		= clp->cl_proto,
 		.net		= net,
-		.dstaddr	= sap,
+		.dstaddr	= (struct sockaddr *)sap,
 		.addrlen	= salen,
 		.servername	= hostname,
 	};

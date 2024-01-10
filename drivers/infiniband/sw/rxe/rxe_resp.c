@@ -91,7 +91,10 @@ void rxe_resp_queue_pkt(struct rxe_qp *qp, struct sk_buff *skb)
 	must_sched = (pkt->opcode == IB_OPCODE_RC_RDMA_READ_REQUEST) ||
 			(skb_queue_len(&qp->req_pkts) > 1);
 
-	rxe_run_task(&qp->resp.task, must_sched);
+	if (must_sched)
+		rxe_sched_task(&qp->resp.task);
+	else
+		rxe_run_task(&qp->resp.task);
 }
 
 static inline enum resp_states get_req(struct rxe_qp *qp,
@@ -466,8 +469,9 @@ static enum resp_states check_rkey(struct rxe_qp *qp,
 		if (mw->access & IB_ZERO_BASED)
 			qp->resp.offset = mw->addr;
 
-		rxe_put(mw);
 		rxe_get(mr);
+		rxe_put(mw);
+		mw = NULL;
 	} else {
 		mr = lookup_mr(qp->pd, access, rkey, RXE_LOOKUP_REMOTE);
 		if (!mr) {
@@ -806,8 +810,10 @@ static enum resp_states read_reply(struct rxe_qp *qp,
 
 	skb = prepare_ack_packet(qp, &ack_pkt, opcode, payload,
 				 res->cur_psn, AETH_ACK_UNLIMITED);
-	if (!skb)
+	if (!skb) {
+		rxe_put(mr);
 		return RESPST_ERR_RNR;
+	}
 
 	rxe_mr_copy(mr, res->read.va, payload_addr(&ack_pkt),
 		    payload, RXE_FROM_MR_OBJ);

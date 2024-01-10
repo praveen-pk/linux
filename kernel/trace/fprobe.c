@@ -141,6 +141,8 @@ static int fprobe_init_rethook(struct fprobe *fp, int num)
 		return -E2BIG;
 
 	fp->rethook = rethook_alloc((void *)fp, fprobe_exit_handler);
+	if (!fp->rethook)
+		return -ENOMEM;
 	for (i = 0; i < size; i++) {
 		struct fprobe_rethook_node *node;
 
@@ -301,21 +303,19 @@ int unregister_fprobe(struct fprobe *fp)
 {
 	int ret;
 
-	if (!fp || fp->ops.func != fprobe_handler)
+	if (!fp || (fp->ops.saved_func != fprobe_handler &&
+		    fp->ops.saved_func != fprobe_kprobe_handler))
 		return -EINVAL;
 
-	/*
-	 * rethook_free() starts disabling the rethook, but the rethook handlers
-	 * may be running on other processors at this point. To make sure that all
-	 * current running handlers are finished, call unregister_ftrace_function()
-	 * after this.
-	 */
 	if (fp->rethook)
-		rethook_free(fp->rethook);
+		rethook_stop(fp->rethook);
 
 	ret = unregister_ftrace_function(&fp->ops);
 	if (ret < 0)
 		return ret;
+
+	if (fp->rethook)
+		rethook_free(fp->rethook);
 
 	ftrace_free_filter(&fp->ops);
 

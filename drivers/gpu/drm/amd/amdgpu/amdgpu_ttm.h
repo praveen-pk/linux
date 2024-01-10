@@ -39,6 +39,8 @@
 
 #define AMDGPU_POISON	0xd0bed0be
 
+struct hmm_range;
+
 struct amdgpu_gtt_mgr {
 	struct ttm_resource_manager manager;
 	struct drm_mm mm;
@@ -76,13 +78,19 @@ struct amdgpu_mman {
 	/* discovery */
 	uint8_t				*discovery_bin;
 	uint32_t			discovery_tmr_size;
-	struct amdgpu_bo		*discovery_memory;
+	/* fw reserved memory */
+	struct amdgpu_bo		*fw_reserved_memory;
 
 	/* firmware VRAM reservation */
 	u64		fw_vram_usage_start_offset;
 	u64		fw_vram_usage_size;
 	struct amdgpu_bo	*fw_vram_usage_reserved_bo;
 	void		*fw_vram_usage_va;
+
+	/* driver VRAM reservation */
+	u64		drv_vram_usage_start_offset;
+	u64		drv_vram_usage_size;
+	struct amdgpu_bo	*drv_vram_usage_reserved_bo;
 
 	/* PAGE_SIZE'd BO for process memory r/w over SDMA. */
 	struct amdgpu_bo	*sdma_access_bo;
@@ -149,15 +157,19 @@ void amdgpu_ttm_recover_gart(struct ttm_buffer_object *tbo);
 uint64_t amdgpu_ttm_domain_start(struct amdgpu_device *adev, uint32_t type);
 
 #if IS_ENABLED(CONFIG_DRM_AMDGPU_USERPTR)
-int amdgpu_ttm_tt_get_user_pages(struct amdgpu_bo *bo, struct page **pages);
-bool amdgpu_ttm_tt_get_user_pages_done(struct ttm_tt *ttm);
+int amdgpu_ttm_tt_get_user_pages(struct amdgpu_bo *bo, struct page **pages,
+				 struct hmm_range **range);
+bool amdgpu_ttm_tt_get_user_pages_done(struct ttm_tt *ttm,
+				       struct hmm_range *range);
 #else
 static inline int amdgpu_ttm_tt_get_user_pages(struct amdgpu_bo *bo,
-					       struct page **pages)
+					       struct page **pages,
+					       struct hmm_range **range)
 {
 	return -EPERM;
 }
-static inline bool amdgpu_ttm_tt_get_user_pages_done(struct ttm_tt *ttm)
+static inline bool amdgpu_ttm_tt_get_user_pages_done(struct ttm_tt *ttm,
+						     struct hmm_range *range)
 {
 	return false;
 }

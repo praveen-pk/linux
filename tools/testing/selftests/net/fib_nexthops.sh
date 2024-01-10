@@ -1228,6 +1228,17 @@ ipv4_fcnal()
 	run_cmd "$IP ro add 172.16.101.0/24 nhid 21"
 	run_cmd "$IP ro del 172.16.101.0/24 nexthop via 172.16.1.7 dev veth1 nexthop via 172.16.1.8 dev veth1"
 	log_test $? 2 "Delete multipath route with only nh id based entry"
+
+	run_cmd "$IP nexthop add id 22 via 172.16.1.6 dev veth1"
+	run_cmd "$IP ro add 172.16.102.0/24 nhid 22"
+	run_cmd "$IP ro del 172.16.102.0/24 dev veth1"
+	log_test $? 2 "Delete route when specifying only nexthop device"
+
+	run_cmd "$IP ro del 172.16.102.0/24 via 172.16.1.6"
+	log_test $? 2 "Delete route when specifying only gateway"
+
+	run_cmd "$IP ro del 172.16.102.0/24"
+	log_test $? 0 "Delete route when not specifying nexthop attributes"
 }
 
 ipv4_grp_fcnal()
@@ -1970,6 +1981,11 @@ basic()
 
 	run_cmd "$IP link set dev lo up"
 
+	# Dump should not loop endlessly when maximum nexthop ID is configured.
+	run_cmd "$IP nexthop add id $((2**32-1)) blackhole"
+	run_cmd "timeout 5 $IP nexthop"
+	log_test $? 0 "Maximum nexthop ID dump"
+
 	#
 	# groups
 	#
@@ -2190,6 +2206,11 @@ basic_res()
 	run_cmd "$IP nexthop bucket list fdb"
 	log_test $? 255 "Dump all nexthop buckets with invalid 'fdb' keyword"
 
+	# Dump should not loop endlessly when maximum nexthop ID is configured.
+	run_cmd "$IP nexthop add id $((2**32-1)) group 1/2 type resilient buckets 4"
+	run_cmd "timeout 5 $IP nexthop bucket"
+	log_test $? 0 "Maximum nexthop ID dump"
+
 	#
 	# resilient nexthop buckets get requests
 	#
@@ -2272,7 +2293,7 @@ EOF
 ################################################################################
 # main
 
-while getopts :t:pP46hv:w: o
+while getopts :t:pP46hvw: o
 do
 	case $o in
 		t) TESTS=$OPTARG;;

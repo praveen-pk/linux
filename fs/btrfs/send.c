@@ -1596,13 +1596,17 @@ static int gen_unique_name(struct send_ctx *sctx,
 		return -ENOMEM;
 
 	while (1) {
+		struct fscrypt_str tmp_name;
+
 		len = snprintf(tmp, sizeof(tmp), "o%llu-%llu-%llu",
 				ino, gen, idx);
 		ASSERT(len < sizeof(tmp));
+		tmp_name.name = tmp;
+		tmp_name.len = strlen(tmp);
 
 		di = btrfs_lookup_dir_item(NULL, sctx->send_root,
 				path, BTRFS_FIRST_FREE_OBJECTID,
-				tmp, strlen(tmp), 0);
+				&tmp_name, 0);
 		btrfs_release_path(path);
 		if (IS_ERR(di)) {
 			ret = PTR_ERR(di);
@@ -1622,7 +1626,7 @@ static int gen_unique_name(struct send_ctx *sctx,
 
 		di = btrfs_lookup_dir_item(NULL, sctx->parent_root,
 				path, BTRFS_FIRST_FREE_OBJECTID,
-				tmp, strlen(tmp), 0);
+				&tmp_name, 0);
 		btrfs_release_path(path);
 		if (IS_ERR(di)) {
 			ret = PTR_ERR(di);
@@ -1658,7 +1662,7 @@ static int get_cur_inode_state(struct send_ctx *sctx, u64 ino, u64 gen)
 	int left_ret;
 	int right_ret;
 	u64 left_gen;
-	u64 right_gen;
+	u64 right_gen = 0;
 	struct btrfs_inode_info info;
 
 	ret = get_inode_info(sctx->send_root, ino, &info);
@@ -1752,13 +1756,13 @@ static int lookup_dir_item_inode(struct btrfs_root *root,
 	struct btrfs_dir_item *di;
 	struct btrfs_key key;
 	struct btrfs_path *path;
+	struct fscrypt_str name_str = FSTR_INIT((char *)name, name_len);
 
 	path = alloc_path_for_send();
 	if (!path)
 		return -ENOMEM;
 
-	di = btrfs_lookup_dir_item(NULL, root, path,
-			dir, name, name_len, 0);
+	di = btrfs_lookup_dir_item(NULL, root, path, dir, &name_str, 0);
 	if (IS_ERR_OR_NULL(di)) {
 		ret = di ? PTR_ERR(di) : -ENOENT;
 		goto out;
@@ -5702,6 +5706,7 @@ static int clone_range(struct send_ctx *sctx, struct btrfs_path *dst_path,
 		u64 ext_len;
 		u64 clone_len;
 		u64 clone_data_offset;
+		bool crossed_src_i_size = false;
 
 		if (slot >= btrfs_header_nritems(leaf)) {
 			ret = btrfs_next_leaf(clone_root->root, path);
@@ -5759,8 +5764,10 @@ static int clone_range(struct send_ctx *sctx, struct btrfs_path *dst_path,
 		if (key.offset >= clone_src_i_size)
 			break;
 
-		if (key.offset + ext_len > clone_src_i_size)
+		if (key.offset + ext_len > clone_src_i_size) {
 			ext_len = clone_src_i_size - key.offset;
+			crossed_src_i_size = true;
+		}
 
 		clone_data_offset = btrfs_file_extent_offset(leaf, ei);
 		if (btrfs_file_extent_disk_bytenr(leaf, ei) == disk_byte) {
@@ -5821,6 +5828,25 @@ static int clone_range(struct send_ctx *sctx, struct btrfs_path *dst_path,
 				ret = send_clone(sctx, offset, clone_len,
 						 clone_root);
 			}
+		} else if (crossed_src_i_size && clone_len < len) {
+			/*
+			 * If we are at i_size of the clone source inode and we
+			 * can not clone from it, terminate the loop. This is
+			 * to avoid sending two write operations, one with a
+			 * length matching clone_len and the final one after
+			 * this loop with a length of len - clone_len.
+			 *
+			 * When using encoded writes (BTRFS_SEND_FLAG_COMPRESSED
+			 * was passed to the send ioctl), this helps avoid
+			 * sending an encoded write for an offset that is not
+			 * sector size aligned, in case the i_size of the source
+			 * inode is not sector size aligned. That will make the
+			 * receiver fallback to decompression of the data and
+			 * writing it using regular buffered IO, therefore while
+			 * not incorrect, it's not optimal due decompression and
+			 * possible re-compression at the receiver.
+			 */
+			break;
 		} else {
 			ret = send_extent_data(sctx, dst_path, offset,
 					       clone_len);
@@ -6668,17 +6694,19 @@ static int changed_inode(struct send_ctx *sctx,
 			/*
 			 * First, process the inode as if it was deleted.
 			 */
-			sctx->cur_inode_gen = right_gen;
-			sctx->cur_inode_new = false;
-			sctx->cur_inode_deleted = true;
-			sctx->cur_inode_size = btrfs_inode_size(
-					sctx->right_path->nodes[0], right_ii);
-			sctx->cur_inode_mode = btrfs_inode_mode(
-					sctx->right_path->nodes[0], right_ii);
-			ret = process_all_refs(sctx,
-					BTRFS_COMPARE_TREE_DELETED);
-			if (ret < 0)
-				goto out;
+			if (old_nlinks > 0) {
+				sctx->cur_inode_gen = right_gen;
+				sctx->cur_inode_new = false;
+				sctx->cur_inode_deleted = true;
+				sctx->cur_inode_size = btrfs_inode_size(
+						sctx->right_path->nodes[0], right_ii);
+				sctx->cur_inode_mode = btrfs_inode_mode(
+						sctx->right_path->nodes[0], right_ii);
+				ret = process_all_refs(sctx,
+						BTRFS_COMPARE_TREE_DELETED);
+				if (ret < 0)
+					goto out;
+			}
 
 			/*
 			 * Now process the inode as if it was new.
@@ -7815,10 +7843,10 @@ long btrfs_ioctl_send(struct inode *inode, struct btrfs_ioctl_send_args *arg)
 	/*
 	 * Check that we don't overflow at later allocations, we request
 	 * clone_sources_count + 1 items, and compare to unsigned long inside
-	 * access_ok.
+	 * access_ok. Also set an upper limit for allocation size so this can't
+	 * easily exhaust memory. Max number of clone sources is about 200K.
 	 */
-	if (arg->clone_sources_count >
-	    ULONG_MAX / sizeof(struct clone_root) - 1) {
+	if (arg->clone_sources_count > SZ_8M / sizeof(struct clone_root)) {
 		ret = -EINVAL;
 		goto out;
 	}

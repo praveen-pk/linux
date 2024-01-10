@@ -52,6 +52,7 @@ static void trace_event_probe_cleanup(struct trace_eprobe *ep)
 	kfree(ep->event_system);
 	if (ep->event)
 		trace_event_put_ref(ep->event);
+	kfree(ep->filter_str);
 	kfree(ep);
 }
 
@@ -563,6 +564,12 @@ static void eprobe_trigger_func(struct event_trigger_data *data,
 {
 	struct eprobe_data *edata = data->private_data;
 
+	if (unlikely(!rec))
+		return;
+
+	if (unlikely(!rec))
+		return;
+
 	__eprobe_trace_func(edata, rec);
 }
 
@@ -642,7 +649,7 @@ new_eprobe_trigger(struct trace_eprobe *ep, struct trace_event_file *file)
 	INIT_LIST_HEAD(&trigger->list);
 
 	if (ep->filter_str) {
-		ret = create_event_filter(file->tr, file->event_call,
+		ret = create_event_filter(file->tr, ep->event,
 					ep->filter_str, false, &filter);
 		if (ret)
 			goto error;
@@ -736,6 +743,7 @@ static int enable_trace_eprobe(struct trace_event_call *call,
 	struct trace_eprobe *ep;
 	bool enabled;
 	int ret = 0;
+	int cnt = 0;
 
 	tp = trace_probe_primary_from_call(call);
 	if (WARN_ON_ONCE(!tp))
@@ -759,12 +767,25 @@ static int enable_trace_eprobe(struct trace_event_call *call,
 		if (ret)
 			break;
 		enabled = true;
+		cnt++;
 	}
 
 	if (ret) {
 		/* Failed to enable one of them. Roll back all */
-		if (enabled)
-			disable_eprobe(ep, file->tr);
+		if (enabled) {
+			/*
+			 * It's a bug if one failed for something other than memory
+			 * not being available but another eprobe succeeded.
+			 */
+			WARN_ON_ONCE(ret != -ENOMEM);
+
+			list_for_each_entry(pos, trace_probe_probe_list(tp), list) {
+				ep = container_of(pos, struct trace_eprobe, tp);
+				disable_eprobe(ep, file->tr);
+				if (!--cnt)
+					break;
+			}
+		}
 		if (file)
 			trace_probe_remove_file(tp, file);
 		else
@@ -900,7 +921,7 @@ static int trace_eprobe_tp_update_arg(struct trace_eprobe *ep, const char *argv[
 
 static int trace_eprobe_parse_filter(struct trace_eprobe *ep, int argc, const char *argv[])
 {
-	struct event_filter *dummy;
+	struct event_filter *dummy = NULL;
 	int i, ret, len = 0;
 	char *p;
 

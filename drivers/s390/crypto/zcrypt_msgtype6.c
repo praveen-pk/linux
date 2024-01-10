@@ -342,7 +342,10 @@ static int xcrb_msg_to_type6cprb_msgx(bool userspace, struct ap_message *ap_msg,
 	};
 	struct {
 		struct type6_hdr hdr;
-		struct CPRBX cprbx;
+		union {
+			struct CPRBX cprbx;
+			DECLARE_FLEX_ARRAY(u8, userdata);
+		};
 	} __packed * msg = ap_msg->msg;
 
 	int rcblen = CEIL4(xcrb->request_control_blk_length);
@@ -403,7 +406,8 @@ static int xcrb_msg_to_type6cprb_msgx(bool userspace, struct ap_message *ap_msg,
 	msg->hdr.fromcardlen2 = xcrb->reply_data_length;
 
 	/* prepare CPRB */
-	if (z_copy_from_user(userspace, &msg->cprbx, xcrb->request_control_blk_addr,
+	if (z_copy_from_user(userspace, msg->userdata,
+			     xcrb->request_control_blk_addr,
 			     xcrb->request_control_blk_length))
 		return -EFAULT;
 	if (msg->cprbx.cprb_len + sizeof(msg->hdr.function_code) >
@@ -469,9 +473,14 @@ static int xcrb_msg_to_type6_ep11cprb_msgx(bool userspace, struct ap_message *ap
 
 	struct {
 		struct type6_hdr hdr;
-		struct ep11_cprb cprbx;
-		unsigned char	pld_tag;	/* fixed value 0x30 */
-		unsigned char	pld_lenfmt;	/* payload length format */
+		union {
+			struct {
+				struct ep11_cprb cprbx;
+				unsigned char pld_tag;    /* fixed value 0x30 */
+				unsigned char pld_lenfmt; /* length format */
+			} __packed;
+			DECLARE_FLEX_ARRAY(u8, userdata);
+		};
 	} __packed * msg = ap_msg->msg;
 
 	struct pld_hdr {
@@ -500,7 +509,7 @@ static int xcrb_msg_to_type6_ep11cprb_msgx(bool userspace, struct ap_message *ap
 	msg->hdr.fromcardlen1 = xcrb->resp_len;
 
 	/* Import CPRB data from the ioctl input parameter */
-	if (z_copy_from_user(userspace, &msg->cprbx.cprb_len,
+	if (z_copy_from_user(userspace, msg->userdata,
 			     (char __force __user *)xcrb->req, xcrb->req_len)) {
 		return -EFAULT;
 	}
@@ -917,8 +926,7 @@ static void zcrypt_msgtype6_receive(struct ap_queue *aq,
 		.type = TYPE82_RSP_CODE,
 		.reply_code = REP82_ERROR_MACHINE_FAILURE,
 	};
-	struct response_type *resp_type =
-		(struct response_type *)msg->private;
+	struct response_type *resp_type = msg->private;
 	struct type86x_reply *t86r;
 	int len;
 
@@ -973,8 +981,7 @@ static void zcrypt_msgtype6_receive_ep11(struct ap_queue *aq,
 		.type = TYPE82_RSP_CODE,
 		.reply_code = REP82_ERROR_MACHINE_FAILURE,
 	};
-	struct response_type *resp_type =
-		(struct response_type *)msg->private;
+	struct response_type *resp_type = msg->private;
 	struct type86_ep11_reply *t86r;
 	int len;
 
@@ -1147,23 +1154,36 @@ static long zcrypt_msgtype6_send_cprb(bool userspace, struct zcrypt_queue *zq,
 				      struct ica_xcRB *xcrb,
 				      struct ap_message *ap_msg)
 {
-	int rc;
-	struct response_type *rtype = (struct response_type *)(ap_msg->private);
+	struct response_type *rtype = ap_msg->private;
 	struct {
 		struct type6_hdr hdr;
 		struct CPRBX cprbx;
 		/* ... more data blocks ... */
 	} __packed * msg = ap_msg->msg;
+	unsigned int max_payload_size;
+	int rc, delta;
 
-	/*
-	 * Set the queue's reply buffer length minus 128 byte padding
-	 * as reply limit for the card firmware.
-	 */
-	msg->hdr.fromcardlen1 = min_t(unsigned int, msg->hdr.fromcardlen1,
-				      zq->reply.bufsize - 128);
-	if (msg->hdr.fromcardlen2)
-		msg->hdr.fromcardlen2 =
-			zq->reply.bufsize - msg->hdr.fromcardlen1 - 128;
+	/* calculate maximum payload for this card and msg type */
+	max_payload_size = zq->reply.bufsize - sizeof(struct type86_fmt2_msg);
+
+	/* limit each of the two from fields to the maximum payload size */
+	msg->hdr.fromcardlen1 = min(msg->hdr.fromcardlen1, max_payload_size);
+	msg->hdr.fromcardlen2 = min(msg->hdr.fromcardlen2, max_payload_size);
+
+	/* calculate delta if the sum of both exceeds max payload size */
+	delta = msg->hdr.fromcardlen1 + msg->hdr.fromcardlen2
+		- max_payload_size;
+	if (delta > 0) {
+		/*
+		 * Sum exceeds maximum payload size, prune fromcardlen1
+		 * (always trust fromcardlen2)
+		 */
+		if (delta > msg->hdr.fromcardlen1) {
+			rc = -EINVAL;
+			goto out;
+		}
+		msg->hdr.fromcardlen1 -= delta;
+	}
 
 	init_completion(&rtype->work);
 	rc = ap_queue_message(zq->queue, ap_msg);
@@ -1178,6 +1198,9 @@ static long zcrypt_msgtype6_send_cprb(bool userspace, struct zcrypt_queue *zq,
 		/* Signal pending. */
 		ap_cancel_message(zq->queue, ap_msg);
 	}
+
+	if (rc == -EAGAIN && ap_msg->flags & AP_MSG_FLAG_ADMIN)
+		rc = -EIO; /* do not retry administrative requests */
 
 out:
 	if (rc)
@@ -1231,7 +1254,7 @@ static long zcrypt_msgtype6_send_ep11_cprb(bool userspace, struct zcrypt_queue *
 {
 	int rc;
 	unsigned int lfmt;
-	struct response_type *rtype = (struct response_type *)(ap_msg->private);
+	struct response_type *rtype = ap_msg->private;
 	struct {
 		struct type6_hdr hdr;
 		struct ep11_cprb cprbx;
@@ -1299,6 +1322,9 @@ static long zcrypt_msgtype6_send_ep11_cprb(bool userspace, struct zcrypt_queue *
 		ap_cancel_message(zq->queue, ap_msg);
 	}
 
+	if (rc == -EAGAIN && ap_msg->flags & AP_MSG_FLAG_ADMIN)
+		rc = -EIO; /* do not retry administrative requests */
+
 out:
 	if (rc)
 		ZCRYPT_DBF_DBG("%s send cprb at dev=%02x.%04x rc=%d\n",
@@ -1350,7 +1376,7 @@ static long zcrypt_msgtype6_rng(struct zcrypt_queue *zq,
 		short int verb_length;
 		short int key_length;
 	} __packed * msg = ap_msg->msg;
-	struct response_type *rtype = (struct response_type *)(ap_msg->private);
+	struct response_type *rtype = ap_msg->private;
 	int rc;
 
 	msg->cprbx.domain = AP_QID_QUEUE(zq->queue->qid);

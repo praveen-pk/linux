@@ -273,7 +273,7 @@ static void new_line_csv(struct perf_stat_config *config, void *ctx)
 
 	fputc('\n', os->fh);
 	if (os->prefix)
-		fprintf(os->fh, "%s%s", os->prefix, config->csv_sep);
+		fprintf(os->fh, "%s", os->prefix);
 	aggr_printout(config, os->evsel, os->id, os->nr);
 	for (i = 0; i < os->nfields; i++)
 		fputs(config->csv_sep, os->fh);
@@ -559,7 +559,7 @@ static void printout(struct perf_stat_config *config, struct aggr_cpu_id id, int
 			[AGGR_CORE] = 2,
 			[AGGR_THREAD] = 1,
 			[AGGR_UNSET] = 0,
-			[AGGR_NODE] = 0,
+			[AGGR_NODE] = 1,
 		};
 
 		pm = config->metric_only ? print_metric_only_csv : print_metric_csv;
@@ -704,7 +704,7 @@ static void uniquify_event_name(struct evsel *counter)
 			counter->name = new_name;
 		}
 	} else {
-		if (perf_pmu__has_hybrid()) {
+		if (evsel__is_hybrid(counter)) {
 			ret = asprintf(&new_name, "%s/%s/",
 				       counter->pmu_name, counter->name);
 		} else {
@@ -744,26 +744,14 @@ static void collect_all_aliases(struct perf_stat_config *config, struct evsel *c
 	}
 }
 
-static bool is_uncore(struct evsel *evsel)
-{
-	struct perf_pmu *pmu = evsel__find_pmu(evsel);
-
-	return pmu && pmu->is_uncore;
-}
-
-static bool hybrid_uniquify(struct evsel *evsel)
-{
-	return perf_pmu__has_hybrid() && !is_uncore(evsel);
-}
-
 static bool hybrid_merge(struct evsel *counter, struct perf_stat_config *config,
 			 bool check)
 {
-	if (hybrid_uniquify(counter)) {
+	if (evsel__is_hybrid(counter)) {
 		if (check)
-			return config && config->hybrid_merge;
+			return config->hybrid_merge;
 		else
-			return config && !config->hybrid_merge;
+			return !config->hybrid_merge;
 	}
 
 	return false;
@@ -1124,6 +1112,7 @@ static int aggr_header_lens[] = {
 	[AGGR_SOCKET] = 12,
 	[AGGR_NONE] = 6,
 	[AGGR_THREAD] = 24,
+	[AGGR_NODE] = 6,
 	[AGGR_GLOBAL] = 0,
 };
 
@@ -1133,6 +1122,7 @@ static const char *aggr_header_csv[] = {
 	[AGGR_SOCKET] 	= 	"socket,cpus",
 	[AGGR_NONE] 	= 	"cpu,",
 	[AGGR_THREAD] 	= 	"comm-pid,",
+	[AGGR_NODE] 	= 	"node,",
 	[AGGR_GLOBAL] 	=	""
 };
 
@@ -1140,10 +1130,15 @@ static void print_metric_headers(struct perf_stat_config *config,
 				 struct evlist *evlist,
 				 const char *prefix, bool no_indent)
 {
-	struct perf_stat_output_ctx out;
 	struct evsel *counter;
 	struct outstate os = {
 		.fh = config->output
+	};
+	struct perf_stat_output_ctx out = {
+		.ctx = &os,
+		.print_metric = print_metric_header,
+		.new_line = new_line_metric,
+		.force_header = true,
 	};
 	bool first = true;
 
@@ -1168,13 +1163,11 @@ static void print_metric_headers(struct perf_stat_config *config,
 	/* Print metrics headers only */
 	evlist__for_each_entry(evlist, counter) {
 		os.evsel = counter;
-		out.ctx = &os;
-		out.print_metric = print_metric_header;
+
 		if (!first && config->json_output)
 			fprintf(config->output, ", ");
 		first = false;
-		out.new_line = new_line_metric;
-		out.force_header = true;
+
 		perf_stat__print_shadow_stats(config, counter, 0,
 					      0,
 					      &out,
