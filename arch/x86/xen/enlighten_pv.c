@@ -23,6 +23,7 @@
 #include <linux/start_kernel.h>
 #include <linux/sched.h>
 #include <linux/kprobes.h>
+#include <linux/kstrtox.h>
 #include <linux/memblock.h>
 #include <linux/export.h>
 #include <linux/mm.h>
@@ -113,7 +114,7 @@ static __read_mostly bool xen_msr_safe = IS_ENABLED(CONFIG_XEN_PV_MSR_SAFE);
 static int __init parse_xen_msr_safe(char *str)
 {
 	if (str)
-		return strtobool(str, &xen_msr_safe);
+		return kstrtobool(str, &xen_msr_safe);
 	return -EINVAL;
 }
 early_param("xen_msr_safe", parse_xen_msr_safe);
@@ -1265,6 +1266,8 @@ asmlinkage __visible void __init xen_start_kernel(struct start_info *si)
 	xen_vcpu_info_reset(0);
 
 	x86_platform.get_nmi_reason = xen_get_nmi_reason;
+	x86_platform.realmode_reserve = x86_init_noop;
+	x86_platform.realmode_init = x86_init_noop;
 
 	x86_init.resources.memory_setup = xen_memory_setup;
 	x86_init.irqs.intr_mode_select	= x86_init_noop;
@@ -1386,7 +1389,8 @@ asmlinkage __visible void __init xen_start_kernel(struct start_info *si)
 
 		x86_platform.set_legacy_features =
 				xen_dom0_set_legacy_features;
-		xen_init_vga(info, xen_start_info->console.dom0.info_size);
+		xen_init_vga(info, xen_start_info->console.dom0.info_size,
+			     &boot_params.screen_info);
 		xen_start_info->console.domU.mfn = 0;
 		xen_start_info->console.domU.evtchn = 0;
 

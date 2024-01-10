@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0=or-later
+// SPDX-License-Identifier: GPL-2.0-or-later
 /* Copyright (C) 2022 Hewlett-Packard Development Company, L.P. */
 
 #include <linux/iopoll.h>
@@ -195,7 +195,7 @@ static ssize_t gxp_spi_write(struct gxp_spi_chip *chip, const struct spi_mem_op 
 		return ret;
 	}
 
-	return write_len;
+	return 0;
 }
 
 static int do_gxp_exec_mem_op(struct spi_mem *mem, const struct spi_mem_op *op)

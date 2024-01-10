@@ -154,6 +154,7 @@ struct record {
 	struct perf_tool	tool;
 	struct record_opts	opts;
 	u64			bytes_written;
+	u64			thread_bytes_written;
 	struct perf_data	data;
 	struct auxtrace_record	*itr;
 	struct evlist	*evlist;
@@ -226,14 +227,7 @@ static bool switch_output_time(struct record *rec)
 
 static u64 record__bytes_written(struct record *rec)
 {
-	int t;
-	u64 bytes_written = rec->bytes_written;
-	struct record_thread *thread_data = rec->thread_data;
-
-	for (t = 0; t < rec->nr_threads; t++)
-		bytes_written += thread_data[t].bytes_written;
-
-	return bytes_written;
+	return rec->bytes_written + rec->thread_bytes_written;
 }
 
 static bool record__output_max_size_exceeded(struct record *rec)
@@ -255,10 +249,12 @@ static int record__write(struct record *rec, struct mmap *map __maybe_unused,
 		return -1;
 	}
 
-	if (map && map->file)
+	if (map && map->file) {
 		thread->bytes_written += size;
-	else
+		rec->thread_bytes_written += size;
+	} else {
 		rec->bytes_written += size;
+	}
 
 	if (record__output_max_size_exceeded(rec) && !done) {
 		fprintf(stderr, "[ perf record: perf size limit reached (%" PRIu64 " KB),"
@@ -649,7 +645,7 @@ static int record__pushfn(struct mmap *map, void *to, void *bf, size_t size)
 static volatile int signr = -1;
 static volatile int child_finished;
 #ifdef HAVE_EVENTFD_SUPPORT
-static int done_fd = -1;
+static volatile int done_fd = -1;
 #endif
 
 static void sig_handler(int sig)
@@ -661,19 +657,24 @@ static void sig_handler(int sig)
 
 	done = 1;
 #ifdef HAVE_EVENTFD_SUPPORT
-{
-	u64 tmp = 1;
-	/*
-	 * It is possible for this signal handler to run after done is checked
-	 * in the main loop, but before the perf counter fds are polled. If this
-	 * happens, the poll() will continue to wait even though done is set,
-	 * and will only break out if either another signal is received, or the
-	 * counters are ready for read. To ensure the poll() doesn't sleep when
-	 * done is set, use an eventfd (done_fd) to wake up the poll().
-	 */
-	if (write(done_fd, &tmp, sizeof(tmp)) < 0)
-		pr_err("failed to signal wakeup fd, error: %m\n");
-}
+	if (done_fd >= 0) {
+		u64 tmp = 1;
+		int orig_errno = errno;
+
+		/*
+		 * It is possible for this signal handler to run after done is
+		 * checked in the main loop, but before the perf counter fds are
+		 * polled. If this happens, the poll() will continue to wait
+		 * even though done is set, and will only break out if either
+		 * another signal is received, or the counters are ready for
+		 * read. To ensure the poll() doesn't sleep when done is set,
+		 * use an eventfd (done_fd) to wake up the poll().
+		 */
+		if (write(done_fd, &tmp, sizeof(tmp)) < 0)
+			pr_err("failed to signal wakeup fd, error: %m\n");
+
+		errno = orig_errno;
+	}
 #endif // HAVE_EVENTFD_SUPPORT
 }
 
@@ -1863,7 +1864,7 @@ static void __record__read_lost_samples(struct record *rec, struct evsel *evsel,
 	int id_hdr_size;
 
 	if (perf_evsel__read(&evsel->core, cpu_idx, thread_idx, &count) < 0) {
-		pr_err("read LOST count failed\n");
+		pr_debug("read LOST count failed\n");
 		return;
 	}
 
@@ -2834,8 +2835,12 @@ out_free_threads:
 
 out_delete_session:
 #ifdef HAVE_EVENTFD_SUPPORT
-	if (done_fd >= 0)
-		close(done_fd);
+	if (done_fd >= 0) {
+		fd = done_fd;
+		done_fd = -1;
+
+		close(fd);
+	}
 #endif
 	zstd_fini(&session->zstd_data);
 	perf_session__delete(session);
@@ -3379,7 +3384,7 @@ static struct option __record_options[] = {
 		     &record_parse_callchain_opt),
 	OPT_INCR('v', "verbose", &verbose,
 		    "be more verbose (show counter open errors, etc)"),
-	OPT_BOOLEAN('q', "quiet", &quiet, "don't print any message"),
+	OPT_BOOLEAN('q', "quiet", &quiet, "don't print any warnings or messages"),
 	OPT_BOOLEAN('s', "stat", &record.opts.inherit_stat,
 		    "per thread counts"),
 	OPT_BOOLEAN('d', "data", &record.opts.sample_address, "Record the sample addresses"),

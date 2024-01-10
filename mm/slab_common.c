@@ -474,7 +474,7 @@ void slab_kmem_cache_release(struct kmem_cache *s)
 
 void kmem_cache_destroy(struct kmem_cache *s)
 {
-	int refcnt;
+	int err = -EBUSY;
 	bool rcu_set;
 
 	if (unlikely(!s) || !kasan_check_byte(s))
@@ -485,17 +485,17 @@ void kmem_cache_destroy(struct kmem_cache *s)
 
 	rcu_set = s->flags & SLAB_TYPESAFE_BY_RCU;
 
-	refcnt = --s->refcount;
-	if (refcnt)
+	s->refcount--;
+	if (s->refcount)
 		goto out_unlock;
 
-	WARN(shutdown_cache(s),
-	     "%s %s: Slab cache still has objects when called from %pS",
+	err = shutdown_cache(s);
+	WARN(err, "%s %s: Slab cache still has objects when called from %pS",
 	     __func__, s->name, (void *)_RET_IP_);
 out_unlock:
 	mutex_unlock(&slab_mutex);
 	cpus_read_unlock();
-	if (!refcnt && !rcu_set)
+	if (!err && !rcu_set)
 		kmem_cache_release(s);
 }
 EXPORT_SYMBOL(kmem_cache_destroy);
@@ -941,7 +941,7 @@ void *__do_kmalloc_node(size_t size, gfp_t flags, int node, unsigned long caller
 
 	if (unlikely(size > KMALLOC_MAX_CACHE_SIZE)) {
 		ret = __kmalloc_large_node(size, flags, node);
-		trace_kmalloc(_RET_IP_, ret, size,
+		trace_kmalloc(caller, ret, size,
 			      PAGE_SIZE << get_order(size), flags, node);
 		return ret;
 	}
@@ -953,7 +953,7 @@ void *__do_kmalloc_node(size_t size, gfp_t flags, int node, unsigned long caller
 
 	ret = __kmem_cache_alloc_node(s, flags, node, size, caller);
 	ret = kasan_kmalloc(s, ret, size, flags);
-	trace_kmalloc(_RET_IP_, ret, size, s->size, flags, node);
+	trace_kmalloc(caller, ret, size, s->size, flags, node);
 	return ret;
 }
 
@@ -1010,7 +1010,7 @@ EXPORT_SYMBOL(kfree);
 
 /**
  * __ksize -- Report full size of underlying allocation
- * @objp: pointer to the object
+ * @object: pointer to the object
  *
  * This should only be used internally to query the true size of allocations.
  * It is not meant to be a way to discover the usable size of an allocation
@@ -1018,7 +1018,7 @@ EXPORT_SYMBOL(kfree);
  * the originally requested allocation size may trigger KASAN, UBSAN_BOUNDS,
  * and/or FORTIFY_SOURCE.
  *
- * Return: size of the actual memory used by @objp in bytes
+ * Return: size of the actual memory used by @object in bytes
  */
 size_t __ksize(const void *object)
 {
@@ -1040,7 +1040,6 @@ size_t __ksize(const void *object)
 	return slab_ksize(folio_slab(folio)->slab_cache);
 }
 
-#ifdef CONFIG_TRACING
 void *kmalloc_trace(struct kmem_cache *s, gfp_t gfpflags, size_t size)
 {
 	void *ret = __kmem_cache_alloc_node(s, gfpflags, NUMA_NO_NODE,
@@ -1064,7 +1063,6 @@ void *kmalloc_node_trace(struct kmem_cache *s, gfp_t gfpflags,
 	return ret;
 }
 EXPORT_SYMBOL(kmalloc_node_trace);
-#endif /* !CONFIG_TRACING */
 #endif /* !CONFIG_SLOB */
 
 gfp_t kmalloc_fix_flags(gfp_t flags)
@@ -1411,20 +1409,6 @@ void kfree_sensitive(const void *p)
 }
 EXPORT_SYMBOL(kfree_sensitive);
 
-/**
- * ksize - get the actual amount of memory allocated for a given object
- * @objp: Pointer to the object
- *
- * kmalloc may internally round up allocations and return more memory
- * than requested. ksize() can be used to determine the actual amount of
- * memory allocated. The caller may use this additional memory, even though
- * a smaller amount of memory was initially specified with the kmalloc call.
- * The caller must guarantee that objp points to a valid object previously
- * allocated with either kmalloc() or kmem_cache_alloc(). The object
- * must not be freed during the duration of the call.
- *
- * Return: size of the actual memory used by @objp in bytes
- */
 size_t ksize(const void *objp)
 {
 	size_t size;
