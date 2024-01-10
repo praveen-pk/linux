@@ -171,8 +171,8 @@ void __init cpu_select_mitigations(void)
 	 * srso_select_mitigation() depends and must run after
 	 * retbleed_select_mitigation().
 	 */
-	srso_select_mitigation();
-	gds_select_mitigation();
+	//srso_select_mitigation();
+	//gds_select_mitigation();
 }
 
 /*
