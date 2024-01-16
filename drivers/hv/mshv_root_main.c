@@ -2417,9 +2417,6 @@ remove_partition(struct mshv_partition *partition)
 	spin_lock(&mshv_root.partitions.lock);
 	hlist_del_rcu(&partition->hnode);
 
-	if (!--mshv_root.partitions.count)
-		hv_remove_mshv_irq();
-
 	spin_unlock(&mshv_root.partitions.lock);
 
 	synchronize_rcu();
@@ -2665,8 +2662,6 @@ add_partition(struct mshv_partition *partition)
 	hash_add_rcu(mshv_root.partitions.items, &partition->hnode, partition->id);
 
 	mshv_root.partitions.count++;
-	if (mshv_root.partitions.count == 1)
-		hv_setup_mshv_irq(mshv_isr);
 
 	spin_unlock(&mshv_root.partitions.lock);
 
@@ -3219,6 +3214,8 @@ int __init mshv_parent_partition_init(void)
 	spin_lock_init(&mshv_root.partitions.lock);
 	hash_init(mshv_root.partitions.items);
 
+	hv_setup_mshv_irq(mshv_isr);
+
 	return 0;
 
 exit_vfio_ops:
@@ -3237,6 +3234,7 @@ free_synic_pages:
 
 void __exit mshv_parent_partition_exit(void)
 {
+	hv_remove_mshv_irq();
 	mshv_port_table_fini();
 	mshv_set_ops(NULL);
 	mshv_vfio_ops_exit();
