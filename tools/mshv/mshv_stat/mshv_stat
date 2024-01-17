@@ -889,7 +889,7 @@ Requirements:
 Batch mode examples:
 
     Display all statistics for the MSHV hypervisor:
-        mshv_stat -a
+        mshv_stat --all -1
 
     Display all statistics summary for all available logical processors:
         mshv_stat --lp -1
