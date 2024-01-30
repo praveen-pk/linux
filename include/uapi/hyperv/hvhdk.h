@@ -407,6 +407,7 @@ struct hv_vp_register_page {
 	union hv_x64_pending_interruption_register pending_interruption;
 	union hv_x64_interrupt_state_register interrupt_state;
 	__u64 instruction_emulation_hints;
+	__u64 xfem;
 
 #elif defined(__ARM64__)
 	/* Not yet supported in ARM */
