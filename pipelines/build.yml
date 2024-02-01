@@ -75,6 +75,8 @@ stages:
       value: /linux-dom0
     - name: CONTAINER_RESULT
       value: /build_results
+    - name: CONTAINER_MSHV_CRATE
+      value: /mshv
     - name: CONTAINER_RT
       value: docker
     - name: BUILDING_TAG
@@ -173,7 +175,20 @@ stages:
         set -e
         set -x
 
+        MSHV_CRATE_HOST_PATH="$(Pipeline.Workspace)/mshv"
+        git clone https://github.com/rust-vmm/mshv.git $MSHV_CRATE_HOST_PATH
+        echo "##vso[task.setVariable variable=MSHV_CRATE_PATH]${MSHV_CRATE_HOST_PATH}"
+      condition: and(eq(variables.FLAVOR, 'dom0-built-in'), eq(variables.ARCH, 'x86_64'))
+      displayName: 'Configure MSHV Crate'
+
+    - bash: |
+        set -e
+        set -x
+
         $(CONTAINER_RT) run -d -t --name $(CONTAINER_NAME) --volume $PWD:$(CONTAINER_VOL) --volume $(Pipeline.Workspace):$(CONTAINER_RESULT) $(CONTAINER_IMAGE)
+        if [ "$(FLAVOR)" == "dom0-built-in" ] && [ "$(ARCH)" == "x86_64" ]; then
+          $(CONTAINER_RT) run -d -t --name "$(CONTAINER_NAME)-ubuntu" --volume $PWD:$(CONTAINER_VOL) --volume $(MSHV_CRATE_PATH):$(CONTAINER_MSHV_CRATE) ubuntu
+        fi
         $(CONTAINER_RT) exec $(CONTAINER_NAME) $(CONTAINER_VOL)/pipelines/scripts/mariner-prepare
       displayName: 'Prepare Container'
 
@@ -200,6 +215,17 @@ stages:
         fi
         $(CONTAINER_RT) exec $(CONTAINER_NAME) $(CONTAINER_VOL)/pipelines/scripts/kernel-compile $export_modules_arg $(FLAVOR)
       displayName: 'Compile Kernel'
+
+    - bash: |
+        echo "Generating MSHV Bindings..."
+
+        $(CONTAINER_RT) exec "$(CONTAINER_NAME)-ubuntu" $(CONTAINER_VOL)/pipelines/scripts/generate_mshv_bindings.sh $(CONTAINER_MSHV_CRATE) $(CONTAINER_VOL)
+
+        BINDINGS_FILE_PATH=$(find $(MSHV_CRATE_PATH) -name "bindings.rs")
+        echo "bindings.rs File Path: $BINDINGS_FILE_PATH"
+        echo "##vso[task.setVariable variable=MSHV_BINDINGS_FILE_PATH]${BINDINGS_FILE_PATH}"
+      condition: and(eq(variables.FLAVOR, 'dom0-built-in'), eq(variables.ARCH, 'x86_64'))
+      displayName: 'Generate MSHV Bindings'
 
     - bash: |
         set -e
@@ -265,6 +291,13 @@ stages:
         fi
       displayName: 'Prepare Artifacts'
       name: PrepareArtifact
+
+    - bash: |
+        echo "Preparing MSHV bindings.rs artifact from: $(MSHV_BINDINGS_FILE_PATH)"
+        sudo cp $(MSHV_BINDINGS_FILE_PATH) ./artifacts_folder
+      condition: and(eq(variables.FLAVOR, 'dom0-built-in'), eq(variables.ARCH, 'x86_64'))
+      displayName: 'Prepare MSHV Bindings Artifacts'
+      name: PrepareMSHVBindingsArtifact
 
     - task: PublishPipelineArtifact@1
       displayName: 'Publish Artifacts'
