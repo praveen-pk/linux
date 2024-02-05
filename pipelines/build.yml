@@ -278,7 +278,7 @@ stages:
       displayName: 'Publish artifacts'
       inputs:
         targetPath: revs
-        artifact: 'mshv revs'
+        artifact: 'uvm revs'
 
   - job: Packaging
     timeoutInMinutes: 30
