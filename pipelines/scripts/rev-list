@@ -34,13 +34,16 @@ def thread_func(idx, it, lock):
 
     # Include the revision hash in the list
     if not rev_is_ignored(it["rev"]):
-        cmd = ["git", "name-rev", "--name-only", "--no-undefined", "--refs", "rolling-lts/mariner-2/*", it["rev"]]
-        log.info("Thread {}: {}".format(idx, " ".join(cmd)))
+        refs = ["rolling-lts/mariner-3/*", "stable/linux-rolling-lts", "linux-6.1.y"]
+        for ref in refs:
+            cmd = ["git", "name-rev", "--name-only", "--no-undefined", "--refs", ref, it["rev"]]
+            log.info("Thread {}: {}".format(idx, " ".join(cmd)))
 
-        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, )
-        if 0 != res.returncode:
-            it["idx"] = idx
-            dom0_revs.append(it)
+            res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, )
+            if 0 != res.returncode:
+                it["idx"] = idx
+                dom0_revs.append(it)
+                break
 
     t1 = time.clock_gettime(time.CLOCK_MONOTONIC)
     log.debug("Thread {}: took {}s".format(idx, t1 - t0))
@@ -59,7 +62,7 @@ def rev_get_file_list(rev):
     return res.stdout.decode("utf-8").strip(" \n").splitlines()
 
 
-def rev_is_ignored(rev):
+def rev_is_ignored(rev):  # noqa: C901
     files = rev_get_file_list(rev)
 
     # Exclude pipeline and ADO stuff
@@ -90,6 +93,15 @@ def rev_is_ignored(rev):
     if found == len(files):
         return True
 
+    # Any of these starting paths can be ignored
+    ignore_paths = ["drivers/hv/dxgkrnl", "include/net", "drivers/net",
+                    "kernel/bpf", "tools/testing/selftests/bpf",
+                    "net/ipv4", "arch/x86/mm", "drivers/scsi"]
+    for f in files:
+        for pth in ignore_paths:
+            if f.startswith(pth):
+                return True
+
     return False
 
 
@@ -103,6 +115,17 @@ def threads_join():
 
 
 revs = list()
+
+cmds = [
+        ["git", "remote", "add", "stable", "https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git"],
+        ["git", "fetch", "stable", "linux-rolling-lts"],
+        ["git", "fetch", "stable", "linux-6.1.y"],
+        ]
+for cmd in cmds:
+    log.info("Main     : {}".format(" ".join(cmd)))
+    res = subprocess.run(cmd, stdout=subprocess.PIPE)
+    out = res.stdout.decode("utf-8").strip(" \n").splitlines()
+
 cmd = ["git", "log", "--oneline", "--no-merges", "{}..HEAD".format(base)]
 log.info("Main     : {}".format(" ".join(cmd)))
 res = subprocess.run(cmd, stdout=subprocess.PIPE)
