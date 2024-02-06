@@ -362,8 +362,11 @@ class StatsStreamTop(StatsStream):
         # Write each key-value pair in stats_dict to the screen
         row = 2
         for k, v in stats_dict.items():
-            self.screen.addstr(row, 2, "{}{} : {}".format(
-                k, ' ' * (max_name_len - len(k)), v))
+            try:
+                self.screen.addstr(row, 2, "{}{} : {}".format(
+                    k, ' ' * (max_name_len - len(k)), v))
+            except curses.error:
+                pass
             row += 1
 
         # Refresh the screen to show the updated contents
@@ -889,7 +892,7 @@ Requirements:
 Batch mode examples:
 
     Display all statistics for the MSHV hypervisor:
-        mshv_stat -a
+        mshv_stat --all -1
 
     Display all statistics summary for all available logical processors:
         mshv_stat --lp -1
