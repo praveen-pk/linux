@@ -1389,6 +1389,7 @@ void vmbus_isr(void)
 
 	add_interrupt_randomness(vmbus_interrupt);
 }
+EXPORT_SYMBOL_GPL(vmbus_isr);
 
 static irqreturn_t vmbus_percpu_isr(int irq, void *dev_id)
 {
@@ -1424,17 +1425,17 @@ static void hv_kmsg_dump(struct kmsg_dumper *dumper,
 	 * contain the size of the panic data in that page. Rest of the
 	 * registers are no-op when the NOTIFY_MSG flag is set.
 	 */
-	hv_set_register(HV_REGISTER_CRASH_P0, 0);
-	hv_set_register(HV_REGISTER_CRASH_P1, 0);
-	hv_set_register(HV_REGISTER_CRASH_P2, 0);
-	hv_set_register(HV_REGISTER_CRASH_P3, virt_to_phys(hv_panic_page));
-	hv_set_register(HV_REGISTER_CRASH_P4, bytes_written);
+	hv_set_msr(HV_REGISTER_GUEST_CRASH_P0, 0);
+	hv_set_msr(HV_REGISTER_GUEST_CRASH_P1, 0);
+	hv_set_msr(HV_REGISTER_GUEST_CRASH_P2, 0);
+	hv_set_msr(HV_REGISTER_GUEST_CRASH_P3, virt_to_phys(hv_panic_page));
+	hv_set_msr(HV_REGISTER_GUEST_CRASH_P4, bytes_written);
 
 	/*
 	 * Let Hyper-V know there is crash data available along with
 	 * the panic message.
 	 */
-	hv_set_register(HV_REGISTER_CRASH_CTL,
+	hv_set_msr(HV_REGISTER_GUEST_CRASH_CTL,
 	       (HV_CRASH_CTL_CRASH_NOTIFY | HV_CRASH_CTL_CRASH_NOTIFY_MSG));
 }
 
@@ -1574,7 +1575,7 @@ static int vmbus_bus_init(void)
 		 * Register for panic kmsg callback only if the right
 		 * capability is supported by the hypervisor.
 		 */
-		hyperv_crash_ctl = hv_get_register(HV_REGISTER_CRASH_CTL);
+		hyperv_crash_ctl = hv_get_msr(HV_REGISTER_GUEST_CRASH_CTL);
 		if (hyperv_crash_ctl & HV_CRASH_CTL_CRASH_NOTIFY_MSG)
 			hv_kmsg_dump_register();
 

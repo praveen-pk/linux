@@ -64,6 +64,61 @@ DEFINE_IDTENTRY_SYSVEC(sysvec_hyperv_callback)
 	set_irq_regs(old_regs);
 }
 
+static inline unsigned int hv_get_nested_msr(unsigned int reg)
+{
+	if (hv_is_sint_msr(reg))
+		return reg - HV_X64_MSR_SINT0 + HV_X64_MSR_NESTED_SINT0;
+
+	switch (reg) {
+	case HV_X64_MSR_SIMP:
+		return HV_X64_MSR_NESTED_SIMP;
+	case HV_X64_MSR_SIEFP:
+		return HV_X64_MSR_NESTED_SIEFP;
+	case HV_X64_MSR_SVERSION:
+		return HV_X64_MSR_NESTED_SVERSION;
+	case HV_X64_MSR_SCONTROL:
+		return HV_X64_MSR_NESTED_SCONTROL;
+	case HV_X64_MSR_EOM:
+		return HV_X64_MSR_NESTED_EOM;
+	default:
+		return reg;
+	}
+}
+
+u64 hv_get_non_nested_msr(unsigned int reg)
+{
+	u64 value;
+
+	rdmsrl(reg, value);
+
+	return value;
+}
+EXPORT_SYMBOL_GPL(hv_get_non_nested_msr);
+
+void hv_set_non_nested_msr(unsigned int reg, u64 value)
+{
+	wrmsrl(reg, value);
+}
+EXPORT_SYMBOL_GPL(hv_set_non_nested_msr);
+
+u64 hv_get_msr(unsigned int reg)
+{
+	if (hv_nested)
+		reg = hv_get_nested_msr(reg);
+
+	return hv_get_non_nested_msr(reg);
+}
+EXPORT_SYMBOL_GPL(hv_get_msr);
+
+void hv_set_msr(unsigned int reg, u64 value)
+{
+	if (hv_nested)
+		reg = hv_get_nested_msr(reg);
+
+	hv_set_non_nested_msr(reg, value);
+}
+EXPORT_SYMBOL_GPL(hv_set_msr);
+
 DEFINE_IDTENTRY_SYSVEC(sysvec_hyperv_nested_vmbus_intr)
 {
 	struct pt_regs *old_regs = set_irq_regs(regs);

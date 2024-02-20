@@ -33,14 +33,26 @@ void hv_set_vpreg(u32 reg, u64 value);
 u64 hv_get_vpreg(u32 reg);
 void hv_get_vpreg_128(u32 reg, struct hv_get_vp_registers_output *result);
 
-static inline void hv_set_register(unsigned int reg, u64 value)
+static inline void hv_set_msr(unsigned int reg, u64 value)
 {
 	hv_set_vpreg(reg, value);
 }
 
-static inline u64 hv_get_register(unsigned int reg)
+static inline u64 hv_get_msr(unsigned int reg)
 {
 	return hv_get_vpreg(reg);
+}
+
+/*
+ * Nested is not supported on arm64
+ */
+static inline void hv_set_non_nested_msr(unsigned int reg, u64 value)
+{
+	hv_set_msr(reg, value);
+}
+static inline u64 hv_get_non_nested_msr(unsigned int reg)
+{
+	return hv_get_msr(reg);
 }
 
 static inline bool hv_should_clear_interrupt(enum hv_interrupt_type type)

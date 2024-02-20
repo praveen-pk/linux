@@ -17,19 +17,6 @@ typedef int (*hyperv_fill_flush_list_func)(
 		struct hv_guest_mapping_flush_list *flush,
 		void *data);
 
-static inline void hv_set_register(unsigned int reg, u64 value)
-{
-	wrmsrl(reg, value);
-}
-
-static inline u64 hv_get_register(unsigned int reg)
-{
-	u64 value;
-
-	rdmsrl(reg, value);
-	return value;
-}
-
 #define hv_get_raw_timer() rdtsc_ordered()
 
 void hyperv_vector_handler(struct pt_regs *regs);
@@ -227,6 +214,28 @@ int hv_map_ioapic_interrupt(int ioapic_id, bool level, int vcpu, int vector,
 int hv_unmap_ioapic_interrupt(int ioapic_id, struct hv_interrupt_entry *entry);
 union hv_device_id hv_build_pci_dev_id(struct pci_dev *dev);
 
+static inline bool hv_is_synic_msr(unsigned int reg)
+{
+	return (reg >= HV_X64_MSR_SCONTROL) &&
+	       (reg <= HV_X64_MSR_SINT15);
+}
+
+static inline bool hv_is_sint_msr(unsigned int reg)
+{
+	return (reg >= HV_X64_MSR_SINT0) &&
+	       (reg <= HV_X64_MSR_SINT15);
+}
+
+u64 hv_get_msr(unsigned int reg);
+void hv_set_msr(unsigned int reg, u64 value);
+u64 hv_get_non_nested_msr(unsigned int reg);
+void hv_set_non_nested_msr(unsigned int reg, u64 value);
+
+static __always_inline u64 hv_raw_get_msr(unsigned int reg)
+{
+	return __rdmsr(reg);
+}
+
 #else /* CONFIG_HYPERV */
 static inline void hyperv_init(void) {}
 static inline void hyperv_setup_mmu_ops(void) {}
@@ -243,6 +252,10 @@ static inline int hyperv_flush_guest_mapping_range(u64 as,
 {
 	return -1;
 }
+static inline void hv_set_msr(unsigned int reg, u64 value) { }
+static inline u64 hv_get_msr(unsigned int reg) { return 0; }
+static inline void hv_set_non_nested_msr(unsigned int reg, u64 value) { }
+static inline u64 hv_get_non_nested_msr(unsigned int reg) { return 0; }
 #endif /* CONFIG_HYPERV */
 
 

@@ -26,23 +26,6 @@
 struct hv_context hv_context;
 EXPORT_SYMBOL_GPL(hv_context);
 
-#ifdef HV_SUPPORTS_NESTED
-
-#define REG_SIMP (hv_nested ? HV_REGISTER_NESTED_SIMP : HV_REGISTER_SIMP)
-#define REG_SIEFP (hv_nested ? HV_REGISTER_NESTED_SIEFP : HV_REGISTER_SIEFP)
-#define REG_SCTRL                                                              \
-	(hv_nested ? HV_REGISTER_NESTED_SCONTROL : HV_REGISTER_SCONTROL)
-#define REG_SINT0 (hv_nested ? HV_REGISTER_NESTED_SINT0 : HV_REGISTER_SINT0)
-
-#else
-
-#define REG_SIMP (HV_REGISTER_SIMP)
-#define REG_SIEFP (HV_REGISTER_SIEFP)
-#define REG_SCTRL (HV_REGISTER_SCONTROL)
-#define REG_SINT0 (HV_REGISTER_SINT0)
-
-#endif
-
 /*
  * hv_init - Main initialization routine.
  *
@@ -236,7 +219,7 @@ void hv_synic_enable_regs(unsigned int cpu)
 	union hv_synic_scontrol sctrl;
 
 	/* Setup the Synic's message page */
-	simp.as_uint64 = hv_get_register(REG_SIMP);
+	simp.as_uint64 = hv_get_msr(HV_MSR_SIMP);
 	simp.simp_enabled = 1;
 	if (hv_root_partition())
 		hv_cpu->synic_message_page =
@@ -246,10 +229,10 @@ void hv_synic_enable_regs(unsigned int cpu)
 		simp.base_simp_gpa = virt_to_phys(hv_cpu->synic_message_page) >>
 						  HV_HYP_PAGE_SHIFT;
 
-	hv_set_register(REG_SIMP, simp.as_uint64);
+	hv_set_msr(HV_MSR_SIMP, simp.as_uint64);
 
 	/* Setup the Synic's event page */
-	siefp.as_uint64 = hv_get_register(REG_SIEFP);
+	siefp.as_uint64 = hv_get_msr(HV_MSR_SIEFP);
 	siefp.siefp_enabled = 1;
 	if (hv_root_partition())
 		hv_cpu->synic_event_page =
@@ -259,13 +242,13 @@ void hv_synic_enable_regs(unsigned int cpu)
 		siefp.base_siefp_gpa = virt_to_phys(hv_cpu->synic_event_page) >>
 						    HV_HYP_PAGE_SHIFT;
 
-	hv_set_register(REG_SIEFP, siefp.as_uint64);
+	hv_set_msr(HV_MSR_SIEFP, siefp.as_uint64);
 
 	/* Setup the shared SINT. */
 	if (vmbus_irq != -1)
 		enable_percpu_irq(vmbus_irq, 0);
 
-	shared_sint.as_uint64 = hv_get_register(REG_SINT0 + VMBUS_MESSAGE_SINT);
+	shared_sint.as_uint64 = hv_get_msr(HV_MSR_SINT0 + VMBUS_MESSAGE_SINT);
 	shared_sint.vector = vmbus_interrupt;
 	shared_sint.masked = false;
 
@@ -279,13 +262,14 @@ void hv_synic_enable_regs(unsigned int cpu)
 #else
 	shared_sint.auto_eoi = 0;
 #endif
-	hv_set_register(REG_SINT0 + VMBUS_MESSAGE_SINT, shared_sint.as_uint64);
+
+	hv_set_msr(HV_MSR_SINT0 + VMBUS_MESSAGE_SINT, shared_sint.as_uint64);
 
 	/* Enable the global synic bit */
-	sctrl.as_uint64 = hv_get_register(REG_SCTRL);
+	sctrl.as_uint64 = hv_get_msr(HV_MSR_SCONTROL);
 	sctrl.enable = 1;
 
-	hv_set_register(REG_SCTRL, sctrl.as_uint64);
+	hv_set_msr(HV_MSR_SCONTROL, sctrl.as_uint64);
 }
 
 int hv_synic_init(unsigned int cpu)
@@ -307,32 +291,32 @@ void hv_synic_disable_regs(unsigned int cpu)
 	union hv_synic_siefp siefp;
 	union hv_synic_scontrol sctrl;
 
-	shared_sint.as_uint64 = hv_get_register(REG_SINT0 + VMBUS_MESSAGE_SINT);
+	shared_sint.as_uint64 = hv_get_msr(HV_MSR_SINT0 + VMBUS_MESSAGE_SINT);
 
 	shared_sint.masked = 1;
 
 	/* Need to correctly cleanup in the case of SMP!!! */
 	/* Disable the interrupt */
-	hv_set_register(REG_SINT0 + VMBUS_MESSAGE_SINT, shared_sint.as_uint64);
+	hv_set_msr(HV_MSR_SINT0 + VMBUS_MESSAGE_SINT, shared_sint.as_uint64);
 
-	simp.as_uint64 = hv_get_register(REG_SIMP);
+	simp.as_uint64 = hv_get_msr(HV_MSR_SIMP);
 	simp.simp_enabled = 0;
 	if (!hv_root_partition())
 		simp.base_simp_gpa = 0;
 
-	hv_set_register(REG_SIMP, simp.as_uint64);
+	hv_set_msr(HV_MSR_SIMP, simp.as_uint64);
 
-	siefp.as_uint64 = hv_get_register(REG_SIEFP);
+	siefp.as_uint64 = hv_get_msr(HV_MSR_SIEFP);
 	siefp.siefp_enabled = 0;
 	if (!hv_root_partition())
 		siefp.base_siefp_gpa = 0;
 
-	hv_set_register(REG_SIEFP, siefp.as_uint64);
+	hv_set_msr(HV_MSR_SIEFP, siefp.as_uint64);
 
 	/* Disable the global synic bit */
-	sctrl.as_uint64 = hv_get_register(REG_SCTRL);
+	sctrl.as_uint64 = hv_get_msr(HV_MSR_SCONTROL);
 	sctrl.enable = 0;
-	hv_set_register(REG_SCTRL, sctrl.as_uint64);
+	hv_set_msr(HV_MSR_SCONTROL, sctrl.as_uint64);
 
 	if (vmbus_irq != -1)
 		disable_percpu_irq(vmbus_irq);
