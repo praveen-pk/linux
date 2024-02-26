@@ -536,26 +536,6 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 	bool complete = false;
 
 	while (!complete) {
-		if (vp->run.flags.blocked_by_explicit_suspend) {
-			/*
-			 * Need to clear explicit suspend before dispatching.
-			 * Explicit suspend is either:
-			 * - set before the first VP dispatch or
-			 * - set explicitly via hypercall
-			 * Since the latter case is not supported, we simply
-			 * clear it here.
-			 */
-			ret = mshv_vp_clear_explicit_suspend(vp);
-			if (ret)
-				return ret;
-
-			ret = mshv_vp_wait_for_hv_kick(vp);
-			if (ret)
-				return ret;
-
-			vp->run.flags.blocked_by_explicit_suspend = 0;
-		}
-
 		if (vp->run.flags.blocked) {
 			/*
 			 * Dispatch state of this VP is blocked. Need to wait
@@ -625,10 +605,28 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 
 			if (output.dispatch_state == HV_VP_DISPATCH_STATE_BLOCKED) {
 				if (output.dispatch_event == HV_VP_DISPATCH_EVENT_SUSPEND) {
-					vp->run.flags.blocked_by_explicit_suspend = 1;
 					/* TODO: remove the warning once VP canceling is supported */
 					WARN_ONCE(atomic64_read(&vp->run.signaled_count),
 						  "%s: vp#%d: unexpected explicit suspend\n", __func__, vp->index);
+					/*
+					 * Need to clear explicit suspend before dispatching.
+					 * Explicit suspend is either:
+					 * - set before the first VP dispatch or
+					 * - set explicitly via hypercall
+					 * Since the latter case is not supported, we simply
+					 * clear it here.
+					 */
+					ret = mshv_vp_clear_explicit_suspend(vp);
+					if (ret) {
+						complete = true;
+						break;
+					}
+
+					ret = mshv_vp_wait_for_hv_kick(vp);
+					if (ret) {
+						complete = true;
+						break;
+					}
 				} else {
 					vp->run.flags.blocked = 1;
 					ret = mshv_vp_wait_for_hv_kick(vp);
@@ -642,8 +640,7 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 				if (output.dispatch_event == HV_VP_DISPATCH_EVENT_INTERCEPT)
 					vp->run.flags.intercept_suspend = 1;
 			}
-		} while (!vp->run.flags.blocked_by_explicit_suspend &&
-			 !vp->run.flags.intercept_suspend);
+		} while (!vp->run.flags.intercept_suspend);
 
 		preempt_enable();
 
