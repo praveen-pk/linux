@@ -555,9 +555,6 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 						 _TIF_NOTIFY_SIGNAL |
 						 _TIF_NOTIFY_RESUME;
 
-		if (vp->run.flags.intercept_suspend)
-			flags |= HV_DISPATCH_VP_FLAG_CLEAR_INTERCEPT_SUSPEND;
-
 		local_irq_save(irq_flags);
 
 		ti_work = READ_ONCE(current_thread_info()->flags);
@@ -589,6 +586,9 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 		 */
 		if (!irqs_disabled_flags(irq_flags))
 			flags |= HV_DISPATCH_VP_FLAG_ENABLE_CALLER_INTERRUPTS;
+
+		if (vp->run.flags.intercept_suspend)
+			flags |= HV_DISPATCH_VP_FLAG_CLEAR_INTERCEPT_SUSPEND;
 
 		ret = hv_call_vp_dispatch(vp->partition->id, vp->index,
 					  flags, &output);
