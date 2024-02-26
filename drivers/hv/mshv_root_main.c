@@ -531,7 +531,6 @@ mshv_vp_wait_for_hv_kick(struct mshv_vp *vp)
 static long
 mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 {
-	struct hv_output_dispatch_vp output;
 	long ret;
 
 	if (vp->run.flags.blocked) {
@@ -549,11 +548,12 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 
 	do {
 		u32 flags = 0;
+		struct hv_output_dispatch_vp output;
 		unsigned long irq_flags, ti_work;
 		const unsigned long work_flags = _TIF_NEED_RESCHED |
-			_TIF_SIGPENDING |
-			_TIF_NOTIFY_SIGNAL |
-			_TIF_NOTIFY_RESUME;
+						 _TIF_SIGPENDING |
+						 _TIF_NOTIFY_SIGNAL |
+						 _TIF_NOTIFY_RESUME;
 
 		if (vp->run.flags.intercept_suspend)
 			flags |= HV_DISPATCH_VP_FLAG_CLEAR_INTERCEPT_SUSPEND;
