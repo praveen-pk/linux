@@ -567,11 +567,11 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 
 			ret = mshv_xfer_to_guest_mode_handle_work(ti_work);
 
-			preempt_disable();
-
 			trace_mshv_root_sched_handle_work(ret,
 					vp->partition->id, vp->index,
 					ti_work);
+
+			preempt_disable();
 
 			if (ret)
 				break;
