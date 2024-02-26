@@ -532,127 +532,115 @@ static long
 mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 {
 	struct hv_output_dispatch_vp output;
-	long ret = 0;
-	bool complete = false;
+	long ret;
 
-	while (!complete) {
-		if (vp->run.flags.blocked) {
-			/*
-			 * Dispatch state of this VP is blocked. Need to wait
-			 * for the hypervisor to clear the blocked state before
-			 * dispatching it.
-			 */
-			ret = mshv_vp_wait_for_hv_kick(vp);
-			if (ret)
-				return ret;
-		}
-
-		preempt_disable();
-
-		do {
-			u32 flags = 0;
-			unsigned long irq_flags, ti_work;
-			const unsigned long work_flags = _TIF_NEED_RESCHED |
-				_TIF_SIGPENDING |
-				_TIF_NOTIFY_SIGNAL |
-				_TIF_NOTIFY_RESUME;
-
-			if (vp->run.flags.intercept_suspend)
-				flags |= HV_DISPATCH_VP_FLAG_CLEAR_INTERCEPT_SUSPEND;
-
-			local_irq_save(irq_flags);
-
-			ti_work = READ_ONCE(current_thread_info()->flags);
-			if (unlikely(ti_work & work_flags) || need_resched()) {
-				local_irq_restore(irq_flags);
-				preempt_enable();
-
-				ret = mshv_xfer_to_guest_mode_handle_work(ti_work);
-
-				preempt_disable();
-
-				trace_mshv_root_sched_handle_work(
-					ret, vp->partition->id, vp->index,
-					ti_work);
-
-				if (ret) {
-					complete = true;
-					break;
-				}
-
-				continue;
-			}
-
-			/*
-			 * Note the lack of local_irq_restore after the dipatch
-			 * call. We rely on the hypervisor to do that for us.
-			 *
-			 * Thread context should always have interrupt enabled,
-			 * but we try to be defensive here by testing what it
-			 * truly was before we disabled interrupt.
-			 */
-			if (!irqs_disabled_flags(irq_flags))
-				flags |= HV_DISPATCH_VP_FLAG_ENABLE_CALLER_INTERRUPTS;
-
-			ret = hv_call_vp_dispatch(vp->partition->id, vp->index,
-						  flags, &output);
-			if (ret) {
-				complete = true;
-				break;
-			}
-
-			vp->run.flags.intercept_suspend = 0;
-
-			if (output.dispatch_state == HV_VP_DISPATCH_STATE_BLOCKED) {
-				if (output.dispatch_event == HV_VP_DISPATCH_EVENT_SUSPEND) {
-					/* TODO: remove the warning once VP canceling is supported */
-					WARN_ONCE(atomic64_read(&vp->run.signaled_count),
-						  "%s: vp#%d: unexpected explicit suspend\n", __func__, vp->index);
-					/*
-					 * Need to clear explicit suspend before dispatching.
-					 * Explicit suspend is either:
-					 * - set before the first VP dispatch or
-					 * - set explicitly via hypercall
-					 * Since the latter case is not supported, we simply
-					 * clear it here.
-					 */
-					ret = mshv_vp_clear_explicit_suspend(vp);
-					if (ret) {
-						complete = true;
-						break;
-					}
-
-					ret = mshv_vp_wait_for_hv_kick(vp);
-					if (ret) {
-						complete = true;
-						break;
-					}
-				} else {
-					vp->run.flags.blocked = 1;
-					ret = mshv_vp_wait_for_hv_kick(vp);
-					if (ret) {
-						complete = true;
-						break;
-					}
-				}
-			} else {
-				/* HV_VP_DISPATCH_STATE_READY */
-				if (output.dispatch_event == HV_VP_DISPATCH_EVENT_INTERCEPT)
-					vp->run.flags.intercept_suspend = 1;
-			}
-		} while (!vp->run.flags.intercept_suspend);
-
-		preempt_enable();
-
-		if (vp->run.flags.intercept_suspend) {
-			if (copy_to_user(ret_message, vp->intercept_message_page,
-					sizeof(struct hv_message)))
-				ret =  -EFAULT;
-			complete = true;
-		}
+	if (vp->run.flags.blocked) {
+		/*
+		 * Dispatch state of this VP is blocked. Need to wait
+		 * for the hypervisor to clear the blocked state before
+		 * dispatching it.
+		 */
+		ret = mshv_vp_wait_for_hv_kick(vp);
+		if (ret)
+			return ret;
 	}
 
-	return ret;
+	preempt_disable();
+
+	do {
+		u32 flags = 0;
+		unsigned long irq_flags, ti_work;
+		const unsigned long work_flags = _TIF_NEED_RESCHED |
+			_TIF_SIGPENDING |
+			_TIF_NOTIFY_SIGNAL |
+			_TIF_NOTIFY_RESUME;
+
+		if (vp->run.flags.intercept_suspend)
+			flags |= HV_DISPATCH_VP_FLAG_CLEAR_INTERCEPT_SUSPEND;
+
+		local_irq_save(irq_flags);
+
+		ti_work = READ_ONCE(current_thread_info()->flags);
+		if (unlikely(ti_work & work_flags) || need_resched()) {
+			local_irq_restore(irq_flags);
+			preempt_enable();
+
+			ret = mshv_xfer_to_guest_mode_handle_work(ti_work);
+
+			preempt_disable();
+
+			trace_mshv_root_sched_handle_work(ret,
+					vp->partition->id, vp->index,
+					ti_work);
+
+			if (ret)
+				break;
+
+			continue;
+		}
+
+		/*
+		 * Note the lack of local_irq_restore after the dispatch
+		 * call. We rely on the hypervisor to do that for us.
+		 *
+		 * Thread context should always have interrupt enabled,
+		 * but we try to be defensive here by testing what it
+		 * truly was before we disabled interrupt.
+		 */
+		if (!irqs_disabled_flags(irq_flags))
+			flags |= HV_DISPATCH_VP_FLAG_ENABLE_CALLER_INTERRUPTS;
+
+		ret = hv_call_vp_dispatch(vp->partition->id, vp->index,
+					  flags, &output);
+		if (ret)
+			break;
+
+		vp->run.flags.intercept_suspend = 0;
+
+		if (output.dispatch_state == HV_VP_DISPATCH_STATE_BLOCKED) {
+			if (output.dispatch_event == HV_VP_DISPATCH_EVENT_SUSPEND) {
+				/* TODO: remove the warning once VP canceling is supported */
+				WARN_ONCE(atomic64_read(&vp->run.signaled_count),
+					  "%s: vp#%d: unexpected explicit suspend\n", __func__, vp->index);
+				/*
+				 * Need to clear explicit suspend before
+				 * dispatching.
+				 * Explicit suspend is either:
+				 * - set right after the first VP dispatch or
+				 * - set explicitly via hypercall
+				 * Since the latter case is not yet supported,
+				 * simply clear it here.
+				 */
+				ret = mshv_vp_clear_explicit_suspend(vp);
+				if (ret)
+					break;
+
+				ret = mshv_vp_wait_for_hv_kick(vp);
+				if (ret)
+					break;
+			} else {
+				vp->run.flags.blocked = 1;
+				ret = mshv_vp_wait_for_hv_kick(vp);
+				if (ret)
+					break;
+			}
+		} else {
+			/* HV_VP_DISPATCH_STATE_READY */
+			if (output.dispatch_event == HV_VP_DISPATCH_EVENT_INTERCEPT)
+				vp->run.flags.intercept_suspend = 1;
+		}
+	} while (!vp->run.flags.intercept_suspend);
+
+	preempt_enable();
+
+	if (ret)
+		return ret;
+
+	if (copy_to_user(ret_message, vp->intercept_message_page,
+			 sizeof(struct hv_message)))
+		return -EFAULT;
+
+	return 0;
 }
 
 static long
