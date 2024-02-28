@@ -711,39 +711,6 @@ int hv_call_unmap_vp_state_page(u64 partition_id, u32 vp_index, u32 type)
 	return 0;
 }
 
-int hv_call_map_vp_state_page_ex(u64 partition_id, u32 vp_index, u32 type,
-				 const struct page *state_page)
-{
-	struct hv_input_map_vp_state_page_ex *input;
-	unsigned long flags;
-	u64 pfn, status;
-
-	pfn = page_to_pfn(state_page);
-
-	local_irq_save(flags);
-
-	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
-
-	input->partition_id = partition_id;
-	input->vp_index = vp_index;
-	input->type = type;
-	input->map_location = pfn;
-
-	status = hv_do_hypercall(HVCALL_MAP_VP_STATE_PAGE_EX, input, NULL);
-
-	local_irq_restore(flags);
-
-	trace_mshv_hvcall_map_vp_state_page_ex(status, partition_id,
-					       vp_index, type, pfn);
-
-	if (!hv_result_success(status)) {
-		pr_err("%s: %s\n", __func__, hv_status_to_string(status));
-		return hv_status_to_errno(status);
-	}
-
-	return 0;
-}
-
 int hv_call_get_partition_property(
 		u64 partition_id,
 		u64 property_code,
