@@ -571,6 +571,12 @@ union hv_proximity_domain_info {
 	u64 as_uint64;
 } __packed;
 
+struct hv_input_add_logical_processor {
+	__u32 lp_index;
+	__u32 apic_id;
+	union hv_proximity_domain_info proximity_domain_info;
+} __packed;
+
 enum HV_SUBNODE_TYPE
 {
     HvSubnodeAny = 0,
