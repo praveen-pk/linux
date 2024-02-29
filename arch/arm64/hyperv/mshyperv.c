@@ -106,7 +106,7 @@ static int __init hyperv_init(void)
 		return ret;
 	}
 
-	if (ms_hyperv.features & HV_ACCESS_PARTITION_ID)
+	if (ms_hyperv.priv_high & HV_ACCESS_PARTITION_ID)
 		hv_get_partition_id();
 
 	hyperv_initialized = true;
