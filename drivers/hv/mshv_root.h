@@ -48,7 +48,6 @@ struct mshv_vp {
 	} run;
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *debugfs_dentry;
-	u64 *stats;
 #endif
 };
 
