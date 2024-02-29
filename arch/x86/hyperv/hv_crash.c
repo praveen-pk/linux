@@ -191,6 +191,32 @@ static void hv_crash_fixup_knpt(void)
 }
 
 /*
+ * Now that all cpus are in nmi and spinning, we notify the hyp that dom0 has
+ * crashed and will collect core. This will cause the hyp to quiesce and
+ * suspend all VPs. While not strictly necessary, it aids in better state
+ * collection on the hypervisor side.
+ */
+static void hv_notify_prepare_hyp(void)
+{
+	u64 status;
+	struct hv_input_notify_partition_event *input;
+	struct hv_partition_event_root_crashdump_input *cda;
+
+	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
+	cda = &input->input.crashdump_input;
+	memset(input, 0, sizeof(*input));
+	input->event = HV_PARTITION_EVENT_ROOT_CRASHDUMP;
+
+	cda->crashdump_action = HV_CRASHDUMP_ENTRY;
+	status = hv_do_hypercall(HVCALL_NOTIFY_PARTITION_EVENT, input, NULL);
+	if (!hv_result_success(status))
+		return;
+
+	cda->crashdump_action = HV_CRASHDUMP_SUSPEND_ALL_VPS;
+	status = hv_do_hypercall(HVCALL_NOTIFY_PARTITION_EVENT, input, NULL);
+}
+
+/*
  * Common function for all cpus before devirtualization.
  *
  * Hypervisor crash: all cpus get here in nmi context.
@@ -230,6 +256,10 @@ static noinline __noclone void crash_nmi_callback(struct pt_regs *regs)
 
 	while (atomic_read(&crash_cpus_wait) < num_online_cpus() && msecs--)
 		mdelay(1);
+
+	stop_nmi();
+	if (!hv_has_crashed)
+		hv_notify_prepare_hyp();
 
 	if (crashing_cpu == -1)
 		crashing_cpu = ccpu;		/* crash cmd uses this */
@@ -492,8 +522,12 @@ static bool hv_supports_devirt(void)
 	if (hv_get_hypervisor_version(&version_info))
 		return false;
 
-	if (version_info.build_number < 0x99999)
+	if (version_info.major_version < 10)
 		return false;
+	else if (version_info.major_version == 10) {
+		if (version_info.build_number < 27562)
+			return false;
+	}
 
 	return true;
 }
@@ -507,6 +541,8 @@ void hv_root_crash_init(void)
 	unsigned long flags;
 	u64 status;
 	union hv_pfn_range cda_info;
+
+	crash_kexec_post_notifiers = true;
 
 	if (!hv_supports_devirt())
 		goto err_out;
@@ -535,7 +571,6 @@ void hv_root_crash_init(void)
 	register_nmi_handler(NMI_LOCAL, hv_crash_nmi_local, NMI_FLAG_FIRST,
 			     "hv_crash_nmi");
 
-	crash_kexec_post_notifiers = true;
 	smp_ops.crash_stop_other_cpus = hv_crash_stop_other_cpus;
 
 	hv_crash_enabled = 1;
@@ -549,6 +584,5 @@ prop_err_out:
 	       hv_status_to_string(status));
 err_out:
 	pr_err("Hyper-V: only linux (but not hv) kdump support enabled\n");
-	crash_kexec_post_notifiers = true;
 }
 
