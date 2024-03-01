@@ -13,7 +13,7 @@
 #include <linux/workqueue.h>
 #include <linux/hyperv.h>
 #include <linux/sched.h>
-#include <asm/hyperv-tlfs.h>
+#include <asm/mshyperv.h>
 
 #include "hyperv_vmbus.h"
 #include "hv_utils_transport.h"

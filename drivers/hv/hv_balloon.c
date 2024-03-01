@@ -25,12 +25,18 @@
 #include <linux/page_reporting.h>
 
 #include <linux/hyperv.h>
-#include <asm/hyperv-tlfs.h>
-
 #include <asm/mshyperv.h>
 
 #define CREATE_TRACE_POINTS
 #include "hv_trace_balloon.h"
+
+/*
+ * The whole argument should fit in a page to be able to pass to the hypervisor
+ * in one hypercall.
+ */
+#define HV_MEMORY_HINT_MAX_GPA_PAGE_RANGES  \
+	((HV_HYP_PAGE_SIZE - sizeof(struct hv_memory_hint)) / \
+		sizeof(union hv_gpa_page_range))
 
 /*
  * We begin with definitions supporting the Dynamic Memory protocol
@@ -131,7 +137,7 @@ union dm_caps {
 } __packed;
 
 union dm_mem_page_range {
-	struct  {
+	struct	{
 		/*
 		 * The PFN number of the first page in the range.
 		 * 40 bits is the architectural limit of a PFN
@@ -896,11 +902,9 @@ static unsigned long handle_pg_range(unsigned long pg_start,
 
 		if ((has->ha_end_pfn < has->end_pfn) && (pfn_cnt > 0)) {
 			/*
-			 * We have some residual hot add range
-			 * that needs to be hot added; hot add
-			 * it now. Hot add a multiple of
-			 * of HA_CHUNK that fully covers the pages
-			 * we have.
+			 * We have some residual hot add range that needs to be
+			 * hot added; hot add it now. Hot add a multiple of
+			 * HA_CHUNK that fully covers the pages we have.
 			 */
 			size = (has->end_pfn - has->ha_end_pfn);
 			if (pfn_cnt <= size) {
@@ -1092,15 +1096,15 @@ static unsigned long compute_balloon_floor(void)
 	unsigned long nr_pages = totalram_pages();
 #define MB2PAGES(mb) ((mb) << (20 - PAGE_SHIFT))
 	/* Simple continuous piecewiese linear function:
-	 *  max MiB -> min MiB  gradient
-	 *       0         0
-	 *      16        16
-	 *      32        24
-	 *     128        72    (1/2)
-	 *     512       168    (1/4)
-	 *    2048       360    (1/8)
-	 *    8192       744    (1/16)
-	 *   32768      1512	(1/32)
+	 *  max MiB -> min MiB	gradient
+	 *	 0	   0
+	 *	16	  16
+	 *	32	  24
+	 *     128	  72	(1/2)
+	 *     512	 168	(1/4)
+	 *    2048	 360	(1/8)
+	 *    8192	 744	(1/16)
+	 *   32768	1512	(1/32)
 	 */
 	if (nr_pages < MB2PAGES(128))
 		min_pages = MB2PAGES(8) + (nr_pages >> 1);
@@ -1598,7 +1602,7 @@ static int hv_free_page_report(struct page_reporting_dev_info *pr_dev_info,
 		return -ENOSPC;
 	}
 
-	hint->type = HV_EXT_MEMORY_HEAT_HINT_TYPE_COLD_DISCARD;
+	hint->heat_type = HV_EXTMEM_HEAT_HINT_COLD_DISCARD;
 	hint->reserved = 0;
 	for_each_sg(sgl, sg, nents, i) {
 		union hv_gpa_page_range *range;
@@ -1614,7 +1618,7 @@ static int hv_free_page_report(struct page_reporting_dev_info *pr_dev_info,
 			page_to_hvpfn(sg_page(sg)) >> HV_MIN_PAGE_REPORTING_ORDER;
 	}
 
-	status = hv_do_rep_hypercall(HV_EXT_CALL_MEMORY_HEAT_HINT, nents, 0,
+	status = hv_do_rep_hypercall(HV_EXTCALL_MEMORY_HEAT_HINT, nents, 0,
 				     hint, NULL);
 	local_irq_restore(flags);
 	if ((status & HV_HYPERCALL_RESULT_MASK) != HV_STATUS_SUCCESS) {
@@ -1964,7 +1968,7 @@ static const struct hv_vmbus_device_id id_table[] = {
 
 MODULE_DEVICE_TABLE(vmbus, id_table);
 
-static  struct hv_driver balloon_drv = {
+static	struct hv_driver balloon_drv = {
 	.name = "hv_balloon",
 	.id_table = id_table,
 	.probe =  balloon_probe,
