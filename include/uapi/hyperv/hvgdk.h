@@ -6,6 +6,7 @@
 #define _UAPI_HV_HVGDK_H
 
 #include "hvgdk_mini.h"
+#include "hvgdk_ext.h"
 
 #define HVGDK_H_VERSION			(25125)
 
