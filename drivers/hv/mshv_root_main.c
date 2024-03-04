@@ -528,6 +528,33 @@ mshv_vp_wait_for_hv_kick(struct mshv_vp *vp)
 	return 0;
 }
 
+static int
+mshv_vp_xfer_to_guest_mode(struct mshv_vp *vp)
+{
+	const unsigned long work_flags = _TIF_NEED_RESCHED |
+					 _TIF_SIGPENDING |
+					 _TIF_NOTIFY_SIGNAL |
+					 _TIF_NOTIFY_RESUME;
+	unsigned long ti_work;
+
+	ti_work = read_thread_flags();
+	while (ti_work & work_flags) {
+		int ret;
+
+		ret = mshv_xfer_to_guest_mode_handle_work(ti_work);
+		if (ret)
+			return ret;
+
+		trace_mshv_root_sched_handle_work(ret,
+				vp->partition->id, vp->index,
+				ti_work);
+
+		ti_work = read_thread_flags();
+	}
+
+	return 0;
+}
+
 static long
 mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 {
@@ -549,32 +576,13 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 	do {
 		u32 flags = 0;
 		struct hv_output_dispatch_vp output;
-		unsigned long irq_flags, ti_work;
-		const unsigned long work_flags = _TIF_NEED_RESCHED |
-						 _TIF_SIGPENDING |
-						 _TIF_NOTIFY_SIGNAL |
-						 _TIF_NOTIFY_RESUME;
+		unsigned long irq_flags;
+
+		ret = mshv_vp_xfer_to_guest_mode(vp);
+		if (ret)
+			break;
 
 		local_irq_save(irq_flags);
-
-		ti_work = READ_ONCE(current_thread_info()->flags);
-		if (unlikely(ti_work & work_flags) || need_resched()) {
-			local_irq_restore(irq_flags);
-			preempt_enable();
-
-			ret = mshv_xfer_to_guest_mode_handle_work(ti_work);
-
-			trace_mshv_root_sched_handle_work(ret,
-					vp->partition->id, vp->index,
-					ti_work);
-
-			preempt_disable();
-
-			if (ret)
-				break;
-
-			continue;
-		}
 
 		/*
 		 * Note the lack of local_irq_restore after the dispatch
