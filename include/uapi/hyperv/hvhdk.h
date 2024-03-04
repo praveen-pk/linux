@@ -15,6 +15,7 @@
 #define HVHDK_H_VERSION			(25212)
 
 enum hv_stats_hypervisor_counters {		/* HV_HYPERVISOR_COUNTER */
+#if defined(__x86_64__) || defined(__aarch64__)
 	HvLogicalProcessors			= 1,
 	HvPartitions				= 2,
 	HvTotalPages				= 3,
@@ -26,9 +27,11 @@ enum hv_stats_hypervisor_counters {		/* HV_HYPERVISOR_COUNTER */
 	HvIOSpacePages				= 10,
 	HvNonEssentialPagesForDump		= 11,
 	HvSubsumedPages				= 12,
+#endif
 };
 
 enum hv_stats_partition_counters {		/* HV_PROCESS_COUNTER */
+#if defined(__x86_64__) || defined(__aarch64__)
 	PartitionVirtualProcessors		= 1,
 	PartitionTlbSize			= 3,
 	PartitionAddressSpaces			= 4,
@@ -54,6 +57,8 @@ enum hv_stats_partition_counters {		/* HV_PROCESS_COUNTER */
 	PartitionDeviceInterruptThrottleEvents	= 24,
 	PartitionSkippedTimerTicks		= 25,
 	PartitionPartitionId			= 26,
+#endif
+#if defined(__x86_64__)
 	PartitionNestedTlbSize			= 27,
 	PartitionRecommendedNestedTlbSize	= 28,
 	PartitionNestedTlbFreeListSize		= 29,
@@ -61,9 +66,13 @@ enum hv_stats_partition_counters {		/* HV_PROCESS_COUNTER */
 	PartitionPagesShattered			= 31,
 	PartitionPagesRecombined		= 32,
 	PartitionHwpRequestValue		= 33,
+#elif defined(__aarch64__)
+	PartitionHwpRequestValue		= 27,
+#endif
 };
 
 enum hv_stats_vp_counters {			/* HV_THREAD_COUNTER */
+#if defined(__x86_64__) || defined(__aarch64__)
 	VpTotalRunTime					= 1,
 	VpHypervisorRunTime				= 2,
 	VpRemoteNodeRunTime				= 3,
@@ -71,6 +80,8 @@ enum hv_stats_vp_counters {			/* HV_THREAD_COUNTER */
 	VpIdealCpu					= 5,
 	VpHypercallsCount				= 7,
 	VpHypercallsTime				= 8,
+#endif
+#if defined(__x86_64__)
 	VpPageInvalidationsCount			= 9,
 	VpPageInvalidationsTime				= 10,
 	VpControlRegisterAccessesCount			= 11,
@@ -262,9 +273,100 @@ enum hv_stats_vp_counters {			/* HV_THREAD_COUNTER */
 	VpDeviceDomainHypercalls			= 197,
 	VpDepositHypercalls				= 198,
 	VpSvmHypercalls					= 199,
+	VpBusLockAcquisitionCount			= 200,
+	VpRootDispatchThreadBlocked			= 201,
+#elif defined(__aarch64__)
+	VpSysRegAccessesCount				= 9,
+	VpSysRegAccessesTime				= 10,
+	VpSmcInstructionsCount				= 11,
+	VpSmcInstructionsTime				= 12,
+	VpOtherInterceptsCount				= 13,
+	VpOtherInterceptsTime				= 14,
+	VpExternalInterruptsCount			= 15,
+	VpExternalInterruptsTime			= 16,
+	VpPendingInterruptsCount			= 17,
+	VpPendingInterruptsTime				= 18,
+	VpGuestPageTableMaps				= 19,
+	VpLargePageTlbFills				= 20,
+	VpSmallPageTlbFills				= 21,
+	VpReflectedGuestPageFaults			= 22,
+	VpMemoryInterceptMessages			= 23,
+	VpOtherMessages					= 24,
+	VpLogicalProcessorMigrations			= 25,
+	VpAddressDomainFlushes				= 26,
+	VpAddressSpaceFlushes				= 27,
+	VpSyntheticInterrupts				= 28,
+	VpVirtualInterrupts				= 29,
+	VpApicSelfIpisSent				= 30,
+	VpGpaSpaceHypercalls				= 31,
+	VpLogicalProcessorHypercalls			= 32,
+	VpLongSpinWaitHypercalls			= 33,
+	VpOtherHypercalls				= 34,
+	VpSyntheticInterruptHypercalls			= 35,
+	VpVirtualInterruptHypercalls			= 36,
+	VpVirtualMmuHypercalls				= 37,
+	VpVirtualProcessorHypercalls			= 38,
+	VpHardwareInterrupts				= 39,
+	VpNestedPageFaultInterceptsCount		= 40,
+	VpNestedPageFaultInterceptsTime			= 41,
+	VpLogicalProcessorDispatches			= 42,
+	VpWaitingForCpuTime				= 43,
+	VpExtendedHypercalls				= 44,
+	VpExtendedHypercallInterceptMessages		= 45,
+	VpMbecNestedPageTableSwitches			= 46,
+	VpOtherReflectedGuestExceptions			= 47,
+	VpGlobalIoTlbFlushes				= 48,
+	VpGlobalIoTlbFlushCost				= 49,
+	VpLocalIoTlbFlushes				= 50,
+	VpLocalIoTlbFlushCost				= 51,
+	VpFlushGuestPhysicalAddressSpaceHypercalls	= 52,
+	VpFlushGuestPhysicalAddressListHypercalls	= 53,
+	VpPostedInterruptNotifications			= 54,
+	VpPostedInterruptScans				= 55,
+	VpTotalCoreRunTime				= 56,
+	VpMaximumRunTime				= 57,
+	VpWaitingForCpuTimeBucket0			= 58,
+	VpWaitingForCpuTimeBucket1			= 59,
+	VpWaitingForCpuTimeBucket2			= 60,
+	VpWaitingForCpuTimeBucket3			= 61,
+	VpWaitingForCpuTimeBucket4			= 62,
+	VpWaitingForCpuTimeBucket5			= 63,
+	VpWaitingForCpuTimeBucket6			= 64,
+	VpHwpRequestContextSwitches			= 65,
+	VpPlaceholder2					= 66,
+	VpPlaceholder3					= 67,
+	VpPlaceholder4					= 68,
+	VpPlaceholder5					= 69,
+	VpPlaceholder6					= 70,
+	VpPlaceholder7					= 71,
+	VpPlaceholder8					= 72,
+	VpContentionTime				= 73,
+	VpWakeUpTime					= 74,
+	VpSchedulingPriority				= 75,
+	VpVtl1DispatchCount				= 76,
+	VpVtl2DispatchCount				= 77,
+	VpVtl2DispatchBucket0				= 78,
+	VpVtl2DispatchBucket1				= 79,
+	VpVtl2DispatchBucket2				= 80,
+	VpVtl2DispatchBucket3				= 81,
+	VpVtl2DispatchBucket4				= 82,
+	VpVtl2DispatchBucket5				= 83,
+	VpVtl2DispatchBucket6				= 84,
+	VpVtl1RunTime					= 85,
+	VpVtl2RunTime					= 86,
+	VpIommuHypercalls				= 87,
+	VpCpuGroupHypercalls				= 88,
+	VpVsmHypercalls					= 89,
+	VpEventLogHypercalls				= 90,
+	VpDeviceDomainHypercalls			= 91,
+	VpDepositHypercalls				= 92,
+	VpSvmHypercalls					= 93,
+	VpRootDispatchThreadBlocked			= 94,
+#endif
 };
 
 enum hv_stats_lp_counters {			/* HV_CPU_COUNTER */
+#if defined(__x86_64__) || defined(__aarch64__)
 	LpGlobalTime				= 1,
 	LpTotalRunTime				= 2,
 	LpHypervisorRunTime			= 3,
@@ -295,6 +397,8 @@ enum hv_stats_lp_counters {			/* HV_CPU_COUNTER */
 	LpProximityDomainId			= 28,
 	LpPostedInterruptNotifications		= 29,
 	LpBranchPredictorFlushes		= 30,
+#endif
+#if defined(__x86_64__)
 	LpL1DataCacheFlushes			= 31,
 	LpImmediateL1DataCacheFlushes		= 32,
 	LpMbFlushes				= 33,
@@ -316,6 +420,24 @@ enum hv_stats_lp_counters {			/* HV_CPU_COUNTER */
 	LpReserveGroupId			= 49,
 	LpRunningPriority			= 50,
 	LpPerfmonInterruptCount			= 51,
+#elif defined(__aarch64__)
+	LpCounterRefreshSequenceNumber		= 31,
+	LpCounterRefreshReferenceTime		= 32,
+	LpIdleAccumulationSnapshot		= 33,
+	LpActiveTscCountSnapshot		= 34,
+	LpHwpRequestContextSwitches		= 35,
+	LpPlaceholder2				= 36,
+	LpPlaceholder3				= 37,
+	LpPlaceholder4				= 38,
+	LpPlaceholder5				= 39,
+	LpPlaceholder6				= 40,
+	LpPlaceholder7				= 41,
+	LpPlaceholder8				= 42,
+	LpPlaceholder9				= 43,
+	LpSchLocalRunListSize			= 44,
+	LpReserveGroupId			= 45,
+	LpRunningPriority			= 46,
+#endif
 };
 
 /* Bits for dirty mask of hv_vp_register_page */
