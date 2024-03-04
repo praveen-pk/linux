@@ -491,6 +491,27 @@ hv_call_vp_dispatch(u64 partition_id, u32 vp_index,
 	return hv_status_to_errno(status);
 }
 
+static int
+mshv_vp_clear_explicit_suspend(struct mshv_vp *vp)
+{
+	struct hv_register_assoc explicit_suspend = {
+		.name = HV_REGISTER_EXPLICIT_SUSPEND,
+		.value.explicit_suspend.suspended = 0,
+	};
+	int ret;
+
+	ret = mshv_set_vp_registers(vp->index, vp->partition->id,
+				    1, &explicit_suspend);
+
+	trace_mshv_root_sched_unsuspend_vp(ret, vp->partition->id, vp->index);
+
+	if (ret)
+		pr_err("%s: failed to unsuspend partition %llu vp %u\n",
+		       __func__, vp->partition->id, vp->index);
+
+	return ret;
+}
+
 static long
 mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 {
@@ -509,22 +530,9 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 			 * Since the latter case is not supported, we simply
 			 * clear it here.
 			 */
-			struct hv_register_assoc explicit_suspend = {
-				.name = HV_REGISTER_EXPLICIT_SUSPEND,
-				.value.explicit_suspend.suspended = 0,
-			};
-
-			ret = mshv_set_vp_registers(vp->index, vp->partition->id,
-						    1, &explicit_suspend);
-
-			trace_mshv_root_sched_unsuspend_vp(ret, vp->partition->id, vp->index);
-
-			if (ret) {
-				pr_err("%s: failed to unsuspend partition %llu vp %u\n",
-					__func__, vp->partition->id, vp->index);
-				complete = true;
-				break;
-			}
+			ret = mshv_vp_clear_explicit_suspend(vp);
+			if (ret)
+				return ret;
 
 			/* Wait for the hypervisor to clear the blocked state */
 			ret = wait_event_interruptible(vp->run.suspend_queue,
