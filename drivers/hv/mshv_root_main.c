@@ -534,7 +534,6 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 	struct hv_output_dispatch_vp output;
 	long ret = 0;
 	bool complete = false;
-	bool got_intercept_message = false;
 
 	while (!complete) {
 		if (vp->run.flags.blocked_by_explicit_suspend) {
@@ -570,7 +569,7 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 
 		preempt_disable();
 
-		while (!vp->run.flags.blocked_by_explicit_suspend && !got_intercept_message) {
+		do {
 			u32 flags = 0;
 			unsigned long irq_flags, ti_work;
 			const unsigned long work_flags = _TIF_NEED_RESCHED |
@@ -641,14 +640,14 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 			} else {
 				/* HV_VP_DISPATCH_STATE_READY */
 				if (output.dispatch_event == HV_VP_DISPATCH_EVENT_INTERCEPT)
-					got_intercept_message = 1;
+					vp->run.flags.intercept_suspend = 1;
 			}
-		}
+		} while (!vp->run.flags.blocked_by_explicit_suspend &&
+			 !vp->run.flags.intercept_suspend);
 
 		preempt_enable();
 
-		if (got_intercept_message) {
-			vp->run.flags.intercept_suspend = 1;
+		if (vp->run.flags.intercept_suspend) {
 			if (copy_to_user(ret_message, vp->intercept_message_page,
 					sizeof(struct hv_message)))
 				ret =  -EFAULT;
