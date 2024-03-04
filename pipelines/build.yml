@@ -18,18 +18,26 @@ parameters:
     type: boolean
     default: False
     displayName: Run Stressng on Guests
-  - name: run_ch_community_tests
-    type: boolean
-    default: True
-    displayName: Run CH community Tests
-  - name: run_ch_perf_tests
+  - name: run_ch_integration_tests
+    displayName: Run CH Integration tests
     type: boolean
     default: False
-    displayName: Run CH Perf Tests
-  - name: run_mshv_tests
+  - name: run_ch_live_migration_tests
+    displayName: Run CH Live Migration tests
+    type: boolean
+    default: False
+  - name: run_ch_perf_tests
+    displayName: Run CH Perf tests on Dom0
+    type: boolean
+    default: False
+  - name: run_mshv_functional_tests
+    displayName: Run MSHV Functional tests
     type: boolean
     default: True
-    displayName: Run MSHV Tests
+  - name: run_mshv_stress_tests
+    displayName: Run MSHV STRESS tests
+    type: boolean
+    default: False
 
 resources:
   repositories:
@@ -518,22 +526,45 @@ stages:
         value: ""
       ${{ else }}:
         # Following are VM life cycle tests from ch integration tests
-        value: 'common_parallel::test_api_create_boot,common_parallel::test_api_pause_resume,common_parallel::test_api_shutdown,common_parallel::test_macvtap,common_parallel::test_focal_ovmf,common_parallel::test_snapshot_restore_basic'
+        value: 'common_parallel::test_api_create_boot,common_parallel::test_api_pause_resume,common_parallel::test_api_shutdown,common_parallel::test_macvtap,common_parallel::test_snapshot_restore_basic'
 
   jobs:
     - template: virtstack\pipelines\templates\linux_dom0_test_template.yml@lisa
       parameters:
         checkout_repo: "lisa"
-        azure_vm_size: ${{ parameters.azure_vm_size }}
-        run_functional_tests: ${{ parameters.run_functional_tests }}
-        run_network_perf_tests: ${{ parameters.run_network_perf_tests }}
-        run_storage_perf_tests: ${{ parameters.run_storage_perf_tests }}
-        run_stress_ng_tests: ${{ parameters.run_stress_ng_tests }}
-        run_ch_community_tests: ${{ parameters.run_ch_community_tests }}
-        use_ms_clh_repo: "yes"
-        ch_subtest_include_list: $(ch_integration_tests)
-        lisa_exclude_list: 'verify_cloud_hypervisor_live_migration_tests,stress_mshv_vm_create'
-        run_ch_perf_tests: ${{ parameters.run_ch_perf_tests }}
-        run_mshv_tests: ${{ parameters.run_mshv_tests }}
         kernel_change_needed: True
         kernel_params: $(kernel_params_to_lisa)
+        use_ms_clh_repo: "yes"
+        use_ms_guest_kernel: "YES"
+        system_access_token: $(System.AccessToken)
+        run_on_intel: True
+        intel_vm_size_perf: "Standard_D96ds_v5"
+        ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
+          intel_vm_size_func: "Standard_D16ds_v5"
+          run_functional_tests: True
+          run_ch_integration_tests: True
+          run_mshv_functional_tests: True
+          ch_subtest_include_list: $(ch_integration_tests)
+        ${{ if eq(variables['Build.Reason'], 'IndividualCI') }}:
+          intel_vm_size_func: "Standard_D32ds_v5"
+          run_functional_tests: True
+          run_network_perf_tests: True
+          run_storage_perf_tests: True
+          run_stress_ng_tests: True
+          run_ch_integration_tests: True
+          run_ch_live_migration_tests: False
+          run_ch_perf_tests: True
+          run_mshv_functional_tests: True
+          run_mshv_stress_tests: True
+        ${{ if eq(variables['Build.Reason'], 'Manual') }}:
+          intel_vm_size_func: "Standard_D32ds_v5"
+          run_functional_tests: ${{ parameters.run_functional_tests }}
+          run_network_perf_tests: ${{ parameters.run_network_perf_tests }}
+          run_storage_perf_tests: ${{ parameters.run_storage_perf_tests }}
+          run_stress_ng_tests: ${{ parameters.run_stress_ng_tests }}
+          run_ch_integration_tests: ${{ parameters.run_ch_integration_tests }}
+          run_ch_live_migration_tests: ${{ parameters.run_ch_live_migration_tests }}
+          run_ch_perf_tests: ${{ parameters.run_ch_perf_tests }}
+          run_mshv_functional_tests: ${{ parameters.run_mshv_functional_tests }}
+          run_mshv_stress_tests: ${{ parameters.run_mshv_stress_tests }}
+
