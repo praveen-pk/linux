@@ -409,13 +409,13 @@ struct hv_vp_register_page {
 	__u64 instruction_emulation_hints;
 	__u64 xfem;
 
-#elif defined(__ARM64__)
+#elif defined(__aarch64__)
 	/* Not yet supported in ARM */
 #endif
 
 } __packed;
 
-#if defined(__ARM64__)
+#if defined(__aarch64__)
 #define HV_PARTITION_PROCESSOR_FEATURES_BANKS 1
 #else
 #define HV_PARTITION_PROCESSOR_FEATURES_BANKS 2
@@ -423,7 +423,7 @@ struct hv_vp_register_page {
 
 union hv_partition_processor_features {
 	__u64 as_uint64[HV_PARTITION_PROCESSOR_FEATURES_BANKS];
-#if defined(__ARM64__)
+#if defined(__aarch64__)
 	struct {
 		__u64 asid16 : 1;
 		__u64 tgran16 : 1;
@@ -1238,7 +1238,7 @@ union hv_interrupt_control {
 		__u32 interrupt_type; /* enum hv_interrupt type */
 		__u32 level_triggered : 1;
 		__u32 logical_dest_mode : 1;
-#if defined(__ARM64__)
+#if defined(__aarch64__)
 		__u32 asserted : 1;
 		__u32 rsvd : 29;
 #else
