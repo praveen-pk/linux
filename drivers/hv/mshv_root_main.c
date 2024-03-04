@@ -492,8 +492,6 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 				break;
 			}
 
-			vp->run.flags.explicit_suspend = 0;
-
 			/* Wait for the hypervisor to clear the blocked state */
 			ret = wait_event_interruptible(vp->run.suspend_queue,
 						       vp->run.kicked_by_hv == 1);
