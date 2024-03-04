@@ -512,6 +512,22 @@ mshv_vp_clear_explicit_suspend(struct mshv_vp *vp)
 	return ret;
 }
 
+static int
+mshv_vp_wait_for_hv_kick(struct mshv_vp *vp)
+{
+	int ret;
+
+	ret = wait_event_interruptible(vp->run.suspend_queue,
+				       vp->run.kicked_by_hv == 1);
+	if (ret)
+		return -EINTR;
+
+	vp->run.flags.blocked = 0;
+	vp->run.kicked_by_hv = 0;
+
+	return 0;
+}
+
 static long
 mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 {
@@ -534,15 +550,10 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 			if (ret)
 				return ret;
 
-			/* Wait for the hypervisor to clear the blocked state */
-			ret = wait_event_interruptible(vp->run.suspend_queue,
-						       vp->run.kicked_by_hv == 1);
-			if (ret) {
-				ret = -EINTR;
-				complete = true;
-				break;
-			}
-			vp->run.kicked_by_hv = 0;
+			ret = mshv_vp_wait_for_hv_kick(vp);
+			if (ret)
+				return ret;
+
 			vp->run.flags.blocked_by_explicit_suspend = 0;
 		}
 
@@ -552,15 +563,9 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 			 * for the hypervisor to clear the blocked state before
 			 * dispatching it.
 			 */
-			ret = wait_event_interruptible(vp->run.suspend_queue,
-					vp->run.kicked_by_hv == 1);
-			if (ret) {
-				ret = -EINTR;
-				complete = true;
-				break;
-			}
-			vp->run.kicked_by_hv = 0;
-			vp->run.flags.blocked = 0;
+			ret = mshv_vp_wait_for_hv_kick(vp);
+			if (ret)
+				return ret;
 		}
 
 		preempt_disable();
@@ -627,15 +632,11 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 						  "%s: vp#%d: unexpected explicit suspend\n", __func__, vp->index);
 				} else {
 					vp->run.flags.blocked = 1;
-					ret = wait_event_interruptible(vp->run.suspend_queue,
-							vp->run.kicked_by_hv == 1);
+					ret = mshv_vp_wait_for_hv_kick(vp);
 					if (ret) {
-						ret = -EINTR;
 						complete = true;
 						break;
 					}
-					vp->run.flags.blocked = 0;
-					vp->run.kicked_by_hv = 0;
 				}
 			} else {
 				/* HV_VP_DISPATCH_STATE_READY */
