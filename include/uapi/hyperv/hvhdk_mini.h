@@ -75,65 +75,65 @@ union hv_stats_object_identity {
 
 enum hv_partition_property_code {
 	/* Privilege properties */
-	HV_PARTITION_PROPERTY_PRIVILEGE_FLAGS				= 0x00010000,
-	HV_PARTITION_PROPERTY_SYNTHETIC_PROC_FEATURES			= 0x00010001,
+    HV_PARTITION_PROPERTY_PRIVILEGE_FLAGS			= 0x00010000,
+    HV_PARTITION_PROPERTY_SYNTHETIC_PROC_FEATURES		= 0x00010001,
 
-	/* Scheduling properties */
-	HV_PARTITION_PROPERTY_SUSPEND					= 0x00020000,
-	HV_PARTITION_PROPERTY_CPU_RESERVE				= 0x00020001,
-	HV_PARTITION_PROPERTY_CPU_CAP					= 0x00020002,
-	HV_PARTITION_PROPERTY_CPU_WEIGHT				= 0x00020003,
-	HV_PARTITION_PROPERTY_CPU_GROUP_ID				= 0x00020004,
+    /* Scheduling properties */
+    HV_PARTITION_PROPERTY_SUSPEND				= 0x00020000,
+    HV_PARTITION_PROPERTY_CPU_RESERVE				= 0x00020001,
+    HV_PARTITION_PROPERTY_CPU_CAP				= 0x00020002,
+    HV_PARTITION_PROPERTY_CPU_WEIGHT				= 0x00020003,
+    HV_PARTITION_PROPERTY_CPU_GROUP_ID				= 0x00020004,
 
-	/* Time properties */
-	HV_PARTITION_PROPERTY_TIME_FREEZE				= 0x00030003,
+    /* Time properties */
+    HV_PARTITION_PROPERTY_TIME_FREEZE				= 0x00030003,
 
-	/* Debugging properties */
-	HV_PARTITION_PROPERTY_DEBUG_CHANNEL_ID				= 0x00040000,
+    /* Debugging properties */
+    HV_PARTITION_PROPERTY_DEBUG_CHANNEL_ID			= 0x00040000,
 
-	/* Resource properties */
-	HV_PARTITION_PROPERTY_VIRTUAL_TLB_PAGE_COUNT			= 0x00050000,
-	HV_PARTITION_PROPERTY_VSM_CONFIG				= 0x00050001,
-	HV_PARTITION_PROPERTY_ZERO_MEMORY_ON_RESET			= 0x00050002,
-	HV_PARTITION_PROPERTY_PROCESSORS_PER_SOCKET			= 0x00050003,
-	HV_PARTITION_PROPERTY_NESTED_TLB_SIZE				= 0x00050004,
-	HV_PARTITION_PROPERTY_GPA_PAGE_ACCESS_TRACKING			= 0x00050005,
-	HV_PARTITION_PROPERTY_VSM_PERMISSIONS_DIRTY_SINCE_LAST_QUERY	= 0x00050006,
-	HV_PARTITION_PROPERTY_SGX_LAUNCH_CONTROL_CONFIG			= 0x00050007,
-	HV_PARTITION_PROPERTY_DEFAULT_SGX_LAUNCH_CONTROL0		= 0x00050008,
-	HV_PARTITION_PROPERTY_DEFAULT_SGX_LAUNCH_CONTROL1		= 0x00050009,
-	HV_PARTITION_PROPERTY_DEFAULT_SGX_LAUNCH_CONTROL2		= 0x0005000a,
-	HV_PARTITION_PROPERTY_DEFAULT_SGX_LAUNCH_CONTROL3		= 0x0005000b,
-	HV_PARTITION_PROPERTY_ISOLATION_STATE				= 0x0005000c,
-	HV_PARTITION_PROPERTY_ISOLATION_CONTROL				= 0x0005000d,
-	HV_PARTITION_PROPERTY_ALLOCATION_ID				= 0x0005000e,
-	HV_PARTITION_PROPERTY_MONITORING_ID				= 0x0005000f,
-	HV_PARTITION_PROPERTY_IMPLEMENTED_PHYSICAL_ADDRESS_BITS		= 0x00050010,
-	HV_PARTITION_PROPERTY_NON_ARCHITECTURAL_CORE_SHARING		= 0x00050011,
-	HV_PARTITION_PROPERTY_HYPERCALL_DOORBELL_PAGE			= 0x00050012,
-	HV_PARTITION_PROPERTY_ISOLATION_POLICY				= 0x00050014,
-	HV_PARTITION_PROPERTY_UNIMPLEMENTED_MSR_ACTION                  = 0x00050017,
-	HV_PARTITION_PROPERTY_SEV_VMGEXIT_OFFLOADS			= 0x00050022,
+    /* Resource properties */
+    HV_PARTITION_PROPERTY_VIRTUAL_TLB_PAGE_COUNT		= 0x00050000,
+    HV_PARTITION_PROPERTY_VSM_CONFIG				= 0x00050001,
+    HV_PARTITION_PROPERTY_ZERO_MEMORY_ON_RESET			= 0x00050002,
+    HV_PARTITION_PROPERTY_PROCESSORS_PER_SOCKET			= 0x00050003,
+    HV_PARTITION_PROPERTY_NESTED_TLB_SIZE			= 0x00050004,
+    HV_PARTITION_PROPERTY_GPA_PAGE_ACCESS_TRACKING		= 0x00050005,
+    HV_PARTITION_PROPERTY_VSM_PERMISSIONS_DIRTY_SINCE_LAST_QUERY = 0x00050006,
+    HV_PARTITION_PROPERTY_SGX_LAUNCH_CONTROL_CONFIG		= 0x00050007,
+    HV_PARTITION_PROPERTY_DEFAULT_SGX_LAUNCH_CONTROL0		= 0x00050008,
+    HV_PARTITION_PROPERTY_DEFAULT_SGX_LAUNCH_CONTROL1		= 0x00050009,
+    HV_PARTITION_PROPERTY_DEFAULT_SGX_LAUNCH_CONTROL2		= 0x0005000a,
+    HV_PARTITION_PROPERTY_DEFAULT_SGX_LAUNCH_CONTROL3		= 0x0005000b,
+    HV_PARTITION_PROPERTY_ISOLATION_STATE			= 0x0005000c,
+    HV_PARTITION_PROPERTY_ISOLATION_CONTROL			= 0x0005000d,
+    HV_PARTITION_PROPERTY_ALLOCATION_ID				= 0x0005000e,
+    HV_PARTITION_PROPERTY_MONITORING_ID				= 0x0005000f,
+    HV_PARTITION_PROPERTY_IMPLEMENTED_PHYSICAL_ADDRESS_BITS	= 0x00050010,
+    HV_PARTITION_PROPERTY_NON_ARCHITECTURAL_CORE_SHARING	= 0x00050011,
+    HV_PARTITION_PROPERTY_HYPERCALL_DOORBELL_PAGE		= 0x00050012,
+    HV_PARTITION_PROPERTY_ISOLATION_POLICY			= 0x00050014,
+    HV_PARTITION_PROPERTY_UNIMPLEMENTED_MSR_ACTION		= 0x00050017,
+    HV_PARTITION_PROPERTY_SEV_VMGEXIT_OFFLOADS			= 0x00050022,
 
-	/* Compatibility properties */
-	HV_PARTITION_PROPERTY_PROCESSOR_VENDOR				= 0x00060000,
-	HV_PARTITION_PROPERTY_PROCESSOR_FEATURES_DEPRECATED		= 0x00060001,
-	HV_PARTITION_PROPERTY_PROCESSOR_XSAVE_FEATURES			= 0x00060002,
-	HV_PARTITION_PROPERTY_PROCESSOR_CL_FLUSH_SIZE			= 0x00060003,
-	HV_PARTITION_PROPERTY_ENLIGHTENMENT_MODIFICATIONS		= 0x00060004,
-	HV_PARTITION_PROPERTY_COMPATIBILITY_VERSION			= 0x00060005,
-	HV_PARTITION_PROPERTY_PHYSICAL_ADDRESS_WIDTH			= 0x00060006,
-	HV_PARTITION_PROPERTY_XSAVE_STATES				= 0x00060007,
-	HV_PARTITION_PROPERTY_MAX_XSAVE_DATA_SIZE			= 0x00060008,
-	HV_PARTITION_PROPERTY_PROCESSOR_CLOCK_FREQUENCY			= 0x00060009,
-	HV_PARTITION_PROPERTY_PROCESSOR_FEATURES0			= 0x0006000a,
-	HV_PARTITION_PROPERTY_PROCESSOR_FEATURES1			= 0x0006000b,
+    /* Compatibility properties */
+    HV_PARTITION_PROPERTY_PROCESSOR_VENDOR			= 0x00060000,
+    HV_PARTITION_PROPERTY_PROCESSOR_FEATURES_DEPRECATED		= 0x00060001,
+    HV_PARTITION_PROPERTY_PROCESSOR_XSAVE_FEATURES		= 0x00060002,
+    HV_PARTITION_PROPERTY_PROCESSOR_CL_FLUSH_SIZE		= 0x00060003,
+    HV_PARTITION_PROPERTY_ENLIGHTENMENT_MODIFICATIONS		= 0x00060004,
+    HV_PARTITION_PROPERTY_COMPATIBILITY_VERSION			= 0x00060005,
+    HV_PARTITION_PROPERTY_PHYSICAL_ADDRESS_WIDTH		= 0x00060006,
+    HV_PARTITION_PROPERTY_XSAVE_STATES				= 0x00060007,
+    HV_PARTITION_PROPERTY_MAX_XSAVE_DATA_SIZE			= 0x00060008,
+    HV_PARTITION_PROPERTY_PROCESSOR_CLOCK_FREQUENCY		= 0x00060009,
+    HV_PARTITION_PROPERTY_PROCESSOR_FEATURES0			= 0x0006000a,
+    HV_PARTITION_PROPERTY_PROCESSOR_FEATURES1			= 0x0006000b,
 
-	/* Guest software properties */
-	HV_PARTITION_PROPERTY_GUEST_OS_ID				= 0x00070000,
+    /* Guest software properties */
+    HV_PARTITION_PROPERTY_GUEST_OS_ID				= 0x00070000,
 
-	/* Nested virtualization properties */
-	HV_PARTITION_PROPERTY_PROCESSOR_VIRTUALIZATION_FEATURES		= 0x00080000,
+    /* Nested virtualization properties */
+    HV_PARTITION_PROPERTY_PROCESSOR_VIRTUALIZATION_FEATURES	= 0x00080000,
 };
 
 enum hv_sleep_state {
@@ -149,9 +149,9 @@ enum hv_sleep_state {
 	HV_SLEEP_STATE_LOCK = 6
 };
 
-struct hv_input_enter_sleep_state {     /* HV_INPUT_ENTER_SLEEP_STATE */
-        u32 sleep_state;        /* enum hv_sleep_state */
-} __packed;     
+struct hv_input_enter_sleep_state {	/* HV_INPUT_ENTER_SLEEP_STATE */
+	u32 sleep_state;	/* enum hv_sleep_state */
+} __packed;
 
 enum hv_system_property {
 	/* Add more values when needed */
@@ -163,8 +163,8 @@ enum hv_system_property {
 	HV_SYSTEM_PROPERTY_DEVIRT_TRAMP_PA = 52,
 };
 
-#define HV_PFN_RNG_PAGEBITS 24  /* HV_SPA_PAGE_RANGE_ADDITIONAL_PAGES_BITS */
-union hv_pfn_range {            /* HV_SPA_PAGE_RANGE */
+#define HV_PFN_RNG_PAGEBITS 24	/* HV_SPA_PAGE_RANGE_ADDITIONAL_PAGES_BITS */
+union hv_pfn_range {		/* HV_SPA_PAGE_RANGE */
 	__u64 as_uint64;
 	struct {
 		/* 39:0: base pfn.  63:40: additional pages */
@@ -212,7 +212,7 @@ struct hv_input_get_system_property {
 } __packed;
 
 /* HV_SYSTEM_DIAG_LOG_BUFFER_CONFIG */
-struct  hv_system_diag_log_buffer_config {
+struct	hv_system_diag_log_buffer_config {
 	__u32 buffer_count;
 	__u32 buffer_size_in_pages;
 } __packed;
@@ -225,7 +225,7 @@ struct hv_output_get_system_property { /* HV_OUTPUT_GET_SYSTEM_PROPERTY */
 		__u64 hv_processor_feature_value;
 #endif
 		union hv_pfn_range hv_cda_info; /* CrashdumpAreaAddress */
-		__u64 hv_tramp_pa;                /* CrashdumpTrampolineAddress */
+		__u64 hv_tramp_pa;		/* CrashdumpTrampolineAddress */
 	};
 } __packed;
 
@@ -271,9 +271,9 @@ union hv_proximity_domain_info {
 } __packed;
 
 /* HvDepositMemory hypercall */
-struct hv_deposit_memory {      /* HV_INPUT_DEPOSIT_MEMORY */
-        u64 partition_id;
-        u64 gpa_page_list[];
+struct hv_deposit_memory {	/* HV_INPUT_DEPOSIT_MEMORY */
+	u64 partition_id;
+	u64 gpa_page_list[];
 } __packed;
 
 struct hv_input_withdraw_memory {
@@ -289,16 +289,16 @@ struct hv_output_withdraw_memory {
 } __packed;
 
 /* HV Map GPA (Guest Physical Address) Flags */
-#define HV_MAP_GPA_PERMISSIONS_NONE     0x0
-#define HV_MAP_GPA_READABLE             0x1
-#define HV_MAP_GPA_WRITABLE             0x2
-#define HV_MAP_GPA_KERNEL_EXECUTABLE    0x4
-#define HV_MAP_GPA_USER_EXECUTABLE      0x8
-#define HV_MAP_GPA_EXECUTABLE           0xC
-#define HV_MAP_GPA_PERMISSIONS_MASK     0xF
-#define HV_MAP_GPA_ADJUSTABLE           0x8000
-#define HV_MAP_GPA_NOT_CACHED           0x200000
-#define HV_MAP_GPA_LARGE_PAGE           0x80000000
+#define HV_MAP_GPA_PERMISSIONS_NONE	       0x0
+#define HV_MAP_GPA_READABLE		       0x1
+#define HV_MAP_GPA_WRITABLE		       0x2
+#define HV_MAP_GPA_KERNEL_EXECUTABLE	       0x4
+#define HV_MAP_GPA_USER_EXECUTABLE	       0x8
+#define HV_MAP_GPA_EXECUTABLE		       0xC
+#define HV_MAP_GPA_PERMISSIONS_MASK	       0xF
+#define HV_MAP_GPA_ADJUSTABLE		    0x8000
+#define HV_MAP_GPA_NOT_CACHED		  0x200000
+#define HV_MAP_GPA_LARGE_PAGE		0x80000000
 
 struct hv_input_map_gpa_pages {
 	__u64 target_partition_id;
@@ -402,7 +402,7 @@ struct hv_input_disable_hyp_ex {   /* HV_X64_INPUT_DISABLE_HYPERVISOR_EX */
 	__u64 arg;
 } __packed;
 
-struct hv_crashdump_area {         /* HV_CRASHDUMP_AREA */
+struct hv_crashdump_area {	   /* HV_CRASHDUMP_AREA */
 	__u32 version;
 	union {
 		__u32 flags_as_uint32;
@@ -470,7 +470,7 @@ struct hv_output_get_logical_processor_run_time {
 	__u64 hypervisor_time;
 } __packed;
 
-enum {  /* HV_SUBNODE_TYPE */
+enum {	/* HV_SUBNODE_TYPE */
     HvSubnodeAny = 0,
     HvSubnodeSocket,
     HvSubnodeCluster,
@@ -479,7 +479,7 @@ enum {  /* HV_SUBNODE_TYPE */
     HvSubnodeInvalid = -1
 };
 
-struct hv_create_vp {   /* HV_INPUT_CREATE_VP */
+struct hv_create_vp {	/* HV_INPUT_CREATE_VP */
 	u64 partition_id;
 	u32 vp_index;
 	u8 padding[3];
@@ -515,7 +515,7 @@ struct hv_input_map_device_interrupt {
 } __packed;
 
 /* HV_OUTPUT_MAP_DEVICE_INTERRUPT */
-struct hv_output_map_device_interrupt { 
+struct hv_output_map_device_interrupt {
 	struct hv_interrupt_entry interrupt_entry;
 } __packed;
 
@@ -527,17 +527,17 @@ struct hv_input_unmap_device_interrupt {
 	u32 flags;
 } __packed;
 
-#define HV_SOURCE_SHADOW_NONE               0x0
+#define HV_SOURCE_SHADOW_NONE		    0x0
 #define HV_SOURCE_SHADOW_BRIDGE_BUS_RANGE   0x1
 
 struct hv_send_ipi_ex { /* HV_INPUT_SEND_SYNTHETIC_CLUSTER_IPI_EX */
-        u32 vector;
-        u32 reserved;
-        struct hv_vpset vp_set;
+	u32 vector;
+	u32 reserved;
+	struct hv_vpset vp_set;
 } __packed;
 
 
-union hv_attdev_flags {         /* HV_ATTACH_DEVICE_FLAGS */
+union hv_attdev_flags {		/* HV_ATTACH_DEVICE_FLAGS */
 	struct {
 		__u32 logical_id : 1;
 		__u32 resvd0 : 1;
@@ -552,8 +552,8 @@ union hv_attdev_flags {         /* HV_ATTACH_DEVICE_FLAGS */
 	__u32 as_uint32;
 };
 
-union hv_dev_pci_caps {         /* HV_DEVICE_PCI_CAPABILITIES */
-        struct {
+union hv_dev_pci_caps {		/* HV_DEVICE_PCI_CAPABILITIES */
+	struct {
 		__u32 max_pasid_width : 1;
 		__u32 invalidate_qdepth : 1;
 		__u32 global_inval : 1;
@@ -563,10 +563,10 @@ union hv_dev_pci_caps {         /* HV_DEVICE_PCI_CAPABILITIES */
 	__u32 as_uint32;
 };
 
-typedef u16 hv_pci_rid;         /* HV_PCI_RID */
-typedef u16 hv_pci_segment;     /* HV_PCI_SEGMENT */
+typedef u16 hv_pci_rid;		/* HV_PCI_RID */
+typedef u16 hv_pci_segment;	/* HV_PCI_SEGMENT */
 typedef u64 hv_logical_device_id;
-union hv_pci_bdf {      /* HV_PCI_BDF */
+union hv_pci_bdf {	/* HV_PCI_BDF */
 	u16 as_uint16;
 
 	struct {
@@ -585,14 +585,14 @@ union hv_pci_bus_range {
 	};
 } __packed;
 
-enum hv_device_type {           /* HV_DEVICE_TYPE */
+enum hv_device_type {		/* HV_DEVICE_TYPE */
 	HV_DEVICE_TYPE_LOGICAL = 0,
 	HV_DEVICE_TYPE_PCI = 1,
 	HV_DEVICE_TYPE_IOAPIC = 2,
 	HV_DEVICE_TYPE_ACPI = 3,
 };
 
-union hv_device_id {            /* HV_DEVICE_ID */
+union hv_device_id {		/* HV_DEVICE_ID */
 	u64 as_uint64;
 
 	struct {
@@ -643,22 +643,22 @@ union hv_device_id {            /* HV_DEVICE_ID */
 } __packed;
 
 /* HV_INPUT_ATTACH_DEVICE */
-struct hv_input_attach_device {                        
-        __u64 partition_id;
-        union hv_device_id device_id;
-        union hv_attdev_flags attdev_flags;
-        __u8  attdev_vtl;
-        __u8  rsvd0;
-        __u16 rsvd1;
-        __u64 logical_devid;
-        union hv_dev_pci_caps dev_pcicaps;
-        __u16 pf_pci_rid;
-        __u16 resvd2;
+struct hv_input_attach_device {
+	__u64 partition_id;
+	union hv_device_id device_id;
+	union hv_attdev_flags attdev_flags;
+	__u8  attdev_vtl;
+	__u8  rsvd0;
+	__u16 rsvd1;
+	__u64 logical_devid;
+	union hv_dev_pci_caps dev_pcicaps;
+	__u16 pf_pci_rid;
+	__u16 resvd2;
 } __packed;
 
-struct hv_input_detach_device {         /* HV_INPUT_DETACH_DEVICE */
-        __u64 partition_id;
-        __u64 logical_devid;
+struct hv_input_detach_device {		/* HV_INPUT_DETACH_DEVICE */
+	__u64 partition_id;
+	__u64 logical_devid;
 } __packed;
 
 
@@ -686,7 +686,7 @@ struct hv_input_device_domain { /* HV_INPUT_DEVICE_DOMAIN */
 	union hv_device_domain_id domain_id;
 } __packed;
 
-union hv_create_device_domain_flags {   /* HV_CREATE_DEVICE_DOMAIN_FLAGS */
+union hv_create_device_domain_flags {	/* HV_CREATE_DEVICE_DOMAIN_FLAGS */
 	u32 as_uint32;
 	struct {
 		u32 forward_progress_required: 1;
@@ -695,26 +695,26 @@ union hv_create_device_domain_flags {   /* HV_CREATE_DEVICE_DOMAIN_FLAGS */
 	};
 } __packed;
 
-struct hv_input_create_device_domain {  /* HV_INPUT_CREATE_DEVICE_DOMAIN */
+struct hv_input_create_device_domain {	/* HV_INPUT_CREATE_DEVICE_DOMAIN */
 	struct hv_input_device_domain device_domain;
 	union hv_create_device_domain_flags create_device_domain_flags;
 } __packed;
 
-struct hv_input_delete_device_domain {  /* HV_INPUT_DELETE_DEVICE_DOMAIN */
+struct hv_input_delete_device_domain {	/* HV_INPUT_DELETE_DEVICE_DOMAIN */
 	struct hv_input_device_domain device_domain;
 } __packed;
 
-struct hv_input_attach_device_domain {  /* HV_INPUT_ATTACH_DEVICE_DOMAIN */
+struct hv_input_attach_device_domain {	/* HV_INPUT_ATTACH_DEVICE_DOMAIN */
 	struct hv_input_device_domain device_domain;
 	union hv_device_id device_id;
 } __packed;
 
-struct hv_input_detach_device_domain {  /* HV_INPUT_DETACH_DEVICE_DOMAIN */
+struct hv_input_detach_device_domain {	/* HV_INPUT_DETACH_DEVICE_DOMAIN */
 	u64 partition_id;
 	union hv_device_id device_id;
 } __packed;
 
-struct hv_input_map_device_gpa_pages {  /* HV_INPUT_MAP_DEVICE_GPA_PAGES */
+struct hv_input_map_device_gpa_pages {	/* HV_INPUT_MAP_DEVICE_GPA_PAGES */
 	struct hv_input_device_domain device_domain;
 	union hv_input_vtl target_vtl;
 	u8 padding[3];

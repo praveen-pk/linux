@@ -59,7 +59,7 @@ enum hv_status {
 
 
 /* TODO not in hv headers */
-#define HV_LINUX_VENDOR_ID              0x8100
+#define HV_LINUX_VENDOR_ID		0x8100
 #define HV_HYP_PAGE_SHIFT		12
 #define HV_HYP_PAGE_SIZE		BIT(HV_HYP_PAGE_SHIFT)
 #define HV_HYP_PAGE_MASK		(~(HV_HYP_PAGE_SIZE - 1))
@@ -334,14 +334,14 @@ union hv_x64_msr_hypercall_contents {
 #endif /* if defined(__x86_64__) */
 
 #if defined(__aarch64__)
-#define HV_FEATURE_GUEST_CRASH_MSR_AVAILABLE    BIT(8)
-#define HV_STIMER_DIRECT_MODE_AVAILABLE         BIT(13)
+#define HV_FEATURE_GUEST_CRASH_MSR_AVAILABLE	BIT(8)
+#define HV_STIMER_DIRECT_MODE_AVAILABLE		BIT(13)
 #endif /* #if defined(__aarch64__) */
 
 #if defined(__x86_64__)
-#define HV_MAXIMUM_PROCESSORS       2048
+#define HV_MAXIMUM_PROCESSORS	    2048
 #else
-#define HV_MAXIMUM_PROCESSORS       320
+#define HV_MAXIMUM_PROCESSORS	    320
 #endif
 
 #define HV_MAX_VP_INDEX			(HV_MAXIMUM_PROCESSORS - 1)
@@ -536,10 +536,10 @@ struct hv_tlb_flush_ex {
 } __packed;
 
 struct ms_hyperv_tsc_page {	 /* HV_REFERENCE_TSC_PAGE */
-	 volatile u32 tsc_sequence;
-	 u32 reserved1;
-	 volatile u64 tsc_scale;
-	 volatile s64 tsc_offset; 
+	volatile u32 tsc_sequence;
+	u32 reserved1;
+	volatile u64 tsc_scale;
+	volatile s64 tsc_offset;
 } __packed;
 
 /* Define the number of synthetic interrupt sources. */
@@ -548,13 +548,13 @@ struct ms_hyperv_tsc_page {	 /* HV_REFERENCE_TSC_PAGE */
 /* Hyper-V defined statically assigned SINTs */
 #define HV_SYNIC_INTERCEPTION_SINT_INDEX 0x00000000
 #define HV_SYNIC_IOMMU_FAULT_SINT_INDEX  0x00000001
-#define HV_SYNIC_VMBUS_SINT_INDEX        0x00000002
+#define HV_SYNIC_VMBUS_SINT_INDEX	 0x00000002
 #define HV_SYNIC_HAL_HV_TIMER_SINT_INDEX 0x00000003
-#define HV_SYNIC_HVL_SHARED_SINT_INDEX   0x00000004
+#define HV_SYNIC_HVL_SHARED_SINT_INDEX	 0x00000004
 #define HV_SYNIC_FIRST_UNUSED_SINT_INDEX 0x00000005
 
 /* mshv assigned SINT for doorbell */
-#define HV_SYNIC_DOORBELL_SINT_INDEX     HV_SYNIC_FIRST_UNUSED_SINT_INDEX
+#define HV_SYNIC_DOORBELL_SINT_INDEX	 HV_SYNIC_FIRST_UNUSED_SINT_INDEX
 
 #define HV_INTERRUPT_VECTOR_NONE 0xFFFFFFFF
 
@@ -1623,11 +1623,11 @@ struct hv_input_set_vp_registers {
 
 /* HvCallSendSyntheticClusterIpi hypercall */
 struct hv_send_ipi {	 /* HV_INPUT_SEND_SYNTHETIC_CLUSTER_IPI */
-	 u32 vector;	 
-	 u32 reserved;
-	 u64 cpu_mask;
+	u32 vector;
+	u32 reserved;
+	u64 cpu_mask;
 } __packed;
-					 
+
 #if defined(__x86_64__)
 union hv_msi_address_register { /* HV_MSI_ADDRESS */
 	u32 as_uint32;
@@ -1665,12 +1665,12 @@ union hv_msi_entry {	 /* HV_MSI_ENTRY */
 #elif defined(__aarch64__)
 
 union hv_msi_entry {
-        u64 as_uint64[2];
-        struct {
-                u64 address;
-                u32 data;
-                u32 reserved;
-        } __packed;
+	u64 as_uint64[2];
+	struct {
+		u64 address;
+		u32 data;
+		u32 reserved;
+	} __packed;
 };
 #endif
 
@@ -1789,9 +1789,9 @@ struct hv_input_install_intercept {
 } __packed;
 
 enum hv_eventlog_type { /* HV_EVENTLOG_TYPE */
-	HV_EVENT_LOG_TYPE_GLOBAL_SYSTEM_EVENTS  = 0x00000000,
-	HV_EVENT_LOG_TYPE_LOCAL_DIAGNOSTICS     = 0x00000001,
-	HV_EVENT_LOG_TYPE_SYSTEM_DIAGNOSTICS    = 0x00000002,
+	HV_EVENT_LOG_TYPE_GLOBAL_SYSTEM_EVENTS	= 0x00000000,
+	HV_EVENT_LOG_TYPE_LOCAL_DIAGNOSTICS	= 0x00000001,
+	HV_EVENT_LOG_TYPE_SYSTEM_DIAGNOSTICS	= 0x00000002,
 };
 
 union hv_x64_register_sev_ghcb {
