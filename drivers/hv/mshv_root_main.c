@@ -455,13 +455,47 @@ mshv_run_vp_with_hv_scheduler(struct mshv_vp *vp, void __user *ret_message,
 	return 0;
 }
 
-static long
-mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
+static int
+hv_call_vp_dispatch(u64 partition_id, u32 vp_index,
+		    u32 flags, struct hv_output_dispatch_vp *res)
 {
 	struct hv_input_dispatch_vp *input;
 	struct hv_output_dispatch_vp *output;
-	long ret = 0;
 	u64 status;
+
+	/* Preemption must be disabled at this point */
+	input = *this_cpu_ptr(root_scheduler_input);
+	output = *this_cpu_ptr(root_scheduler_output);
+
+	memset(input, 0, sizeof(*input));
+	memset(output, 0, sizeof(*output));
+
+	input->partition_id = partition_id;
+	input->vp_index = vp_index;
+	input->time_slice = 0; /* Run forever until something happens */
+	input->spec_ctrl = 0; /* TODO: set sensible flags */
+	input->flags = flags;
+
+	status = hv_do_hypercall(HVCALL_DISPATCH_VP, input, output);
+
+	trace_mshv_hvcall_dispatch_vp(status, partition_id,
+				      vp_index, flags,
+				      output->dispatch_state,
+				      output->dispatch_event);
+
+	*res = *output;
+
+	if (!hv_result_success(status))
+		pr_err("%s: status %s\n", __func__, hv_status_to_string(status));
+
+	return hv_status_to_errno(status);
+}
+
+static long
+mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
+{
+	struct hv_output_dispatch_vp output;
+	long ret = 0;
 	bool complete = false;
 	bool got_intercept_message = false;
 
@@ -568,37 +602,17 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 			if (!irqs_disabled_flags(irq_flags))
 				flags |= HV_DISPATCH_VP_FLAG_ENABLE_CALLER_INTERRUPTS;
 
-			/* Preemption is disabled at this point */
-			input = *this_cpu_ptr(root_scheduler_input);
-			output = *this_cpu_ptr(root_scheduler_output);
-
-			memset(input, 0, sizeof(*input));
-			memset(output, 0, sizeof(*output));
-
-			input->partition_id = vp->partition->id;
-			input->vp_index = vp->index;
-			input->time_slice = 0; /* Run forever until something happens */
-			input->spec_ctrl = 0; /* TODO: set sensible flags */
-			input->flags = flags;
-
-			status = hv_do_hypercall(HVCALL_DISPATCH_VP, input, output);
-
-			trace_mshv_hvcall_dispatch_vp(status, vp->partition->id,
-						      vp->index, flags,
-						      output->dispatch_state,
-						      output->dispatch_event);
-
-			if (!hv_result_success(status)) {
-				pr_err("%s: status %s\n", __func__, hv_status_to_string(status));
-				ret = hv_status_to_errno(status);
+			ret = hv_call_vp_dispatch(vp->partition->id, vp->index,
+						  flags, &output);
+			if (ret) {
 				complete = true;
 				break;
 			}
 
 			vp->run.flags.intercept_suspend = 0;
 
-			if (output->dispatch_state == HV_VP_DISPATCH_STATE_BLOCKED) {
-				if (output->dispatch_event == HV_VP_DISPATCH_EVENT_SUSPEND) {
+			if (output.dispatch_state == HV_VP_DISPATCH_STATE_BLOCKED) {
+				if (output.dispatch_event == HV_VP_DISPATCH_EVENT_SUSPEND) {
 					vp->run.flags.blocked_by_explicit_suspend = 1;
 					/* TODO: remove the warning once VP canceling is supported */
 					WARN_ONCE(atomic64_read(&vp->run.signaled_count),
@@ -617,7 +631,7 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 				}
 			} else {
 				/* HV_VP_DISPATCH_STATE_READY */
-				if (output->dispatch_event == HV_VP_DISPATCH_EVENT_INTERCEPT)
+				if (output.dispatch_event == HV_VP_DISPATCH_EVENT_INTERCEPT)
 					got_intercept_message = 1;
 			}
 		}
