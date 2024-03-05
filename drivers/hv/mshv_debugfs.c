@@ -59,6 +59,7 @@ static int lp_stats_show(struct seq_file *m, void *v)
 	LP_SEQ_PRINTF(ProximityDomainId);
 	LP_SEQ_PRINTF(PostedInterruptNotifications);
 	LP_SEQ_PRINTF(BranchPredictorFlushes);
+#if defined(__x86_64__)
 	LP_SEQ_PRINTF(L1DataCacheFlushes);
 	LP_SEQ_PRINTF(ImmediateL1DataCacheFlushes);
 	LP_SEQ_PRINTF(MbFlushes);
@@ -80,6 +81,24 @@ static int lp_stats_show(struct seq_file *m, void *v)
 	LP_SEQ_PRINTF(ReserveGroupId);
 	LP_SEQ_PRINTF(RunningPriority);
 	LP_SEQ_PRINTF(PerfmonInterruptCount);
+#elif defined(__aarch64__)
+	LP_SEQ_PRINTF(CounterRefreshSequenceNumber);
+	LP_SEQ_PRINTF(CounterRefreshReferenceTime);
+	LP_SEQ_PRINTF(IdleAccumulationSnapshot);
+	LP_SEQ_PRINTF(ActiveTscCountSnapshot);
+	LP_SEQ_PRINTF(HwpRequestContextSwitches);
+	LP_SEQ_PRINTF(Placeholder2);
+	LP_SEQ_PRINTF(Placeholder3);
+	LP_SEQ_PRINTF(Placeholder4);
+	LP_SEQ_PRINTF(Placeholder5);
+	LP_SEQ_PRINTF(Placeholder6);
+	LP_SEQ_PRINTF(Placeholder7);
+	LP_SEQ_PRINTF(Placeholder8);
+	LP_SEQ_PRINTF(Placeholder9);
+	LP_SEQ_PRINTF(SchLocalRunListSize);
+	LP_SEQ_PRINTF(ReserveGroupId);
+	LP_SEQ_PRINTF(RunningPriority);
+#endif
 
 #undef LP_SEQ_PRINTF
 
@@ -213,6 +232,7 @@ static int vp_stats_show(struct seq_file *m, void *v)
 	VP_SEQ_PRINTF(IdealCpu);
 	VP_SEQ_PRINTF(HypercallsCount);
 	VP_SEQ_PRINTF(HypercallsTime);
+#if defined(__x86_64__)
 	VP_SEQ_PRINTF(PageInvalidationsCount);
 	VP_SEQ_PRINTF(PageInvalidationsTime);
 	VP_SEQ_PRINTF(ControlRegisterAccessesCount);
@@ -404,6 +424,94 @@ static int vp_stats_show(struct seq_file *m, void *v)
 	VP_SEQ_PRINTF(DeviceDomainHypercalls);
 	VP_SEQ_PRINTF(DepositHypercalls);
 	VP_SEQ_PRINTF(SvmHypercalls);
+	VP_SEQ_PRINTF(BusLockAcquisitionCount);
+#elif defined(__aarch64__)
+	VP_SEQ_PRINTF(SysRegAccessesCount);
+	VP_SEQ_PRINTF(SysRegAccessesTime);
+	VP_SEQ_PRINTF(SmcInstructionsCount);
+	VP_SEQ_PRINTF(SmcInstructionsTime);
+	VP_SEQ_PRINTF(OtherInterceptsCount);
+	VP_SEQ_PRINTF(OtherInterceptsTime);
+	VP_SEQ_PRINTF(ExternalInterruptsCount);
+	VP_SEQ_PRINTF(ExternalInterruptsTime);
+	VP_SEQ_PRINTF(PendingInterruptsCount);
+	VP_SEQ_PRINTF(PendingInterruptsTime);
+	VP_SEQ_PRINTF(GuestPageTableMaps);
+	VP_SEQ_PRINTF(LargePageTlbFills);
+	VP_SEQ_PRINTF(SmallPageTlbFills);
+	VP_SEQ_PRINTF(ReflectedGuestPageFaults);
+	VP_SEQ_PRINTF(MemoryInterceptMessages);
+	VP_SEQ_PRINTF(OtherMessages);
+	VP_SEQ_PRINTF(LogicalProcessorMigrations);
+	VP_SEQ_PRINTF(AddressDomainFlushes);
+	VP_SEQ_PRINTF(AddressSpaceFlushes);
+	VP_SEQ_PRINTF(SyntheticInterrupts);
+	VP_SEQ_PRINTF(VirtualInterrupts);
+	VP_SEQ_PRINTF(ApicSelfIpisSent);
+	VP_SEQ_PRINTF(GpaSpaceHypercalls);
+	VP_SEQ_PRINTF(LogicalProcessorHypercalls);
+	VP_SEQ_PRINTF(LongSpinWaitHypercalls);
+	VP_SEQ_PRINTF(OtherHypercalls);
+	VP_SEQ_PRINTF(SyntheticInterruptHypercalls);
+	VP_SEQ_PRINTF(VirtualInterruptHypercalls);
+	VP_SEQ_PRINTF(VirtualMmuHypercalls);
+	VP_SEQ_PRINTF(VirtualProcessorHypercalls);
+	VP_SEQ_PRINTF(HardwareInterrupts);
+	VP_SEQ_PRINTF(NestedPageFaultInterceptsCount);
+	VP_SEQ_PRINTF(NestedPageFaultInterceptsTime);
+	VP_SEQ_PRINTF(LogicalProcessorDispatches);
+	VP_SEQ_PRINTF(WaitingForCpuTime);
+	VP_SEQ_PRINTF(ExtendedHypercalls);
+	VP_SEQ_PRINTF(ExtendedHypercallInterceptMessages);
+	VP_SEQ_PRINTF(MbecNestedPageTableSwitches);
+	VP_SEQ_PRINTF(OtherReflectedGuestExceptions);
+	VP_SEQ_PRINTF(GlobalIoTlbFlushes);
+	VP_SEQ_PRINTF(GlobalIoTlbFlushCost);
+	VP_SEQ_PRINTF(LocalIoTlbFlushes);
+	VP_SEQ_PRINTF(LocalIoTlbFlushCost);
+	VP_SEQ_PRINTF(FlushGuestPhysicalAddressSpaceHypercalls);
+	VP_SEQ_PRINTF(FlushGuestPhysicalAddressListHypercalls);
+	VP_SEQ_PRINTF(PostedInterruptNotifications);
+	VP_SEQ_PRINTF(PostedInterruptScans);
+	VP_SEQ_PRINTF(TotalCoreRunTime);
+	VP_SEQ_PRINTF(MaximumRunTime);
+	VP_SEQ_PRINTF(WaitingForCpuTimeBucket0);
+	VP_SEQ_PRINTF(WaitingForCpuTimeBucket1);
+	VP_SEQ_PRINTF(WaitingForCpuTimeBucket2);
+	VP_SEQ_PRINTF(WaitingForCpuTimeBucket3);
+	VP_SEQ_PRINTF(WaitingForCpuTimeBucket4);
+	VP_SEQ_PRINTF(WaitingForCpuTimeBucket5);
+	VP_SEQ_PRINTF(WaitingForCpuTimeBucket6);
+	VP_SEQ_PRINTF(HwpRequestContextSwitches);
+	VP_SEQ_PRINTF(Placeholder2);
+	VP_SEQ_PRINTF(Placeholder3);
+	VP_SEQ_PRINTF(Placeholder4);
+	VP_SEQ_PRINTF(Placeholder5);
+	VP_SEQ_PRINTF(Placeholder6);
+	VP_SEQ_PRINTF(Placeholder7);
+	VP_SEQ_PRINTF(Placeholder8);
+	VP_SEQ_PRINTF(ContentionTime);
+	VP_SEQ_PRINTF(WakeUpTime);
+	VP_SEQ_PRINTF(SchedulingPriority);
+	VP_SEQ_PRINTF(Vtl1DispatchCount);
+	VP_SEQ_PRINTF(Vtl2DispatchCount);
+	VP_SEQ_PRINTF(Vtl2DispatchBucket0);
+	VP_SEQ_PRINTF(Vtl2DispatchBucket1);
+	VP_SEQ_PRINTF(Vtl2DispatchBucket2);
+	VP_SEQ_PRINTF(Vtl2DispatchBucket3);
+	VP_SEQ_PRINTF(Vtl2DispatchBucket4);
+	VP_SEQ_PRINTF(Vtl2DispatchBucket5);
+	VP_SEQ_PRINTF(Vtl2DispatchBucket6);
+	VP_SEQ_PRINTF(Vtl1RunTime);
+	VP_SEQ_PRINTF(Vtl2RunTime);
+	VP_SEQ_PRINTF(IommuHypercalls);
+	VP_SEQ_PRINTF(CpuGroupHypercalls);
+	VP_SEQ_PRINTF(VsmHypercalls);
+	VP_SEQ_PRINTF(EventLogHypercalls);
+	VP_SEQ_PRINTF(DeviceDomainHypercalls);
+	VP_SEQ_PRINTF(DepositHypercalls);
+	VP_SEQ_PRINTF(SvmHypercalls);
+#endif
 
 #undef VP_SEQ_PRINTF
 
@@ -528,6 +636,7 @@ static int partition_stats_show(struct seq_file *m, void *v)
 	PARTITION_SEQ_PRINTF(DeviceInterruptThrottleEvents);
 	PARTITION_SEQ_PRINTF(SkippedTimerTicks);
 	PARTITION_SEQ_PRINTF(PartitionId);
+#if defined(__x86_64__)
 	PARTITION_SEQ_PRINTF(NestedTlbSize);
 	PARTITION_SEQ_PRINTF(RecommendedNestedTlbSize);
 	PARTITION_SEQ_PRINTF(NestedTlbFreeListSize);
@@ -535,6 +644,9 @@ static int partition_stats_show(struct seq_file *m, void *v)
 	PARTITION_SEQ_PRINTF(PagesShattered);
 	PARTITION_SEQ_PRINTF(PagesRecombined);
 	PARTITION_SEQ_PRINTF(HwpRequestValue);
+#elif defined(__aarch64__)
+	PARTITION_SEQ_PRINTF(HwpRequestValue);
+#endif
 
 #undef PARTITION_SEQ_PRINTF
 

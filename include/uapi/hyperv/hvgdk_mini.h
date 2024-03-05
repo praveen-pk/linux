@@ -343,7 +343,7 @@ union hv_hypervisor_version_info {
 #define HV_INTERRUPT_VECTOR_NONE 0xFFFFFFFF
 
 enum hv_interrupt_type {
-#if defined(__ARM64__)
+#if defined(__aarch64__)
 	HV_ARM64_INTERRUPT_TYPE_FIXED		= 0x0000,
 	HV_ARM64_INTERRUPT_TYPE_MAXIMUM		= 0x0008,
 #else
@@ -1101,7 +1101,7 @@ enum hv_register_name {
 	HV_X64_REGISTER_CR_INTERCEPT_CR4_MASK			= 0x000E0002,
 	HV_X64_REGISTER_CR_INTERCEPT_IA32_MISC_ENABLE_MASK	= 0x000E0003,
 
-#elif defined(__ARM64__)
+#elif defined(__aarch64__)
 	/* TODO */
 #endif
 };
@@ -1217,7 +1217,7 @@ union hv_x64_interrupt_state_register {
 	} __packed;
 };
 
-#if !defined(__ARM64__)
+#if !defined(__aarch64__)
 
 union hv_x64_pending_exception_event {
 	__u64 as_uint64[2];
@@ -1271,7 +1271,7 @@ union hv_x64_register_sev_control {
 	} __packed;
 };
 
-#else /* !defined(__ARM64__) */
+#else /* !defined(__aarch64__) */
 
 #define HV_ARM64_PENDING_EVENT_HEADER \
 	__u8 event_pending : 1; \
@@ -1311,7 +1311,7 @@ union hv_arm64_pending_interruption_register {
 	};
 };
 
-#endif /* defined(__ARM64__) */
+#endif /* defined(__aarch64__) */
 
 union hv_register_value {
 	struct hv_u128 reg128;
@@ -1339,7 +1339,7 @@ union hv_register_value {
 	union hv_x64_pending_virtualization_fault_event
 		pending_virtualization_fault_event;
 	union hv_x64_register_sev_control sev_control;
-#elif defined(__ARM64__)
+#elif defined(__aarch64__)
 	union hv_arm64_pending_interruption_register pending_interruption;
 	union hv_arm64_interrupt_state_register interrupt_state;
 	union hv_arm64_pending_synthetic_exception_event
