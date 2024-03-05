@@ -750,7 +750,7 @@ exit_unlock:
 
 static void hv_arch_irq_unmask(struct irq_data *data)
 {
-	if (hv_nested && hv_root_partition)
+	if (hv_nested && hv_root_partition())
 		/*
 		 * In case of the nested root partition, the nested hypervisor
 		 * is taking care of interrupt remapping and thus the
