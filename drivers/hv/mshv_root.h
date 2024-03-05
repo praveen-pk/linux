@@ -13,6 +13,7 @@
 #include <linux/srcu.h>
 #include <linux/wait.h>
 #include <linux/hashtable.h>
+#include <linux/dev_printk.h>
 #include <uapi/linux/mshv.h>
 
 /*
@@ -49,6 +50,25 @@ struct mshv_vp {
 #endif
 };
 
+#define vp_fmt(fmt) "p%lluvp%u: " fmt
+#define vp_dev(v) ((v)->partition->module_dev)
+#define vp_emerg(v, fmt, ...) \
+	dev_emerg(vp_dev(v), vp_fmt(fmt), (v)->partition->id, (v)->index, ##__VA_ARGS__)
+#define vp_crit(v, fmt, ...) \
+	dev_crit(vp_dev(v), vp_fmt(fmt), (v)->partition->id, (v)->index, ##__VA_ARGS__)
+#define vp_alert(v, fmt, ...) \
+	dev_alert(vp_dev(v), vp_fmt(fmt), (v)->partition->id, (v)->index, ##__VA_ARGS__)
+#define vp_err(v, fmt, ...) \
+	dev_err(vp_dev(v), vp_fmt(fmt), (v)->partition->id, (v)->index, ##__VA_ARGS__)
+#define vp_warn(v, fmt, ...) \
+	dev_warn(vp_dev(v), vp_fmt(fmt), (v)->partition->id, (v)->index, ##__VA_ARGS__)
+#define vp_notice(v, fmt, ...) \
+	dev_notice(vp_dev(v), vp_fmt(fmt), (v)->partition->id, (v)->index, ##__VA_ARGS__)
+#define vp_info(v, fmt, ...) \
+	dev_info(vp_dev(v), vp_fmt(fmt), (v)->partition->id, (v)->index, ##__VA_ARGS__)
+#define vp_dbg(v, fmt, ...) \
+	dev_dbg(vp_dev(v), vp_fmt(fmt), (v)->partition->id, (v)->index, ##__VA_ARGS__)
+
 struct mshv_mem_region {
 	struct hlist_node hnode;
 	u64 size; /* bytes */
@@ -69,6 +89,8 @@ struct mshv_irq_ack_notifier {
 };
 
 struct mshv_partition {
+	struct device *module_dev;
+
 	struct hlist_node hnode;
 	u64 id;
 	refcount_t ref_count;
@@ -110,6 +132,25 @@ struct mshv_partition {
 	struct dentry *debugfs_vp_dentry;
 #endif
 };
+
+#define pt_fmt(fmt) "p%llu: " fmt
+#define pt_dev(p) ((p)->module_dev)
+#define pt_emerg(p, fmt, ...) \
+	dev_emerg(pt_dev(p), pt_fmt(fmt), (p)->id, ##__VA_ARGS__)
+#define pt_crit(p, fmt, ...) \
+	dev_crit(pt_dev(p), pt_fmt(fmt), (p)->id, ##__VA_ARGS__)
+#define pt_alert(p, fmt, ...) \
+	dev_alert(pt_dev(p), pt_fmt(fmt), (p)->id, ##__VA_ARGS__)
+#define pt_err(p, fmt, ...) \
+	dev_err(pt_dev(p), pt_fmt(fmt), (p)->id, ##__VA_ARGS__)
+#define pt_warn(p, fmt, ...) \
+	dev_warn(pt_dev(p), pt_fmt(fmt), (p)->id, ##__VA_ARGS__)
+#define pt_notice(p, fmt, ...) \
+	dev_notice(pt_dev(p), pt_fmt(fmt), (p)->id, ##__VA_ARGS__)
+#define pt_info(p, fmt, ...) \
+	dev_info(pt_dev(p), pt_fmt(fmt), (p)->id, ##__VA_ARGS__)
+#define pt_dbg(p, fmt, ...) \
+	dev_dbg(pt_dev(p), pt_fmt(fmt), (p)->id, ##__VA_ARGS__)
 
 struct mshv_lapic_irq {
 	u32 vector;

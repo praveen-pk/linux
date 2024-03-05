@@ -64,6 +64,7 @@ struct mshv_poll_file {
 };
 
 struct mshv_vtl {
+	struct device *module_dev;
 	u64 id;
 	refcount_t ref_count;
 };
@@ -1141,7 +1142,7 @@ static const struct file_operations mshv_vtl_fops = {
 	.mmap = mshv_vtl_mmap,
 };
 
-static long __mshv_ioctl_create_vtl(void __user *user_arg)
+static long __mshv_ioctl_create_vtl(void __user *user_arg, struct device *dev)
 {
 	struct mshv_vtl *vtl;
 	struct file *file;
@@ -1150,6 +1151,7 @@ static long __mshv_ioctl_create_vtl(void __user *user_arg)
 	vtl = kzalloc(sizeof(*vtl), GFP_KERNEL);
 	if (!vtl)
 		return -ENOMEM;
+	vtl->module_dev = dev;
 
 	fd = get_unused_fd_flags(O_CLOEXEC);
 	if (fd < 0)
@@ -1563,17 +1565,24 @@ static const struct mshv_ops mshv_vtl_ops = {
 static int __init mshv_vtl_init(void)
 {
 	int ret;
+	struct device *dev;
+
+	ret = mshv_set_ops(&mshv_vtl_ops, &dev);
+	if (ret)
+		return ret;
 
 	tasklet_init(&msg_dpc, mshv_sint_on_msg_dpc, 0);
 	init_waitqueue_head(&fd_wait_queue);
 
 	if (mshv_vtl_get_vsm_regs()) {
-		pr_emerg("%s: Unable to get VSM capabilities !!\n", __func__);
-		BUG();
+		dev_emerg(dev, "Unable to get VSM capabilities!\n");
+		ret = -ENODEV;
+		goto unset_ops;
 	}
 	if (mshv_vtl_configure_vsm_partition()) {
-		pr_emerg("%s: VSM configuration failed !!\n", __func__);
-		BUG();
+		dev_emerg(dev, "VSM configuration failed!\n");
+		ret = -ENODEV;
+		goto unset_ops;
 	}
 
 	ret = hv_vtl_setup_synic();
@@ -1598,23 +1607,17 @@ static int __init mshv_vtl_init(void)
 		goto free_low;
 	}
 
-	ret = mshv_set_ops(&mshv_vtl_ops);
-	if (ret)
-		goto free_mem;
-
 	mutex_init(&mshv_poll_file_lock);
 	device_initialize(mem_dev);
 	dev_set_name(mem_dev, "mshv vtl mem dev");
 	ret = device_add(mem_dev);
 	if (ret) {
-		pr_err("%s: mshv vtl mem dev add: %d\n", __func__, ret);
-		goto deregister_module;
+		dev_err(dev, "mshv vtl mem dev add: %d\n", ret);
+		goto free_mem;
 	}
 
 	return 0;
 
-deregister_module:
-	mshv_set_ops(NULL);
 free_mem:
 	kfree(mem_dev);
 free_low:
@@ -1623,12 +1626,14 @@ free_hvcall:
 	misc_deregister(&mshv_vtl_hvcall);
 free_sint:
 	misc_deregister(&mshv_vtl_sint_dev);
+unset_ops:
+	mshv_set_ops(NULL, NULL);
 	return ret;
 }
 
 static void __exit mshv_vtl_exit(void)
 {
-	mshv_set_ops(NULL);
+	mshv_set_ops(NULL, NULL);
 	misc_deregister(&mshv_vtl_sint_dev);
 	misc_deregister(&mshv_vtl_hvcall);
 	misc_deregister(&mshv_vtl_low);
