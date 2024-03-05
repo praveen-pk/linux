@@ -37,11 +37,9 @@ struct mshv_vp {
 	struct {
 		atomic64_t signaled_count;
 		struct {
-			u64 explicit_suspend: 1;
-			u64 blocked_by_explicit_suspend: 1; /* root scheduler only */
 			u64 intercept_suspend: 1;
 			u64 blocked: 1; /* root scheduler only */
-			u64 reserved: 60;
+			u64 reserved: 62;
 		} flags;
 		unsigned int kicked_by_hv;
 		wait_queue_head_t suspend_queue;

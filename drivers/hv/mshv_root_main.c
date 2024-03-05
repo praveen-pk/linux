@@ -455,187 +455,200 @@ mshv_run_vp_with_hv_scheduler(struct mshv_vp *vp, void __user *ret_message,
 	return 0;
 }
 
-static long
-mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
+static int
+hv_call_vp_dispatch(u64 partition_id, u32 vp_index,
+		    u32 flags, struct hv_output_dispatch_vp *res)
 {
 	struct hv_input_dispatch_vp *input;
 	struct hv_output_dispatch_vp *output;
-	long ret = 0;
 	u64 status;
-	bool complete = false;
-	bool got_intercept_message = false;
 
-	while (!complete) {
-		if (vp->run.flags.blocked_by_explicit_suspend) {
-			/*
-			 * Need to clear explicit suspend before dispatching.
-			 * Explicit suspend is either:
-			 * - set before the first VP dispatch or
-			 * - set explicitly via hypercall
-			 * Since the latter case is not supported, we simply
-			 * clear it here.
-			 */
-			struct hv_register_assoc explicit_suspend = {
-				.name = HV_REGISTER_EXPLICIT_SUSPEND,
-				.value.explicit_suspend.suspended = 0,
-			};
+	/* Preemption must be disabled at this point */
+	input = *this_cpu_ptr(root_scheduler_input);
+	output = *this_cpu_ptr(root_scheduler_output);
 
-			ret = mshv_set_vp_registers(vp->index, vp->partition->id,
-						    1, &explicit_suspend);
+	memset(input, 0, sizeof(*input));
+	memset(output, 0, sizeof(*output));
 
-			trace_mshv_root_sched_unsuspend_vp(ret, vp->partition->id, vp->index);
+	input->partition_id = partition_id;
+	input->vp_index = vp_index;
+	input->time_slice = 0; /* Run forever until something happens */
+	input->spec_ctrl = 0; /* TODO: set sensible flags */
+	input->flags = flags;
 
-			if (ret) {
-				pr_err("%s: failed to unsuspend partition %llu vp %u\n",
-					__func__, vp->partition->id, vp->index);
-				complete = true;
-				break;
-			}
+	status = hv_do_hypercall(HVCALL_DISPATCH_VP, input, output);
 
-			vp->run.flags.explicit_suspend = 0;
+	trace_mshv_hvcall_dispatch_vp(status, partition_id,
+				      vp_index, flags,
+				      output->dispatch_state,
+				      output->dispatch_event);
 
-			/* Wait for the hypervisor to clear the blocked state */
-			ret = wait_event_interruptible(vp->run.suspend_queue,
-						       vp->run.kicked_by_hv == 1);
-			if (ret) {
-				ret = -EINTR;
-				complete = true;
-				break;
-			}
-			vp->run.kicked_by_hv = 0;
-			vp->run.flags.blocked_by_explicit_suspend = 0;
-		}
+	*res = *output;
 
-		if (vp->run.flags.blocked) {
-			/*
-			 * Dispatch state of this VP is blocked. Need to wait
-			 * for the hypervisor to clear the blocked state before
-			 * dispatching it.
-			 */
-			ret = wait_event_interruptible(vp->run.suspend_queue,
-					vp->run.kicked_by_hv == 1);
-			if (ret) {
-				ret = -EINTR;
-				complete = true;
-				break;
-			}
-			vp->run.kicked_by_hv = 0;
-			vp->run.flags.blocked = 0;
-		}
+	if (!hv_result_success(status))
+		pr_err("%s: status %s\n", __func__, hv_status_to_string(status));
 
-		preempt_disable();
+	return hv_status_to_errno(status);
+}
 
-		while (!vp->run.flags.blocked_by_explicit_suspend && !got_intercept_message) {
-			u32 flags = 0;
-			unsigned long irq_flags, ti_work;
-			const unsigned long work_flags = _TIF_NEED_RESCHED |
-				_TIF_SIGPENDING |
-				_TIF_NOTIFY_SIGNAL |
-				_TIF_NOTIFY_RESUME;
+static int
+mshv_vp_clear_explicit_suspend(struct mshv_vp *vp)
+{
+	struct hv_register_assoc explicit_suspend = {
+		.name = HV_REGISTER_EXPLICIT_SUSPEND,
+		.value.explicit_suspend.suspended = 0,
+	};
+	int ret;
 
-			if (vp->run.flags.intercept_suspend)
-				flags |= HV_DISPATCH_VP_FLAG_CLEAR_INTERCEPT_SUSPEND;
+	ret = mshv_set_vp_registers(vp->index, vp->partition->id,
+				    1, &explicit_suspend);
 
-			local_irq_save(irq_flags);
+	trace_mshv_root_sched_unsuspend_vp(ret, vp->partition->id, vp->index);
 
-			ti_work = READ_ONCE(current_thread_info()->flags);
-			if (unlikely(ti_work & work_flags) || need_resched()) {
-				local_irq_restore(irq_flags);
-				preempt_enable();
-
-				ret = mshv_xfer_to_guest_mode_handle_work(ti_work);
-
-				preempt_disable();
-
-				trace_mshv_root_sched_handle_work(
-					ret, vp->partition->id, vp->index,
-					ti_work);
-
-				if (ret) {
-					complete = true;
-					break;
-				}
-
-				continue;
-			}
-
-			/*
-			 * Note the lack of local_irq_restore after the dipatch
-			 * call. We rely on the hypervisor to do that for us.
-			 *
-			 * Thread context should always have interrupt enabled,
-			 * but we try to be defensive here by testing what it
-			 * truly was before we disabled interrupt.
-			 */
-			if (!irqs_disabled_flags(irq_flags))
-				flags |= HV_DISPATCH_VP_FLAG_ENABLE_CALLER_INTERRUPTS;
-
-			/* Preemption is disabled at this point */
-			input = *this_cpu_ptr(root_scheduler_input);
-			output = *this_cpu_ptr(root_scheduler_output);
-
-			memset(input, 0, sizeof(*input));
-			memset(output, 0, sizeof(*output));
-
-			input->partition_id = vp->partition->id;
-			input->vp_index = vp->index;
-			input->time_slice = 0; /* Run forever until something happens */
-			input->spec_ctrl = 0; /* TODO: set sensible flags */
-			input->flags = flags;
-
-			status = hv_do_hypercall(HVCALL_DISPATCH_VP, input, output);
-
-			trace_mshv_hvcall_dispatch_vp(status, vp->partition->id,
-						      vp->index, flags,
-						      output->dispatch_state,
-						      output->dispatch_event);
-
-			if (!hv_result_success(status)) {
-				pr_err("%s: status %s\n", __func__, hv_status_to_string(status));
-				ret = hv_status_to_errno(status);
-				complete = true;
-				break;
-			}
-
-			vp->run.flags.intercept_suspend = 0;
-
-			if (output->dispatch_state == HV_VP_DISPATCH_STATE_BLOCKED) {
-				if (output->dispatch_event == HV_VP_DISPATCH_EVENT_SUSPEND) {
-					vp->run.flags.blocked_by_explicit_suspend = 1;
-					/* TODO: remove the warning once VP canceling is supported */
-					WARN_ONCE(atomic64_read(&vp->run.signaled_count),
-						  "%s: vp#%d: unexpected explicit suspend\n", __func__, vp->index);
-				} else {
-					vp->run.flags.blocked = 1;
-					ret = wait_event_interruptible(vp->run.suspend_queue,
-							vp->run.kicked_by_hv == 1);
-					if (ret) {
-						ret = -EINTR;
-						complete = true;
-						break;
-					}
-					vp->run.flags.blocked = 0;
-					vp->run.kicked_by_hv = 0;
-				}
-			} else {
-				/* HV_VP_DISPATCH_STATE_READY */
-				if (output->dispatch_event == HV_VP_DISPATCH_EVENT_INTERCEPT)
-					got_intercept_message = 1;
-			}
-		}
-
-		preempt_enable();
-
-		if (got_intercept_message) {
-			vp->run.flags.intercept_suspend = 1;
-			if (copy_to_user(ret_message, vp->intercept_message_page,
-					sizeof(struct hv_message)))
-				ret =  -EFAULT;
-			complete = true;
-		}
-	}
+	if (ret)
+		pr_err("%s: failed to unsuspend partition %llu vp %u\n",
+		       __func__, vp->partition->id, vp->index);
 
 	return ret;
+}
+
+static int
+mshv_vp_wait_for_hv_kick(struct mshv_vp *vp)
+{
+	int ret;
+
+	ret = wait_event_interruptible(vp->run.suspend_queue,
+				       vp->run.kicked_by_hv == 1);
+	if (ret)
+		return -EINTR;
+
+	vp->run.flags.blocked = 0;
+	vp->run.kicked_by_hv = 0;
+
+	return 0;
+}
+
+static int
+mshv_vp_xfer_to_guest_mode(struct mshv_vp *vp)
+{
+	const unsigned long work_flags = _TIF_NEED_RESCHED |
+					 _TIF_SIGPENDING |
+					 _TIF_NOTIFY_SIGNAL |
+					 _TIF_NOTIFY_RESUME;
+	unsigned long ti_work;
+
+	ti_work = read_thread_flags();
+	while (ti_work & work_flags) {
+		int ret;
+
+		ret = mshv_xfer_to_guest_mode_handle_work(ti_work);
+		if (ret)
+			return ret;
+
+		trace_mshv_root_sched_handle_work(ret,
+				vp->partition->id, vp->index,
+				ti_work);
+
+		ti_work = read_thread_flags();
+	}
+
+	return 0;
+}
+
+static long
+mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
+{
+	long ret;
+
+	if (vp->run.flags.blocked) {
+		/*
+		 * Dispatch state of this VP is blocked. Need to wait
+		 * for the hypervisor to clear the blocked state before
+		 * dispatching it.
+		 */
+		ret = mshv_vp_wait_for_hv_kick(vp);
+		if (ret)
+			return ret;
+	}
+
+	preempt_disable();
+
+	do {
+		u32 flags = 0;
+		struct hv_output_dispatch_vp output;
+		unsigned long irq_flags;
+
+		ret = mshv_vp_xfer_to_guest_mode(vp);
+		if (ret)
+			break;
+
+		local_irq_save(irq_flags);
+
+		/*
+		 * Note the lack of local_irq_restore after the dispatch
+		 * call. We rely on the hypervisor to do that for us.
+		 *
+		 * Thread context should always have interrupt enabled,
+		 * but we try to be defensive here by testing what it
+		 * truly was before we disabled interrupt.
+		 */
+		if (!irqs_disabled_flags(irq_flags))
+			flags |= HV_DISPATCH_VP_FLAG_ENABLE_CALLER_INTERRUPTS;
+
+		if (vp->run.flags.intercept_suspend)
+			flags |= HV_DISPATCH_VP_FLAG_CLEAR_INTERCEPT_SUSPEND;
+
+		ret = hv_call_vp_dispatch(vp->partition->id, vp->index,
+					  flags, &output);
+		if (ret)
+			break;
+
+		vp->run.flags.intercept_suspend = 0;
+
+		if (output.dispatch_state == HV_VP_DISPATCH_STATE_BLOCKED) {
+			if (output.dispatch_event == HV_VP_DISPATCH_EVENT_SUSPEND) {
+				/* TODO: remove the warning once VP canceling is supported */
+				WARN_ONCE(atomic64_read(&vp->run.signaled_count),
+					  "%s: vp#%d: unexpected explicit suspend\n", __func__, vp->index);
+				/*
+				 * Need to clear explicit suspend before
+				 * dispatching.
+				 * Explicit suspend is either:
+				 * - set right after the first VP dispatch or
+				 * - set explicitly via hypercall
+				 * Since the latter case is not yet supported,
+				 * simply clear it here.
+				 */
+				ret = mshv_vp_clear_explicit_suspend(vp);
+				if (ret)
+					break;
+
+				ret = mshv_vp_wait_for_hv_kick(vp);
+				if (ret)
+					break;
+			} else {
+				vp->run.flags.blocked = 1;
+				ret = mshv_vp_wait_for_hv_kick(vp);
+				if (ret)
+					break;
+			}
+		} else {
+			/* HV_VP_DISPATCH_STATE_READY */
+			if (output.dispatch_event == HV_VP_DISPATCH_EVENT_INTERCEPT)
+				vp->run.flags.intercept_suspend = 1;
+		}
+	} while (!vp->run.flags.intercept_suspend);
+
+	preempt_enable();
+
+	if (ret)
+		return ret;
+
+	if (copy_to_user(ret_message, vp->intercept_message_page,
+			 sizeof(struct hv_message)))
+		return -EFAULT;
+
+	return 0;
 }
 
 static long
