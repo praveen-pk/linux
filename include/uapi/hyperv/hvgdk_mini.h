@@ -6,6 +6,7 @@
 #define _UAPI_HV_HVGDK_MINI_H
 
 #include <linux/types.h>
+#include <linux/bits.h>
 
 #define HVGDK_MINI_H_VERSION		(25294)
 typedef __u64 hv_nano100_time_t;	/* HV_NANO100_TIME */
@@ -50,6 +51,12 @@ enum hv_status {
 	__HV_STATUS_DEF(__HV_MAKE_HV_STATUS_ENUM)
 };
 
+/*
+ * The Hyper-V TimeRefCount register and the TSC
+ * page provide a guest VM clock with 100ns tick rate
+ */
+#define HV_CLOCK_HZ (NSEC_PER_SEC/100)
+
 
 /* TODO not in hv headers */
 #define HV_LINUX_VENDOR_ID              0x8100
@@ -67,32 +74,14 @@ enum hv_status {
 
 #if defined(__x86_64__)
 /* HV_X64_SYNTHETIC_MSR */
-
-/* MSR used to identify the guest OS. */
 #define HV_X64_MSR_GUEST_OS_ID			0x40000000
-
-/* MSR used to setup pages used to communicate with the hypervisor. */
 #define HV_X64_MSR_HYPERCALL			0x40000001
-
-/* MSR used to provide vcpu index */
 #define HV_X64_MSR_VP_INDEX			0x40000002
-
-/* MSR used to reset the guest OS. */
 #define HV_X64_MSR_RESET			0x40000003
-
-/* MSR used to provide vcpu runtime in 100ns units */
 #define HV_X64_MSR_VP_RUNTIME			0x40000010
-
-/* MSR used to read the per-partition time reference counter */
 #define HV_X64_MSR_TIME_REF_COUNT		0x40000020
-
-/* A partition's reference time stamp counter (TSC) page */
 #define HV_X64_MSR_REFERENCE_TSC		0x40000021
-
-/* MSR used to retrieve the TSC frequency */
 #define HV_X64_MSR_TSC_FREQUENCY		0x40000022
-
-/* MSR used to retrieve the local APIC timer frequency */
 #define HV_X64_MSR_APIC_FREQUENCY		0x40000023
 
 /* Define the virtual APIC registers */
@@ -156,15 +145,58 @@ enum hv_status {
 #define HV_X64_MSR_CRASH_P4			0x40000104
 #define HV_X64_MSR_CRASH_CTL			0x40000105
 
+#define HV_IPI_LOW_VECTOR	 0x10
+#define HV_IPI_HIGH_VECTOR	 0xff
+
+struct hv_reenlightenment_control {
+	__u64 vector:8;
+	__u64 reserved1:8;
+	__u64 enabled:1;
+	__u64 reserved2:15;
+	__u64 target_vp:32;
+}  __packed;
+
+struct hv_tsc_emulation_status {	 /* HV_TSC_EMULATION_STATUS */
+	__u64 inprogress:1;
+	__u64 reserved:63;
+} __packed;
+
+struct hv_tsc_emulation_control {	 /* HV_TSC_INVARIANT_CONTROL */
+	__u64 enabled:1;
+	__u64 reserved:63;
+} __packed;
+
 /* TSC emulation after migration */
 #define HV_X64_MSR_REENLIGHTENMENT_CONTROL	0x40000106
 #define HV_X64_MSR_TSC_EMULATION_CONTROL	0x40000107
 #define HV_X64_MSR_TSC_EMULATION_STATUS		0x40000108
-
-/* TSC invariant control */
 #define HV_X64_MSR_TSC_INVARIANT_CONTROL	0x40000118
 
 #endif /* __x86_64__ */
+
+struct hv_get_partition_id {	 /* HV_OUTPUT_GET_PARTITION_ID */
+	u64 partition_id;
+} __packed;
+
+/* HV_CRASH_CTL_REG_CONTENTS */
+#define HV_CRASH_CTL_CRASH_NOTIFY_MSG		 BIT_ULL(62)
+#define HV_CRASH_CTL_CRASH_NOTIFY		 BIT_ULL(63)
+
+union hv_reference_tsc_msr {
+	u64 as_uint64;
+	struct {
+		u64 enable:1;
+		u64 reserved:11;
+		u64 pfn:52;
+	} __packed;
+};
+
+/* Some of Hyper-V structs do not use hv_vpset where linux uses them */
+struct hv_vpset {	 /* HV_VP_SET */
+	u64 format;
+	u64 valid_bank_mask;
+	u64 bank_contents[];
+} __packed;
 
 /*
  * Version info reported by hypervisor
@@ -192,27 +224,138 @@ union hv_hypervisor_version_info {
 
 /* HV_CPUID_FUNCTION */
 #define HYPERV_CPUID_VENDOR_AND_MAX_FUNCTIONS	0x40000000
+#define HYPERV_CPUID_INTERFACE			0x40000001
 #define HYPERV_CPUID_VERSION			0x40000002
+#define HYPERV_CPUID_FEATURES			0x40000003
+#define HYPERV_CPUID_ENLIGHTMENT_INFO		0x40000004
+#define HYPERV_CPUID_IMPLEMENT_LIMITS		0x40000005
+#define HYPERV_CPUID_CPU_MANAGEMENT_FEATURES	0x40000007
+#define HYPERV_CPUID_NESTED_FEATURES		0x4000000A
+#define HYPERV_CPUID_ISOLATION_CONFIG		0x4000000C
 
-/* HV_X64_ENLIGHTENMENT_INFORMATION */
+#define HYPERV_CPUID_VIRT_STACK_INTERFACE	 0x40000081
+#define HYPERV_VS_INTERFACE_EAX_SIGNATURE	 0x31235356  /* "VS#1" */
 
-/* DeprecateAutoEoi */
-#define HV_DEPRECATING_AEOI_RECOMMENDED		BIT(9)
+#define HYPERV_CPUID_VIRT_STACK_PROPERTIES	 0x40000082
+/* Support for the extended IOAPIC RTE format */
+#define HYPERV_VS_PROPERTIES_EAX_EXTENDED_IOAPIC_RTE	 BIT(2)
 
+#define HYPERV_HYPERVISOR_PRESENT_BIT		 0x80000000
+#define HYPERV_CPUID_MIN			 0x40000005
+#define HYPERV_CPUID_MAX			 0x4000ffff
+
+
+/* HV_PARTITION_PRIVILEGE_MASK */
+#define HV_MSR_VP_RUNTIME_AVAILABLE		BIT(0)
+#define HV_MSR_TIME_REF_COUNT_AVAILABLE		BIT(1)
+#define HV_MSR_SYNIC_AVAILABLE			BIT(2)
+#define HV_MSR_SYNTIMER_AVAILABLE		BIT(3)
+#define HV_MSR_APIC_ACCESS_AVAILABLE		BIT(4)
+#define HV_MSR_HYPERCALL_AVAILABLE		BIT(5)
+#define HV_MSR_VP_INDEX_AVAILABLE		BIT(6)
+#define HV_MSR_RESET_AVAILABLE			BIT(7)
+#define HV_MSR_STAT_PAGES_AVAILABLE		BIT(8)
+#define HV_MSR_REFERENCE_TSC_AVAILABLE		BIT(9)
+#define HV_MSR_GUEST_IDLE_AVAILABLE		BIT(10)
+#define HV_ACCESS_FREQUENCY_MSRS		BIT(11)
+#define HV_ACCESS_REENLIGHTENMENT		BIT(13)
+#define HV_ACCESS_TSC_INVARIANT			BIT(15)
+
+/* HV_PARTITION_PRIVILEGE_MASK */
+#define HV_CREATE_PARTITIONS			BIT(0)
+#define HV_ACCESS_PARTITION_ID			BIT(1)
+#define HV_ACCESS_MEMORY_POOL			BIT(2)
+#define HV_ADJUST_MESSAGE_BUFFERS		BIT(3)
+#define HV_POST_MESSAGES			BIT(4)
+#define HV_SIGNAL_EVENTS			BIT(5)
+#define HV_CREATE_PORT				BIT(6)
+#define HV_CONNECT_PORT				BIT(7)
+#define HV_ACCESS_STATS				BIT(8)
+#define HV_DEBUGGING				BIT(11)
+#define HV_CPU_MANAGEMENT			BIT(12)
+#define HV_ENABLE_EXTENDED_HYPERCALLS		BIT(20)
+#define HV_ISOLATION				BIT(22)
 
 #if defined(__x86_64__)
+/* HV_X64_HYPERVISOR_FEATURES (EDX) */
+#define HV_X64_MWAIT_AVAILABLE				BIT(0)
+#define HV_X64_GUEST_DEBUGGING_AVAILABLE		BIT(1)
+#define HV_X64_PERF_MONITOR_AVAILABLE			BIT(2)
+#define HV_X64_CPU_DYNAMIC_PARTITIONING_AVAILABLE	BIT(3)
+#define HV_X64_HYPERCALL_XMM_INPUT_AVAILABLE		BIT(4)
+#define HV_X64_GUEST_IDLE_STATE_AVAILABLE		BIT(5)
+#define HV_FEATURE_FREQUENCY_MSRS_AVAILABLE		BIT(8)
+#define HV_FEATURE_GUEST_CRASH_MSR_AVAILABLE		BIT(10)
+#define HV_FEATURE_DEBUG_MSRS_AVAILABLE			BIT(11)
+/*
+ * Support for returning hypercall output block via XMM
+ * registers is available
+ */
+#define HV_X64_HYPERCALL_XMM_OUTPUT_AVAILABLE		BIT(15)
+/* stimer Direct Mode is available */
+#define HV_STIMER_DIRECT_MODE_AVAILABLE			BIT(19)
 
+#define HV_DEVICE_DOMAIN_AVAILABLE		BIT(24)
+#define HV_S1_DEVICE_DOMAIN_AVAILABLE		BIT(25)
+
+/* HV_X64_ENLIGHTENMENT_INFORMATION */
+#define HV_X64_AS_SWITCH_RECOMMENDED			BIT(0)
+#define HV_X64_LOCAL_TLB_FLUSH_RECOMMENDED		BIT(1)
+#define HV_X64_REMOTE_TLB_FLUSH_RECOMMENDED		BIT(2)
+#define HV_X64_APIC_ACCESS_RECOMMENDED			BIT(3)
+#define HV_X64_SYSTEM_RESET_RECOMMENDED			BIT(4)
+#define HV_X64_RELAXED_TIMING_RECOMMENDED		BIT(5)
+#define HV_DEPRECATING_AEOI_RECOMMENDED			BIT(9)
+#define HV_X64_CLUSTER_IPI_RECOMMENDED			BIT(10)
+#define HV_X64_EX_PROCESSOR_MASKS_RECOMMENDED		BIT(11)
+#define HV_X64_HYPERV_NESTED				BIT(12)
+#define HV_X64_ENLIGHTENED_VMCS_RECOMMENDED		BIT(14)
+
+
+/* HYPERV_CPUID_ISOLATION_CONFIG.EBX bits. */
+#define HV_ISOLATION_TYPE				 GENMASK(3, 0)
+#define HV_SHARED_GPA_BOUNDARY_ACTIVE			 BIT(5)
+#define HV_SHARED_GPA_BOUNDARY_BITS			 GENMASK(11, 6)
+
+enum hv_isolation_type {
+	HV_ISOLATION_TYPE_NONE	= 0,	/* HV_PARTITION_ISOLATION_TYPE_NONE */
+	HV_ISOLATION_TYPE_VBS	= 1,
+	HV_ISOLATION_TYPE_SNP	= 2,
+};
+
+union hv_x64_msr_hypercall_contents {
+	u64 as_uint64;
+	struct {
+		u64 enable:1;
+		u64 reserved:11;
+		u64 guest_physical_address:52;
+	} __packed;
+};
+#endif /* if defined(__x86_64__) */
+
+#if defined(__aarch64__)
+#define HV_FEATURE_GUEST_CRASH_MSR_AVAILABLE    BIT(8)
+#define HV_STIMER_DIRECT_MODE_AVAILABLE         BIT(13)
+#endif /* #if defined(__aarch64__) */
+
+#if defined(__x86_64__)
 #define HV_MAXIMUM_PROCESSORS       2048
-
 #else
-
 #define HV_MAXIMUM_PROCESSORS       320
-
 #endif
 
 #define HV_MAX_VP_INDEX			(HV_MAXIMUM_PROCESSORS - 1)
 #define HV_VP_INDEX_SELF		((__u32)-2)
 #define HV_ANY_VP			((__u32)-1)
+
+union hv_vp_assist_msr_contents {	 /* HV_REGISTER_VP_ASSIST_PAGE */
+	u64 as_uint64;
+	struct {
+		u64 enable:1;
+		u64 reserved:11;
+		u64 pfn:52;
+	} __packed;
+};
 
 /* Declare the various hypercall operations. */
 /* HV_CALL_CODE */
@@ -268,8 +411,10 @@ union hv_hypervisor_version_info {
 #define HVCALL_MAP_DEVICE_INTERRUPT		0x007c
 #define HVCALL_UNMAP_DEVICE_INTERRUPT		0x007d
 #define HVCALL_RETARGET_INTERRUPT		0x007e
-#define HVCALL_NOTIFY_PARTITION_EVENT		0x0087
+#define HVCALL_ATTACH_DEVICE			0x0082
+#define HVCALL_DETACH_DEVICE			0x0083
 #define HVCALL_ENTER_SLEEP_STATE		0x0084
+#define HVCALL_NOTIFY_PARTITION_EVENT		0x0087
 #define HVCALL_NOTIFY_PORT_RING_EMPTY		0x008b
 #define HVCALL_REGISTER_INTERCEPT_RESULT	0x0091
 #define HVCALL_ASSERT_VIRTUAL_INTERRUPT		0x0094
@@ -277,7 +422,6 @@ union hv_hypervisor_version_info {
 #define HVCALL_CONNECT_PORT			0x0096
 #define HVCALL_FLUSH_GUEST_PHYSICAL_ADDRESS_SPACE 0x00af
 #define HVCALL_FLUSH_GUEST_PHYSICAL_ADDRESS_LIST 0x00b0
-#define HVCALL_GET_GPA_PAGES_ACCESS_STATES 0x00c9
 #define HVCALL_CREATE_DEVICE_DOMAIN		0x00b1
 #define HVCALL_ATTACH_DEVICE_DOMAIN		0x00b2
 #define HVCALL_MAP_DEVICE_GPA_PAGES		0x00b3
@@ -290,6 +434,7 @@ union hv_hypervisor_version_info {
 #define HVCALL_QUERY_DEVICE_DOMAIN		0x00c6
 #define HVCALL_MAP_SPARSE_DEVICE_GPA_PAGES	0x00c7
 #define HVCALL_UNMAP_SPARSE_DEVICE_GPA_PAGES	0x00c8
+#define HVCALL_GET_GPA_PAGES_ACCESS_STATES	 0x00c9
 #define HVCALL_CONFIGURE_DEVICE_DOMAIN		0x00ce
 #define HVCALL_FLUSH_DEVICE_DOMAIN		0x00d0
 #define HVCALL_ACQUIRE_SPARSE_SPA_PAGE_HOST_ACCESS	0x00d7
@@ -325,6 +470,77 @@ union hv_hypervisor_version_info {
 #define HV_HYPERCALL_REP_START_MASK	GENMASK_ULL(59, 48)
 
 #endif /* __KERNEL__ */
+
+/* HvFlushGuestPhysicalAddressSpace hypercalls */
+struct hv_guest_mapping_flush {
+	u64 address_space;
+	u64 flags;
+} __packed;
+
+/*
+ *  HV_MAX_FLUSH_PAGES = "additional_pages" + 1. It's limited
+ *  by the bitwidth of "additional_pages" in union hv_gpa_page_range.
+ */
+#define HV_MAX_FLUSH_PAGES (2048)
+#define HV_GPA_PAGE_RANGE_PAGE_SIZE_2MB		0
+#define HV_GPA_PAGE_RANGE_PAGE_SIZE_1GB		1
+
+#define HV_FLUSH_ALL_PROCESSORS		 BIT(0)
+#define HV_FLUSH_ALL_VIRTUAL_ADDRESS_SPACES	 BIT(1)
+#define HV_FLUSH_NON_GLOBAL_MAPPINGS_ONLY	 BIT(2)
+#define HV_FLUSH_USE_EXTENDED_RANGE_FORMAT	 BIT(3)
+
+/* HvFlushGuestPhysicalAddressList, HvExtCallMemoryHeatHint hypercall */
+union hv_gpa_page_range {
+	u64 address_space;
+	struct {
+		u64 additional_pages:11;
+		u64 largepage:1;
+		u64 basepfn:52;
+	} page;
+	struct {
+		u64 reserved:12;
+		u64 page_size:1;
+		u64 reserved1:8;
+		u64 base_large_pfn:43;
+	};
+};
+
+/*
+ * All input flush parameters should be in single page. The max flush
+ * count is equal with how many entries of union hv_gpa_page_range can
+ * be populated into the input parameter page.
+ */
+#define HV_MAX_FLUSH_REP_COUNT ((HV_HYP_PAGE_SIZE - 2 * sizeof(u64)) / \
+				sizeof(union hv_gpa_page_range))
+
+struct hv_guest_mapping_flush_list {
+	u64 address_space;
+	u64 flags;
+	union hv_gpa_page_range gpa_list[HV_MAX_FLUSH_REP_COUNT];
+};
+
+struct hv_tlb_flush {	 /* HV_INPUT_FLUSH_VIRTUAL_ADDRESS_LIST */
+	u64 address_space;
+	u64 flags;
+	u64 processor_mask;
+	u64 gva_list[];
+} __packed;
+
+/* HvFlushVirtualAddressSpaceEx, HvFlushVirtualAddressListEx hypercalls */
+struct hv_tlb_flush_ex {
+	u64 address_space;
+	u64 flags;
+	struct hv_vpset hv_vp_set;
+	u64 gva_list[];
+} __packed;
+
+struct ms_hyperv_tsc_page {	 /* HV_REFERENCE_TSC_PAGE */
+	 volatile u32 tsc_sequence;
+	 u32 reserved1;
+	 volatile u64 tsc_scale;
+	 volatile s64 tsc_offset; 
+} __packed;
 
 /* Define the number of synthetic interrupt sources. */
 #define HV_SYNIC_SINT_COUNT (16)
@@ -400,6 +616,22 @@ union hv_x64_xsave_xfem_register {
 		__u64 xtile_cfg : 1;
 		__u64 xtile_data : 1;
 		__u64 rsvd19_63 : 45;
+	} __packed;
+};
+
+/* Synthetic timer configuration */
+union hv_stimer_config {	 /* HV_X64_MSR_STIMER_CONFIG_CONTENTS */
+	u64 as_uint64;
+	struct {
+		u64 enable:1;
+		u64 periodic:1;
+		u64 lazy:1;
+		u64 auto_enable:1;
+		u64 apic_vector:8;
+		u64 direct_mode:1;
+		u64 reserved_z0:3;
+		u64 sintx:4;
+		u64 reserved_z1:44;
 	} __packed;
 };
 
@@ -1217,7 +1449,62 @@ union hv_x64_interrupt_state_register {
 	} __packed;
 };
 
-#if !defined(__aarch64__)
+#if defined(__aarch64__)
+/* HvGetVpRegisters returns an array of these output elements */
+struct hv_get_vp_registers_output {
+	union {
+		struct {
+			u32 a;
+			u32 b;
+			u32 c;
+			u32 d;
+		} as32 __packed;
+		struct {
+			u64 low;
+			u64 high;
+		} as64 __packed;
+	};
+};
+
+#define HV_ARM64_PENDING_EVENT_HEADER \
+	__u8 event_pending : 1; \
+	__u8 event_type : 3; \
+	__u8 reserved : 4
+
+union hv_arm64_pending_synthetic_exception_event {
+	__u64 as_uint64[2];
+	struct {
+		HV_ARM64_PENDING_EVENT_HEADER;
+
+		__u32 exception_type;
+		__u64 context;
+	};
+};
+
+union hv_arm64_interrupt_state_register {
+	__u64 as_uint64;
+	struct {
+		__u64 interrupt_shadow : 1;
+		__u64 reserved : 63;
+	};
+};
+
+enum hv_arm64_pending_interruption_type {
+	HV_ARM64_PENDING_INTERRUPT = 0,
+	HV_ARM64_PENDING_EXCEPTION = 1
+};
+
+union hv_arm64_pending_interruption_register {
+	__u64 as_uint64;
+	struct {
+		__u64 interruption_pending : 1;
+		__u64 interruption_type : 1;
+		__u64 reserved : 30;
+		__u64 error_code : 32;
+	};
+};
+
+#else /* defined(__aarch64__) */
 
 union hv_x64_pending_exception_event {
 	__u64 as_uint64[2];
@@ -1269,46 +1556,6 @@ union hv_x64_register_sev_control {
 		__u64 reserved_z : 11;
 		__u64 vmsa_gpa_page_number : 52;
 	} __packed;
-};
-
-#else /* !defined(__aarch64__) */
-
-#define HV_ARM64_PENDING_EVENT_HEADER \
-	__u8 event_pending : 1; \
-	__u8 event_type : 3; \
-	__u8 reserved : 4
-
-union hv_arm64_pending_synthetic_exception_event {
-	__u64 as_uint64[2];
-	struct {
-		HV_ARM64_PENDING_EVENT_HEADER;
-
-		__u32 exception_type;
-		__u64 context;
-	};
-};
-
-union hv_arm64_interrupt_state_register {
-	__u64 as_uint64;
-	struct {
-		__u64 interrupt_shadow : 1;
-		__u64 reserved : 63;
-	};
-};
-
-enum hv_arm64_pending_interruption_type {
-	HV_ARM64_PENDING_INTERRUPT = 0,
-	HV_ARM64_PENDING_EXCEPTION = 1
-};
-
-union hv_arm64_pending_interruption_register {
-	__u64 as_uint64;
-	struct {
-		__u64 interruption_pending : 1;
-		__u64 interruption_type : 1;
-		__u64 reserved : 30;
-		__u64 error_code : 32;
-	};
 };
 
 #endif /* defined(__aarch64__) */
@@ -1373,6 +1620,117 @@ struct hv_input_set_vp_registers {
 } __packed;
 
 #define HV_UNMAP_GPA_LARGE_PAGE		0x2
+
+/* HvCallSendSyntheticClusterIpi hypercall */
+struct hv_send_ipi {	 /* HV_INPUT_SEND_SYNTHETIC_CLUSTER_IPI */
+	 u32 vector;	 
+	 u32 reserved;
+	 u64 cpu_mask;
+} __packed;
+					 
+#if defined(__x86_64__)
+union hv_msi_address_register { /* HV_MSI_ADDRESS */
+	u32 as_uint32;
+	struct {
+		u32 reserved1:2;
+		u32 destination_mode:1;
+		u32 redirection_hint:1;
+		u32 reserved2:8;
+		u32 destination_id:8;
+		u32 msi_base:12;
+	};
+} __packed;
+
+union hv_msi_data_register {	 /* HV_MSI_ENTRY.Data */
+	u32 as_uint32;
+	struct {
+		u32 vector:8;
+		u32 delivery_mode:3;
+		u32 reserved1:3;
+		u32 level_assert:1;
+		u32 trigger_mode:1;
+		u32 reserved2:16;
+	};
+} __packed;
+
+union hv_msi_entry {	 /* HV_MSI_ENTRY */
+
+	u64 as_uint64;
+	struct {
+		union hv_msi_address_register address;
+		union hv_msi_data_register data;
+	} __packed;
+};
+
+#elif defined(__aarch64__)
+
+union hv_msi_entry {
+        u64 as_uint64[2];
+        struct {
+                u64 address;
+                u32 data;
+                u32 reserved;
+        } __packed;
+};
+#endif
+
+union hv_ioapic_rte {
+	u64 as_uint64;
+
+	struct {
+		u32 vector:8;
+		u32 delivery_mode:3;
+		u32 destination_mode:1;
+		u32 delivery_status:1;
+		u32 interrupt_polarity:1;
+		u32 remote_irr:1;
+		u32 trigger_mode:1;
+		u32 interrupt_mask:1;
+		u32 reserved1:15;
+
+		u32 reserved2:24;
+		u32 destination_id:8;
+	};
+
+	struct {
+		u32 low_uint32;
+		u32 high_uint32;
+	};
+} __packed;
+
+enum hv_interrupt_source {	 /* HV_INTERRUPT_SOURCE */
+	HV_INTERRUPT_SOURCE_MSI = 1, /* MSI and MSI-X */
+	HV_INTERRUPT_SOURCE_IOAPIC,
+};
+
+struct hv_interrupt_entry {	 /* HV_INTERRUPT_ENTRY */
+	u32 source;
+	u32 reserved1;
+	union {
+		union hv_msi_entry msi_entry;
+		union hv_ioapic_rte ioapic_rte;
+	};
+} __packed;
+
+#define HV_DEVICE_INTERRUPT_TARGET_MULTICAST		1
+#define HV_DEVICE_INTERRUPT_TARGET_PROCESSOR_SET	2
+
+struct hv_device_interrupt_target {	 /* HV_DEVICE_INTERRUPT_TARGET */
+	u32 vector;
+	u32 flags;		/* HV_DEVICE_INTERRUPT_TARGET_* above */
+	union {
+		u64 vp_mask;
+		struct hv_vpset vp_set;
+	};
+} __packed;
+
+struct hv_retarget_device_interrupt {	 /* HV_INPUT_RETARGET_DEVICE_INTERRUPT */
+	u64 partition_id;		/* use "self" */
+	u64 device_id;
+	struct hv_interrupt_entry int_entry;
+	u64 reserved2;
+	struct hv_device_interrupt_target int_target;
+} __packed __aligned(8);
 
 enum hv_intercept_type {
 #if defined(__x86_64__)

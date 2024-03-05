@@ -37,12 +37,6 @@ enum hv_scheduler_type {
 	HV_SCHEDULER_TYPE_MAX
 };
 
-struct hv_vpset {		/* HV_VP_SET */
-	__u64 format;
-	__u64 valid_bank_mask;
-	__u64 bank_contents[];
-} __packed;
-
 enum hv_stats_object_type {
 	HV_STATS_OBJECT_HYPERVISOR		= 0x00000001,
 	HV_STATS_OBJECT_LOGICAL_PROCESSOR	= 0x00000002,
@@ -155,6 +149,10 @@ enum hv_sleep_state {
 	HV_SLEEP_STATE_LOCK = 6
 };
 
+struct hv_input_enter_sleep_state {     /* HV_INPUT_ENTER_SLEEP_STATE */
+        u32 sleep_state;        /* enum hv_sleep_state */
+} __packed;     
+
 enum hv_system_property {
 	/* Add more values when needed */
 	HV_SYSTEM_PROPERTY_SLEEP_STATE = 3,
@@ -257,7 +255,6 @@ struct hv_input_unmap_stats_page {
 } __packed;
 
 
-
 struct hv_proximity_domain_flags {
 	__u32 proximity_preferred : 1;
 	__u32 reserved : 30;
@@ -271,6 +268,12 @@ union hv_proximity_domain_info {
 		struct hv_proximity_domain_flags flags;
 	};
 	__u64 as_uint64;
+} __packed;
+
+/* HvDepositMemory hypercall */
+struct hv_deposit_memory {      /* HV_INPUT_DEPOSIT_MEMORY */
+        u64 partition_id;
+        u64 gpa_page_list[];
 } __packed;
 
 struct hv_input_withdraw_memory {
@@ -465,6 +468,264 @@ struct hv_output_get_logical_processor_run_time {
 	__u64 local_run_time;
 	__u64 rsvdz0;
 	__u64 hypervisor_time;
+} __packed;
+
+enum {  /* HV_SUBNODE_TYPE */
+    HvSubnodeAny = 0,
+    HvSubnodeSocket,
+    HvSubnodeCluster,
+    HvSubnodeL3,
+    HvSubnodeCount,
+    HvSubnodeInvalid = -1
+};
+
+struct hv_create_vp {   /* HV_INPUT_CREATE_VP */
+	u64 partition_id;
+	u32 vp_index;
+	u8 padding[3];
+	u8 subnode_type;
+	u64 subnode_id;
+	union hv_proximity_domain_info proximity_domain_info;
+	u64 flags;
+} __packed;
+
+/* HV_INTERRUPT_TRIGGER_MODE */
+enum hv_interrupt_trigger_mode {
+	HV_INTERRUPT_TRIGGER_MODE_EDGE = 0,
+	HV_INTERRUPT_TRIGGER_MODE_LEVEL = 1,
+};
+
+/* HV_DEVICE_INTERRUPT_DESCRIPTOR */
+struct hv_device_interrupt_descriptor {
+	u32 interrupt_type;
+	u32 trigger_mode;
+	u32 vector_count;
+	u32 reserved;
+	struct hv_device_interrupt_target target;
+} __packed;
+
+/* HV_INPUT_MAP_DEVICE_INTERRUPT */
+struct hv_input_map_device_interrupt {
+	u64 partition_id;
+	u64 device_id;
+	u32 flags;
+	u32 base_irt_idx;
+	struct hv_interrupt_entry logical_interrupt_entry;
+	struct hv_device_interrupt_descriptor interrupt_descriptor;
+} __packed;
+
+/* HV_OUTPUT_MAP_DEVICE_INTERRUPT */
+struct hv_output_map_device_interrupt { 
+	struct hv_interrupt_entry interrupt_entry;
+} __packed;
+
+/* HV_INPUT_UNMAP_DEVICE_INTERRUPT */
+struct hv_input_unmap_device_interrupt {
+	u64 partition_id;
+	u64 device_id;
+	struct hv_interrupt_entry interrupt_entry;
+	u32 flags;
+} __packed;
+
+#define HV_SOURCE_SHADOW_NONE               0x0
+#define HV_SOURCE_SHADOW_BRIDGE_BUS_RANGE   0x1
+
+struct hv_send_ipi_ex { /* HV_INPUT_SEND_SYNTHETIC_CLUSTER_IPI_EX */
+        u32 vector;
+        u32 reserved;
+        struct hv_vpset vp_set;
+} __packed;
+
+
+union hv_attdev_flags {         /* HV_ATTACH_DEVICE_FLAGS */
+	struct {
+		__u32 logical_id : 1;
+		__u32 resvd0 : 1;
+		__u32 ats_enabled : 1;
+		__u32 virt_func : 1;
+		__u32 shared_irq_child : 1;
+		__u32 virt_dev : 1;
+		__u32 ats_supported : 1;
+		__u32 small_irt : 1;
+		__u32 resvd : 24;
+	} __packed;
+	__u32 as_uint32;
+};
+
+union hv_dev_pci_caps {         /* HV_DEVICE_PCI_CAPABILITIES */
+        struct {
+		__u32 max_pasid_width : 1;
+		__u32 invalidate_qdepth : 1;
+		__u32 global_inval : 1;
+		__u32 prg_response_req : 1;
+		__u32 resvd : 24;
+	} __packed;
+	__u32 as_uint32;
+};
+
+typedef u16 hv_pci_rid;         /* HV_PCI_RID */
+typedef u16 hv_pci_segment;     /* HV_PCI_SEGMENT */
+typedef u64 hv_logical_device_id;
+union hv_pci_bdf {      /* HV_PCI_BDF */
+	u16 as_uint16;
+
+	struct {
+		u8 function:3;
+		u8 device:5;
+		u8 bus;
+	};
+} __packed;
+
+union hv_pci_bus_range {
+	u16 as_uint16;
+
+	struct {
+		u8 subordinate_bus;
+		u8 secondary_bus;
+	};
+} __packed;
+
+enum hv_device_type {           /* HV_DEVICE_TYPE */
+	HV_DEVICE_TYPE_LOGICAL = 0,
+	HV_DEVICE_TYPE_PCI = 1,
+	HV_DEVICE_TYPE_IOAPIC = 2,
+	HV_DEVICE_TYPE_ACPI = 3,
+};
+
+union hv_device_id {            /* HV_DEVICE_ID */
+	u64 as_uint64;
+
+	struct {
+		u64 reserved0:62;
+		u64 device_type:2;
+	};
+
+	/* HV_DEVICE_TYPE_LOGICAL */
+	struct {
+		u64 id:62;
+		u64 device_type:2;
+	} logical;
+
+	/* HV_DEVICE_TYPE_PCI */
+	struct {
+		union {
+			hv_pci_rid rid;
+			union hv_pci_bdf bdf;
+		};
+
+		hv_pci_segment segment;
+		union hv_pci_bus_range shadow_bus_range;
+
+		u16 phantom_function_bits:2;
+		u16 source_shadow:1;
+
+		u16 rsvdz0:11;
+		u16 device_type:2;
+	} pci;
+
+	/* HV_DEVICE_TYPE_IOAPIC */
+	struct {
+		u8 ioapic_id;
+		u8 rsvdz0;
+		u16 rsvdz1;
+		u16 rsvdz2;
+
+		u16 rsvdz3:14;
+		u16 device_type:2;
+	} ioapic;
+
+	/* HV_DEVICE_TYPE_ACPI */
+	struct {
+		u32 input_mapping_base;
+		u32 input_mapping_count:30;
+		u32 device_type:2;
+	} acpi;
+} __packed;
+
+/* HV_INPUT_ATTACH_DEVICE */
+struct hv_input_attach_device {                        
+        __u64 partition_id;
+        union hv_device_id device_id;
+        union hv_attdev_flags attdev_flags;
+        __u8  attdev_vtl;
+        __u8  rsvd0;
+        __u16 rsvd1;
+        __u64 logical_devid;
+        union hv_dev_pci_caps dev_pcicaps;
+        __u16 pf_pci_rid;
+        __u16 resvd2;
+} __packed;
+
+struct hv_input_detach_device {         /* HV_INPUT_DETACH_DEVICE */
+        __u64 partition_id;
+        __u64 logical_devid;
+} __packed;
+
+
+#define HV_DEVICE_DOMAIN_TYPE_S2  0 /* Stage 2 domain */
+#define HV_DEVICE_DOMAIN_TYPE_S1  1 /* Stage 1 domain */
+#define HV_DEVICE_DOMAIN_TYPE_SOC 2 /* SOC domain */
+
+/* ID for stage 2 default domain and NULL domain */
+#define HV_DEVICE_DOMAIN_ID_S2_DEFAULT 0
+#define HV_DEVICE_DOMAIN_ID_S2_NULL    0xFFFFFFFFULL
+
+union hv_device_domain_id {
+	u64 as_uint64;
+	struct {
+		u32 type: 4;
+		u32 reserved: 28;
+		u32 id;
+	};
+} __packed;
+
+struct hv_input_device_domain { /* HV_INPUT_DEVICE_DOMAIN */
+	u64 partition_id;
+	union hv_input_vtl owner_vtl;
+	u8 padding[7];
+	union hv_device_domain_id domain_id;
+} __packed;
+
+union hv_create_device_domain_flags {   /* HV_CREATE_DEVICE_DOMAIN_FLAGS */
+	u32 as_uint32;
+	struct {
+		u32 forward_progress_required: 1;
+		u32 inherit_owning_vtl: 1;
+		u32 reserved: 30;
+	};
+} __packed;
+
+struct hv_input_create_device_domain {  /* HV_INPUT_CREATE_DEVICE_DOMAIN */
+	struct hv_input_device_domain device_domain;
+	union hv_create_device_domain_flags create_device_domain_flags;
+} __packed;
+
+struct hv_input_delete_device_domain {  /* HV_INPUT_DELETE_DEVICE_DOMAIN */
+	struct hv_input_device_domain device_domain;
+} __packed;
+
+struct hv_input_attach_device_domain {  /* HV_INPUT_ATTACH_DEVICE_DOMAIN */
+	struct hv_input_device_domain device_domain;
+	union hv_device_id device_id;
+} __packed;
+
+struct hv_input_detach_device_domain {  /* HV_INPUT_DETACH_DEVICE_DOMAIN */
+	u64 partition_id;
+	union hv_device_id device_id;
+} __packed;
+
+struct hv_input_map_device_gpa_pages {  /* HV_INPUT_MAP_DEVICE_GPA_PAGES */
+	struct hv_input_device_domain device_domain;
+	union hv_input_vtl target_vtl;
+	u8 padding[3];
+	u32 map_flags;
+	u64 target_device_va_base;
+	u64 gpa_page_list[];
+} __packed;
+
+struct hv_input_unmap_device_gpa_pages {  /* HV_INPUT_UNMAP_DEVICE_GPA_PAGES */
+	struct hv_input_device_domain device_domain;
+	u64 target_device_va_base;
 } __packed;
 
 #endif /* _UAPI_HV_HVHDK_MINI_H */
