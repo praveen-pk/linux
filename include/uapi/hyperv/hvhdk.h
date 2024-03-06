@@ -1060,7 +1060,7 @@ union hv_partition_isolation_properties {
 
 struct hv_input_create_partition {
 	__u64 flags;
-	union hv_proximity_domain_info proximity_domain_info;
+	struct hv_proximity_domain_info proximity_domain_info;
 	__u32 compatibility_version;
 	__u32 padding;
 	struct hv_partition_creation_properties partition_creation_properties;
@@ -1829,7 +1829,7 @@ struct hv_input_create_port {
 	__u16 padding;
 	__u64 connection_partition_id;
 	struct hv_port_info port_info;
-	union hv_proximity_domain_info proximity_domain_info;
+	struct hv_proximity_domain_info proximity_domain_info;
 } __packed;
 
 union hv_input_delete_port {
@@ -1851,7 +1851,7 @@ struct hv_input_connect_port {
 	union hv_port_id port_id;
 	__u32 reserved2;
 	struct hv_connection_info connection_info;
-	union hv_proximity_domain_info proximity_domain_info;
+	struct hv_proximity_domain_info proximity_domain_info;
 } __packed;
 
 union hv_input_disconnect_port {

@@ -69,8 +69,8 @@ int hv_call_withdraw_memory(u64 count, int node, u64 partition_id)
 
 		input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
 
+		memset(input_page, 0, sizeof(*input_page));
 		input_page->partition_id = partition_id;
-		input_page->proximity_domain_info.as_uint64 = 0;
 		status = hv_do_rep_hypercall(
 			HVCALL_WITHDRAW_MEMORY,
 			min(remaining, HV_WITHDRAW_BATCH_SIZE), 0, input_page,
@@ -118,8 +118,8 @@ int hv_call_create_partition(
 		input = *this_cpu_ptr(hyperv_pcpu_input_arg);
 		output = *this_cpu_ptr(hyperv_pcpu_output_arg);
 
+		memset(input, 0, sizeof(*input));
 		input->flags = flags;
-		input->proximity_domain_info.as_uint64 = 0;
 		input->compatibility_version = HV_COMPATIBILITY_21_H2;
 
 		memcpy(&input->partition_creation_properties, &creation_properties,
@@ -860,8 +860,7 @@ hv_call_create_port(u64 port_partition_id, union hv_port_id port_id,
 		input->port_info = *port_info;
 		input->port_vtl = port_vtl;
 		input->min_connection_vtl = min_connection_vtl;
-		input->proximity_domain_info =
-			numa_node_to_proximity_domain_info(node);
+		input->proximity_domain_info = hv_numa_node_to_pxm_info(node);
 		status = hv_do_hypercall(HVCALL_CREATE_PORT, input,
 					NULL) & HV_HYPERCALL_RESULT_MASK;
 		local_irq_restore(flags);
@@ -927,8 +926,7 @@ hv_call_connect_port(u64 port_partition_id, union hv_port_id port_id,
 		input->connection_id = connection_id;
 		input->connection_info = *connection_info;
 		input->connection_vtl = connection_vtl;
-		input->proximity_domain_info =
-			numa_node_to_proximity_domain_info(node);
+		input->proximity_domain_info = hv_numa_node_to_pxm_info(node);
 		status = hv_do_hypercall(HVCALL_CONNECT_PORT, input,
 					NULL) & HV_HYPERCALL_RESULT_MASK;
 
