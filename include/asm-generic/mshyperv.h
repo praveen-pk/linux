@@ -344,6 +344,8 @@ void hyperv_cleanup(void);
 bool hv_query_ext_cap(u64 cap_query);
 void hv_setup_dma_ops(struct device *dev, bool coherent);
 int hv_sleep_notifiers_register(void);
+int hv_retrieve_scheduler_type(enum hv_scheduler_type *out);
+
 #else /* CONFIG_HYPERV */
 static inline void hv_identify_partition_type(void) {}
 static inline bool hv_is_hyperv_initialized(void) { return false; }
