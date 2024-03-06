@@ -1232,11 +1232,6 @@ union hv_translate_gva_result {
 	} __packed;
 };
 
-/* Define synthetic interrupt controller flag constants. */
-#define HV_EVENT_FLAGS_COUNT		(256 * 8)
-#define HV_EVENT_FLAGS_BYTE_COUNT	(256)
-#define HV_EVENT_FLAGS_LONG_COUNT	(256 / sizeof(__u32))
-
 struct hv_x64_apic_eoi_message {
 	__u32 vp_index;
 	__u32 interrupt_vector;
@@ -1302,10 +1297,19 @@ struct hv_connection_info {
 	};
 } __packed;
 
+/* Define synthetic interrupt controller flag constants. */
+#define HV_EVENT_FLAGS_COUNT        (256 * 8)
+#define HV_EVENT_FLAGS_BYTE_COUNT   (256)
+#define HV_EVENT_FLAGS32_COUNT  (256 / sizeof(__u32))
+
+/* linux side we create long version of flags to use long bit ops on flags */
+#define HV_EVENT_FLAGS_UL_COUNT  (256 / sizeof(ulong))
+
 /* Define the synthetic interrupt controller event flags format. */
 union hv_synic_event_flags {
 	unsigned char flags8[HV_EVENT_FLAGS_BYTE_COUNT];
-	unsigned long flags[HV_EVENT_FLAGS_LONG_COUNT];
+	__u32 flags32[HV_EVENT_FLAGS32_COUNT];
+	ulong ulflags[HV_EVENT_FLAGS_UL_COUNT];  /* linux only */
 };
 
 struct hv_synic_event_flags_page {
