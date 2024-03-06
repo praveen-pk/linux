@@ -14,6 +14,8 @@
 
 #include <trace/events/xen.h>
 
+#define xen_set_default_idle	hyp_set_default_idle
+
 /* These are code, but not functions.  Defined in entry.S */
 extern const char xen_failsafe_callback[];
 
