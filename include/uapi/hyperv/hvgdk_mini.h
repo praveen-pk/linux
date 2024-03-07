@@ -53,6 +53,11 @@ struct hv_u128 {
 
 
 /* TODO not in hv headers */
+
+#ifndef BIT
+#define BIT(nr)				(1UL << (nr))
+#endif
+
 #define HV_LINUX_VENDOR_ID		0x8100
 #define HV_HYP_PAGE_SHIFT		12
 #define HV_HYP_PAGE_SIZE		BIT(HV_HYP_PAGE_SHIFT)
