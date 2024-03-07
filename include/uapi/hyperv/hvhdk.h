@@ -1297,6 +1297,8 @@ struct hv_connection_info {
 	};
 } __packed;
 
+#if defined(__KERNEL__)
+
 /* Define synthetic interrupt controller flag constants. */
 #define HV_EVENT_FLAGS_COUNT        (256 * 8)
 #define HV_EVENT_FLAGS_BYTE_COUNT   (256)
@@ -1315,6 +1317,8 @@ union hv_synic_event_flags {
 struct hv_synic_event_flags_page {
 	volatile union hv_synic_event_flags event_flags[HV_SYNIC_SINT_COUNT];
 };
+
+#endif /* __KERNEL__ */
 
 /* Define the synthentic interrupt controller event ring format */
 #define HV_SYNIC_EVENT_RING_MESSAGE_COUNT 63
@@ -1763,9 +1767,9 @@ struct hv_input_register_intercept_result {
 union hv_delete_vp {	/* HV_INPUT_DELETE_VP */
 	__u64 as_uint64[2];
 	struct {
-		u64 partition_id;
-		u32 vp_index;
-		u8 reserved[4];
+		__u64 partition_id;
+		__u32 vp_index;
+		__u8 reserved[4];
 	} __packed;
 } __packed;
 

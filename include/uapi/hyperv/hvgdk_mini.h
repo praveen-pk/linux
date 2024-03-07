@@ -6,7 +6,9 @@
 #define _UAPI_HV_HVGDK_MINI_H
 
 #include <linux/types.h>
+#if defined(__KERNEL__)
 #include <linux/bits.h>
+#endif
 
 #define HVGDK_MINI_H_VERSION		(25294)
 typedef __u64 hv_nano100_time_t;	/* HV_NANO100_TIME */
@@ -167,7 +169,7 @@ struct hv_tsc_emulation_control {	 /* HV_TSC_INVARIANT_CONTROL */
 #endif /* __x86_64__ */
 
 struct hv_get_partition_id {	 /* HV_OUTPUT_GET_PARTITION_ID */
-	u64 partition_id;
+	__u64 partition_id;
 } __packed;
 
 /* HV_CRASH_CTL_REG_CONTENTS */
@@ -175,19 +177,19 @@ struct hv_get_partition_id {	 /* HV_OUTPUT_GET_PARTITION_ID */
 #define HV_CRASH_CTL_CRASH_NOTIFY		 BIT_ULL(63)
 
 union hv_reference_tsc_msr {
-	u64 as_uint64;
+	__u64 as_uint64;
 	struct {
-		u64 enable:1;
-		u64 reserved:11;
-		u64 pfn:52;
+		__u64 enable:1;
+		__u64 reserved:11;
+		__u64 pfn:52;
 	} __packed;
 };
 
 /* Some of Hyper-V structs do not use hv_vpset where linux uses them */
 struct hv_vpset {	 /* HV_VP_SET */
-	u64 format;
-	u64 valid_bank_mask;
-	u64 bank_contents[];
+	__u64 format;
+	__u64 valid_bank_mask;
+	__u64 bank_contents[];
 } __packed;
 
 /*
@@ -316,11 +318,11 @@ enum hv_isolation_type {
 };
 
 union hv_x64_msr_hypercall_contents {
-	u64 as_uint64;
+	__u64 as_uint64;
 	struct {
-		u64 enable:1;
-		u64 reserved:11;
-		u64 guest_physical_address:52;
+		__u64 enable:1;
+		__u64 reserved:11;
+		__u64 guest_physical_address:52;
 	} __packed;
 };
 #endif /* if defined(__x86_64__) */
@@ -341,11 +343,11 @@ union hv_x64_msr_hypercall_contents {
 #define HV_ANY_VP			((__u32)-1)
 
 union hv_vp_assist_msr_contents {	 /* HV_REGISTER_VP_ASSIST_PAGE */
-	u64 as_uint64;
+	__u64 as_uint64;
 	struct {
-		u64 enable:1;
-		u64 reserved:11;
-		u64 pfn:52;
+		__u64 enable:1;
+		__u64 reserved:11;
+		__u64 pfn:52;
 	} __packed;
 };
 
@@ -465,8 +467,8 @@ union hv_vp_assist_msr_contents {	 /* HV_REGISTER_VP_ASSIST_PAGE */
 
 /* HvFlushGuestPhysicalAddressSpace hypercalls */
 struct hv_guest_mapping_flush {
-	u64 address_space;
-	u64 flags;
+	__u64 address_space;
+	__u64 flags;
 } __packed;
 
 /*
@@ -484,55 +486,58 @@ struct hv_guest_mapping_flush {
 
 /* HvFlushGuestPhysicalAddressList, HvExtCallMemoryHeatHint hypercall */
 union hv_gpa_page_range {
-	u64 address_space;
+	__u64 address_space;
 	struct {
-		u64 additional_pages:11;
-		u64 largepage:1;
-		u64 basepfn:52;
+		__u64 additional_pages:11;
+		__u64 largepage:1;
+		__u64 basepfn:52;
 	} page;
 	struct {
-		u64 reserved:12;
-		u64 page_size:1;
-		u64 reserved1:8;
-		u64 base_large_pfn:43;
+		__u64 reserved:12;
+		__u64 page_size:1;
+		__u64 reserved1:8;
+		__u64 base_large_pfn:43;
 	};
 };
 
+#if defined(__KERNEL__)
 /*
  * All input flush parameters should be in single page. The max flush
  * count is equal with how many entries of union hv_gpa_page_range can
  * be populated into the input parameter page.
  */
-#define HV_MAX_FLUSH_REP_COUNT ((HV_HYP_PAGE_SIZE - 2 * sizeof(u64)) / \
+#define HV_MAX_FLUSH_REP_COUNT ((HV_HYP_PAGE_SIZE - 2 * sizeof(__u64)) / \
 				sizeof(union hv_gpa_page_range))
 
 struct hv_guest_mapping_flush_list {
-	u64 address_space;
-	u64 flags;
+	__u64 address_space;
+	__u64 flags;
 	union hv_gpa_page_range gpa_list[HV_MAX_FLUSH_REP_COUNT];
 };
 
 struct hv_tlb_flush {	 /* HV_INPUT_FLUSH_VIRTUAL_ADDRESS_LIST */
-	u64 address_space;
-	u64 flags;
-	u64 processor_mask;
-	u64 gva_list[];
+	__u64 address_space;
+	__u64 flags;
+	__u64 processor_mask;
+	__u64 gva_list[];
 } __packed;
 
 /* HvFlushVirtualAddressSpaceEx, HvFlushVirtualAddressListEx hypercalls */
 struct hv_tlb_flush_ex {
-	u64 address_space;
-	u64 flags;
+	__u64 address_space;
+	__u64 flags;
 	struct hv_vpset hv_vp_set;
-	u64 gva_list[];
+	__u64 gva_list[];
 } __packed;
 
 struct ms_hyperv_tsc_page {	 /* HV_REFERENCE_TSC_PAGE */
-	volatile u32 tsc_sequence;
-	u32 reserved1;
-	volatile u64 tsc_scale;
-	volatile s64 tsc_offset;
+	volatile __u32 tsc_sequence;
+	__u32 reserved1;
+	volatile __u64 tsc_scale;
+	volatile __s64 tsc_offset;
 } __packed;
+
+#endif /* __KERNEL__ */
 
 /* Define the number of synthetic interrupt sources. */
 #define HV_SYNIC_SINT_COUNT (16)
@@ -613,17 +618,17 @@ union hv_x64_xsave_xfem_register {
 
 /* Synthetic timer configuration */
 union hv_stimer_config {	 /* HV_X64_MSR_STIMER_CONFIG_CONTENTS */
-	u64 as_uint64;
+	__u64 as_uint64;
 	struct {
-		u64 enable:1;
-		u64 periodic:1;
-		u64 lazy:1;
-		u64 auto_enable:1;
-		u64 apic_vector:8;
-		u64 direct_mode:1;
-		u64 reserved_z0:3;
-		u64 sintx:4;
-		u64 reserved_z1:44;
+		__u64 enable:1;
+		__u64 periodic:1;
+		__u64 lazy:1;
+		__u64 auto_enable:1;
+		__u64 apic_vector:8;
+		__u64 direct_mode:1;
+		__u64 reserved_z0:3;
+		__u64 sintx:4;
+		__u64 reserved_z1:44;
 	} __packed;
 };
 
@@ -632,7 +637,7 @@ union hv_stimer_config {	 /* HV_X64_MSR_STIMER_CONFIG_CONTENTS */
 
 /* Define port identifier type. */
 union hv_port_id {
-	__u32 asu32;
+	__u32 as__u32;
 	struct {
 		__u32 id : 24;
 		__u32 reserved : 8;
@@ -1446,14 +1451,14 @@ union hv_x64_interrupt_state_register {
 struct hv_get_vp_registers_output {
 	union {
 		struct {
-			u32 a;
-			u32 b;
-			u32 c;
-			u32 d;
+			__u32 a;
+			__u32 b;
+			__u32 c;
+			__u32 d;
 		} as32 __packed;
 		struct {
-			u64 low;
-			u64 high;
+			__u64 low;
+			__u64 high;
 		} as64 __packed;
 	};
 };
@@ -1615,39 +1620,40 @@ struct hv_input_set_vp_registers {
 
 /* HvCallSendSyntheticClusterIpi hypercall */
 struct hv_send_ipi {	 /* HV_INPUT_SEND_SYNTHETIC_CLUSTER_IPI */
-	u32 vector;
-	u32 reserved;
-	u64 cpu_mask;
+	__u32 vector;
+	__u32 reserved;
+	__u64 cpu_mask;
 } __packed;
 
+#if defined(__KERNEL__)
 #if defined(__x86_64__)
 union hv_msi_address_register { /* HV_MSI_ADDRESS */
-	u32 as_uint32;
+	__u32 as_uint32;
 	struct {
-		u32 reserved1:2;
-		u32 destination_mode:1;
-		u32 redirection_hint:1;
-		u32 reserved2:8;
-		u32 destination_id:8;
-		u32 msi_base:12;
+		__u32 reserved1:2;
+		__u32 destination_mode:1;
+		__u32 redirection_hint:1;
+		__u32 reserved2:8;
+		__u32 destination_id:8;
+		__u32 msi_base:12;
 	};
 } __packed;
 
 union hv_msi_data_register {	 /* HV_MSI_ENTRY.Data */
-	u32 as_uint32;
+	__u32 as_uint32;
 	struct {
-		u32 vector:8;
-		u32 delivery_mode:3;
-		u32 reserved1:3;
-		u32 level_assert:1;
-		u32 trigger_mode:1;
-		u32 reserved2:16;
+		__u32 vector:8;
+		__u32 delivery_mode:3;
+		__u32 reserved1:3;
+		__u32 level_assert:1;
+		__u32 trigger_mode:1;
+		__u32 reserved2:16;
 	};
 } __packed;
 
 union hv_msi_entry {	 /* HV_MSI_ENTRY */
 
-	u64 as_uint64;
+	__u64 as_uint64;
 	struct {
 		union hv_msi_address_register address;
 		union hv_msi_data_register data;
@@ -1657,36 +1663,36 @@ union hv_msi_entry {	 /* HV_MSI_ENTRY */
 #elif defined(__aarch64__)
 
 union hv_msi_entry {
-	u64 as_uint64[2];
+	__u64 as_uint64[2];
 	struct {
-		u64 address;
-		u32 data;
-		u32 reserved;
+		__u64 address;
+		__u32 data;
+		__u32 reserved;
 	} __packed;
 };
 #endif
 
 union hv_ioapic_rte {
-	u64 as_uint64;
+	__u64 as_uint64;
 
 	struct {
-		u32 vector:8;
-		u32 delivery_mode:3;
-		u32 destination_mode:1;
-		u32 delivery_status:1;
-		u32 interrupt_polarity:1;
-		u32 remote_irr:1;
-		u32 trigger_mode:1;
-		u32 interrupt_mask:1;
-		u32 reserved1:15;
+		__u32 vector:8;
+		__u32 delivery_mode:3;
+		__u32 destination_mode:1;
+		__u32 delivery_status:1;
+		__u32 interrupt_polarity:1;
+		__u32 remote_irr:1;
+		__u32 trigger_mode:1;
+		__u32 interrupt_mask:1;
+		__u32 reserved1:15;
 
-		u32 reserved2:24;
-		u32 destination_id:8;
+		__u32 reserved2:24;
+		__u32 destination_id:8;
 	};
 
 	struct {
-		u32 low_uint32;
-		u32 high_uint32;
+		__u32 low_uint32;
+		__u32 high_uint32;
 	};
 } __packed;
 
@@ -1696,8 +1702,8 @@ enum hv_interrupt_source {	 /* HV_INTERRUPT_SOURCE */
 };
 
 struct hv_interrupt_entry {	 /* HV_INTERRUPT_ENTRY */
-	u32 source;
-	u32 reserved1;
+	__u32 source;
+	__u32 reserved1;
 	union {
 		union hv_msi_entry msi_entry;
 		union hv_ioapic_rte ioapic_rte;
@@ -1708,21 +1714,23 @@ struct hv_interrupt_entry {	 /* HV_INTERRUPT_ENTRY */
 #define HV_DEVICE_INTERRUPT_TARGET_PROCESSOR_SET	2
 
 struct hv_device_interrupt_target {	 /* HV_DEVICE_INTERRUPT_TARGET */
-	u32 vector;
-	u32 flags;		/* HV_DEVICE_INTERRUPT_TARGET_* above */
+	__u32 vector;
+	__u32 flags;		/* HV_DEVICE_INTERRUPT_TARGET_* above */
 	union {
-		u64 vp_mask;
+		__u64 vp_mask;
 		struct hv_vpset vp_set;
 	};
 } __packed;
 
 struct hv_retarget_device_interrupt {	 /* HV_INPUT_RETARGET_DEVICE_INTERRUPT */
-	u64 partition_id;		/* use "self" */
-	u64 device_id;
+	__u64 partition_id;		/* use "self" */
+	__u64 device_id;
 	struct hv_interrupt_entry int_entry;
-	u64 reserved2;
+	__u64 reserved2;
 	struct hv_device_interrupt_target int_target;
 } __packed __aligned(8);
+
+#endif /* __KERNEL__ */
 
 enum hv_intercept_type {
 #if defined(__x86_64__)
