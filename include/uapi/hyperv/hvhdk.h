@@ -28,6 +28,7 @@ enum hv_stats_hypervisor_counters {		/* HV_HYPERVISOR_COUNTER */
 	HvNonEssentialPagesForDump		= 11,
 	HvSubsumedPages				= 12,
 #endif
+	HvStatsMaxCounter
 };
 
 enum hv_stats_partition_counters {		/* HV_PROCESS_COUNTER */
@@ -69,6 +70,7 @@ enum hv_stats_partition_counters {		/* HV_PROCESS_COUNTER */
 #elif defined(__aarch64__)
 	PartitionHwpRequestValue		= 27,
 #endif
+	PartitionStatsMaxCounter
 };
 
 enum hv_stats_vp_counters {			/* HV_THREAD_COUNTER */
@@ -363,6 +365,7 @@ enum hv_stats_vp_counters {			/* HV_THREAD_COUNTER */
 	VpSvmHypercalls					= 93,
 	VpRootDispatchThreadBlocked			= 94,
 #endif
+	VpStatsMaxCounter
 };
 
 enum hv_stats_lp_counters {			/* HV_CPU_COUNTER */
@@ -438,7 +441,21 @@ enum hv_stats_lp_counters {			/* HV_CPU_COUNTER */
 	LpReserveGroupId			= 45,
 	LpRunningPriority			= 46,
 #endif
+	LpStatsMaxCounter
 };
+
+/*
+ * Hypervisor statsitics page format
+ */
+struct hv_stats_page {
+	union {
+		__u64 hv_cntrs[HvStatsMaxCounter];		/* Hypervisor counters */
+		__u64 pt_cntrs[PartitionStatsMaxCounter];	/* Partition counters */
+		__u64 vp_cntrs[VpStatsMaxCounter];		/* VP counters */
+		__u64 lp_cntrs[LpStatsMaxCounter];		/* LP counters */
+		__u8 data[HV_HYP_PAGE_SIZE];
+	};
+} __packed;
 
 /* Bits for dirty mask of hv_vp_register_page */
 #define HV_X64_REGISTER_CLASS_GENERAL	0
