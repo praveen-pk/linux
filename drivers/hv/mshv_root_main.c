@@ -862,7 +862,7 @@ mshv_vp_ioctl_register_intercept_result(struct mshv_vp *vp, void __user *user_ar
 
 #endif
 
-static long 
+static long
 mshv_vp_ioctl_get_cpuid_values(struct mshv_vp *vp, void __user *user_args)
 {
 	struct mshv_get_vp_cpuid_values args;
@@ -1703,13 +1703,13 @@ mshv_partition_ioctl_set_msi_routing(struct mshv_partition *partition,
 }
 
 #ifdef HV_SUPPORTS_REGISTER_DELIVERABILITY_NOTIFICATIONS
-static long 
+static long
 mshv_partition_ioctl_register_deliverabilty_notifications(
 		struct mshv_partition *partition, void __user *user_args)
 {
 	struct mshv_register_deliverabilty_notifications args;
 	struct hv_register_assoc hv_reg;
-	
+
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
 
@@ -2266,7 +2266,7 @@ mshv_partition_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 	case MSHV_REGISTER_DELIVERABILITY_NOTIFICATIONS:
 		ret = mshv_partition_ioctl_register_deliverabilty_notifications(
 			partition, (void __user *)arg);
-		break;		
+		break;
 #endif
 	case MSHV_ROOT_HVCALL:
 		ret = mshv_ioctl_passthru_hvcall(partition, true,
@@ -2776,28 +2776,11 @@ static const char *scheduler_type_to_string(enum hv_scheduler_type type)
 /* Retrieve and stash the supported scheduler type */
 static int __init mshv_retrieve_scheduler_type(void)
 {
-	struct hv_input_get_system_property *input;
-	struct hv_output_get_system_property *output;
-	unsigned long flags;
-	u64 status;
+	int ret;
 
-	local_irq_save(flags);
-	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
-	output = *this_cpu_ptr(hyperv_pcpu_output_arg);
-
-	memset(input, 0, sizeof(*input));
-	memset(output, 0, sizeof(*output));
-	input->property_id = HV_SYSTEM_PROPERTY_SCHEDULER_TYPE;
-
-	status = hv_do_hypercall(HVCALL_GET_SYSTEM_PROPERTY, input, output);
-	if (!hv_result_success(status)) {
-		local_irq_restore(flags);
-		pr_err("%s: %s\n", __func__, hv_status_to_string(status));
-		return hv_status_to_errno(status);
-	}
-
-	hv_scheduler_type = output->scheduler_type;
-	local_irq_restore(flags);
+	ret = hv_retrieve_scheduler_type(&hv_scheduler_type);
+	if (ret)
+		return ret;
 
 	pr_info("mshv: hypervisor using %s\n", scheduler_type_to_string(hv_scheduler_type));
 
