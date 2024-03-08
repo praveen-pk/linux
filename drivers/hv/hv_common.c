@@ -23,7 +23,6 @@
 #include <linux/dma-map-ops.h>
 #include <linux/reboot.h>
 #include <linux/notifier.h>
-#include <asm/hyperv-tlfs.h>
 #include <asm/mshyperv.h>
 #include <acpi/acpi.h>
 
@@ -230,7 +229,7 @@ bool hv_query_ext_cap(u64 cap_query)
 	if (hv_extended_cap_queried)
 		return hv_extended_cap & cap_query;
 
-	status = hv_do_hypercall(HV_EXT_CALL_QUERY_CAPABILITIES, NULL,
+	status = hv_do_hypercall(HV_EXTCALL_QUERY_CAPABILITIES, NULL,
 				 &hv_extended_cap);
 
 	/*

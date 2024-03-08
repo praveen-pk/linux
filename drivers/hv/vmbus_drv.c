@@ -1267,7 +1267,7 @@ static void vmbus_chan_sched(struct hv_per_cpu_context *hv_cpu)
 						 VMBUS_MESSAGE_SINT;
 
 		maxbits = HV_EVENT_FLAGS_COUNT;
-		recv_int_page = event->flags;
+		recv_int_page = event->ulflags;
 	}
 
 	if (unlikely(!recv_int_page))
@@ -1360,7 +1360,7 @@ void vmbus_isr(void)
 		(vmbus_proto_version == VERSION_WIN7)) {
 
 		/* Since we are a child, we only need to check bit 0 */
-		if (sync_test_and_clear_bit(0, event->flags))
+		if (sync_test_and_clear_bit(0, event->ulflags))
 			handled = true;
 	} else {
 		/*

@@ -767,7 +767,7 @@ enum hv_partition_isolation_state {
 	/*
 	 * Initial and final state for all non-isolated partitions.
 	 */
-	HV_PARTITION_ISOLATION_INVALID             = 0,
+	HV_PARTITION_ISOLATION_INVALID		   = 0,
 
 	/*
 	 * An "Insecure" partition is not being used by the trusted host
@@ -780,7 +780,7 @@ enum hv_partition_isolation_state {
 	 * result in any changes. Also, there are no accepted or confidential
 	 * pages assigned to the partition. InsecureRundown is enabled.
 	 */
-	HV_PARTITION_ISOLATION_INSECURE_CLEAN       = 1,
+	HV_PARTITION_ISOLATION_INSECURE_CLEAN	    = 1,
 
 	/*
 	 * Guest-visible partition and VP state is not "clean". Hence it must
@@ -791,7 +791,7 @@ enum hv_partition_isolation_state {
 	 *  - Secure rundowns are completely disabled.
 	 *  - No assigned pages exist.
 	 */
-	HV_PARTITION_ISOLATION_INSECURE_DIRTY       = 2,
+	HV_PARTITION_ISOLATION_INSECURE_DIRTY	    = 2,
 
 	/*
 	 * The partition is being used by the trusted host component (and is
@@ -802,14 +802,14 @@ enum hv_partition_isolation_state {
 	 *  - Partition cannot be finalized, scrubbed.
 	 *  - Insecure rundowns are completely disabled.
 	 */
-	HV_PARTITION_ISOLATION_SECURE              = 3,
+	HV_PARTITION_ISOLATION_SECURE		   = 3,
 
 	/*
 	 * Represents a failed attempt to transition to Secure state. Partition
 	 * in this state cannot be finalized, scrubbed since one or more pages
 	 * may be assigned.
 	 */
-	HV_PARTITION_ISOLATION_SECURE_DIRTY         = 4,
+	HV_PARTITION_ISOLATION_SECURE_DIRTY	    = 4,
 
 	/*
 	 * An internal state indicating that a partition is in the process of
@@ -1002,23 +1002,23 @@ union hv_partition_isolation_properties {
 /*
  * Various isolation types supported by MSHV.
  */
-#define HV_PARTITION_ISOLATION_TYPE_NONE            0
-#define HV_PARTITION_ISOLATION_TYPE_VBS             1
-#define HV_PARTITION_ISOLATION_TYPE_SNP             2
-#define HV_PARTITION_ISOLATION_TYPE_TDX             3
+#define HV_PARTITION_ISOLATION_TYPE_NONE	    0
+#define HV_PARTITION_ISOLATION_TYPE_VBS		    1
+#define HV_PARTITION_ISOLATION_TYPE_SNP		    2
+#define HV_PARTITION_ISOLATION_TYPE_TDX		    3
 
 /*
  * Various host isolation types supported by MSHV.
  */
-#define HV_PARTITION_ISOLATION_HOST_TYPE_NONE       0x0
+#define HV_PARTITION_ISOLATION_HOST_TYPE_NONE	    0x0
 #define HV_PARTITION_ISOLATION_HOST_TYPE_HARDWARE   0x1
 #define HV_PARTITION_ISOLATION_HOST_TYPE_RESERVED   0x2
 
 /* Note: Exo partition is enabled by default */
-#define HV_PARTITION_CREATION_FLAG_EXO_PARTITION                    (1 << 8)
-#define HV_PARTITION_CREATION_FLAG_LAPIC_ENABLED                    (1 << 13)
+#define HV_PARTITION_CREATION_FLAG_EXO_PARTITION		    (1 << 8)
+#define HV_PARTITION_CREATION_FLAG_LAPIC_ENABLED		    (1 << 13)
 #define HV_PARTITION_CREATION_FLAG_INTERCEPT_MESSAGE_PAGE_ENABLED   (1 << 19)
-#define HV_PARTITION_CREATION_FLAG_X2APIC_CAPABLE                   (1 << 22)
+#define HV_PARTITION_CREATION_FLAG_X2APIC_CAPABLE		    (1 << 22)
 
 struct hv_input_create_partition {
 	__u64 flags;
@@ -1125,7 +1125,7 @@ union hv_output_get_vp_cpuid_values {
 /*
  * Request data read access.
  */
-#define HV_TRANSLATE_GVA_VALIDATE_READ       (0x0001)
+#define HV_TRANSLATE_GVA_VALIDATE_READ	     (0x0001)
 
 /*
  * Request data write access.
@@ -1158,7 +1158,7 @@ union hv_output_get_vp_cpuid_values {
 /*
  * Treat the access as a user mode access irrespective of current mode.
  */
-#define HV_TRANSLATE_GVA_USER_ACCESS         (0x0080)
+#define HV_TRANSLATE_GVA_USER_ACCESS	     (0x0080)
 
 #if defined(__x86_64__)
 
@@ -1167,18 +1167,18 @@ union hv_output_get_vp_cpuid_values {
  * irrespective of current EFLAGS.AC i.e. the behavior for "implicit supervisor-mode accesses"
  * (e.g. to the GDT, etc.) and when EFLAGS.AC=0. Does nothing if CR4.SMAP=0.
  */
-#define HV_TRANSLATE_GVA_ENFORCE_SMAP        (0x0100)
+#define HV_TRANSLATE_GVA_ENFORCE_SMAP	     (0x0100)
 
 /*
  * Don't enforce the SMAP restriction on supervisor data access to user mode addresses irrespective
  * of current EFLAGS.AC i.e. the behavior when EFLAGS.AC=1.
  */
-#define HV_TRANSLATE_GVA_OVERRIDE_SMAP       (0x0200)
+#define HV_TRANSLATE_GVA_OVERRIDE_SMAP	     (0x0200)
 
 /*
  * Treat the access as a shadow stack access.
  */
-#define HV_TRANSLATE_GVA_SHADOW_STACK        (0x0400)
+#define HV_TRANSLATE_GVA_SHADOW_STACK	     (0x0400)
 
 #else
 
@@ -1186,13 +1186,13 @@ union hv_output_get_vp_cpuid_values {
  * Restrict supervisor data access to user mode addresses irrespective of current PSTATE.PAN i.e.
  * the behavior when PSTATE.PAN=1.
  */
-#define HV_TRANSLATE_GVA_PAN_SET             (0x0100)
+#define HV_TRANSLATE_GVA_PAN_SET	     (0x0100)
 
 /*
  * Don't restrict supervisor data access to user mode addresses irrespective of current PSTATE.PAN
  * i.e. the behavior when PSTATE.PAN=0.
  */
-#define HV_TRANSLATE_GVA_PAN_CLEAR           (0x0200)
+#define HV_TRANSLATE_GVA_PAN_CLEAR	     (0x0200)
 
 #endif
 
@@ -1231,11 +1231,6 @@ union hv_translate_gva_result {
 		__u32 reserved : 23;
 	} __packed;
 };
-
-/* Define synthetic interrupt controller flag constants. */
-#define HV_EVENT_FLAGS_COUNT		(256 * 8)
-#define HV_EVENT_FLAGS_BYTE_COUNT	(256)
-#define HV_EVENT_FLAGS_LONG_COUNT	(256 / sizeof(__u32))
 
 struct hv_x64_apic_eoi_message {
 	__u32 vp_index;
@@ -1302,15 +1297,28 @@ struct hv_connection_info {
 	};
 } __packed;
 
+#if defined(__KERNEL__)
+
+/* Define synthetic interrupt controller flag constants. */
+#define HV_EVENT_FLAGS_COUNT        (256 * 8)
+#define HV_EVENT_FLAGS_BYTE_COUNT   (256)
+#define HV_EVENT_FLAGS32_COUNT  (256 / sizeof(__u32))
+
+/* linux side we create long version of flags to use long bit ops on flags */
+#define HV_EVENT_FLAGS_UL_COUNT  (256 / sizeof(ulong))
+
 /* Define the synthetic interrupt controller event flags format. */
 union hv_synic_event_flags {
 	unsigned char flags8[HV_EVENT_FLAGS_BYTE_COUNT];
-	unsigned long flags[HV_EVENT_FLAGS_LONG_COUNT];
+	__u32 flags32[HV_EVENT_FLAGS32_COUNT];
+	ulong ulflags[HV_EVENT_FLAGS_UL_COUNT];  /* linux only */
 };
 
 struct hv_synic_event_flags_page {
 	volatile union hv_synic_event_flags event_flags[HV_SYNIC_SINT_COUNT];
 };
+
+#endif /* __KERNEL__ */
 
 /* Define the synthentic interrupt controller event ring format */
 #define HV_SYNIC_EVENT_RING_MESSAGE_COUNT 63
@@ -1645,21 +1653,6 @@ struct hv_x64_sipi_intercept_message {
 	__u32 interrupt_vector;
 } __packed;
 
-union hv_gpa_page_range {
-	__u64 address_space;
-	struct {
-		__u64 additional_pages : 11;
-		__u64 largepage : 1;
-		__u64 basepfn : 52;
-	} page;
-	struct {
-		__u64 reserved : 12;
-		__u64 page_size : 1;
-		__u64 reserved1 : 8;
-		__u64 base_large_pfn : 43;
-	};
-};
-
 #define HV_GPA_ATTRIBUTE_INTERCEPT_MAX_RANGES 29
 
 struct hv_x64_gpa_attribute_intercept_message {
@@ -1771,6 +1764,15 @@ struct hv_input_register_intercept_result {
 
 #endif
 
+union hv_delete_vp {	/* HV_INPUT_DELETE_VP */
+	__u64 as_uint64[2];
+	struct {
+		__u64 partition_id;
+		__u32 vp_index;
+		__u8 reserved[4];
+	} __packed;
+} __packed;
+
 struct hv_input_assert_virtual_interrupt {
 	__u64 partition_id;
 	union hv_interrupt_control control;
@@ -1868,9 +1870,9 @@ struct hv_vp_state_data_xsave {
  * For getting and setting VP state, there are two options based on the state type:
  *
  *     1.) Data that is accessed by PFNs in the input hypercall page. This is used
- *         for state which may not fit into the hypercall pages.
+ *	   for state which may not fit into the hypercall pages.
  *     2.) Data that is accessed directly in the input\output hypercall pages.
- *         This is used for state that will always fit into the hypercall pages.
+ *	   This is used for state that will always fit into the hypercall pages.
  *
  * In the future this could be dynamic based on the size if needed.
  *
@@ -1947,19 +1949,19 @@ enum hv_vp_dispatch_state {
  * The following are the only valid combinations for dispatch states and
  * events:
  *
- *      HV_VP_DISPATCH_STATE_BLOCKED
+ *	HV_VP_DISPATCH_STATE_BLOCKED
  *
- *          HV_VP_DISPATCH_EVENT_SUSPEND
- *          HV_VP_DISPATCH_EVENT_INTERNAL
+ *	    HV_VP_DISPATCH_EVENT_SUSPEND
+ *	    HV_VP_DISPATCH_EVENT_INTERNAL
  *
- *      HV_VP_DISPATCH_STATE_READY
+ *	HV_VP_DISPATCH_STATE_READY
  *
- *          HV_VP_DISPATCH_EVENT_INTERCEPT
- *          HV_VP_DISPATCH_EVENT_PREEMPTED
- *          HV_VP_DISPATCH_EVENT_CANCELLED
- *          HV_VP_DISPATCH_EVENT_SCHEDULER
- *          HV_VP_DISPATCH_EVENT_LONGSPINWAIT
- *          HV_VP_DISPATCH_EVENT_TIMESLICEEND
+ *	    HV_VP_DISPATCH_EVENT_INTERCEPT
+ *	    HV_VP_DISPATCH_EVENT_PREEMPTED
+ *	    HV_VP_DISPATCH_EVENT_CANCELLED
+ *	    HV_VP_DISPATCH_EVENT_SCHEDULER
+ *	    HV_VP_DISPATCH_EVENT_LONGSPINWAIT
+ *	    HV_VP_DISPATCH_EVENT_TIMESLICEEND
  */
 enum hv_vp_dispatch_event {
 	HV_VP_DISPATCH_EVENT_INVALID		= 0,
@@ -1973,7 +1975,7 @@ enum hv_vp_dispatch_event {
 	HV_VP_DISPATCH_EVENT_TIMESLICEEND	= 8,
 };
 
-#define HV_ROOT_SCHEDULER_MAX_VPS_PER_CHILD_PARTITION   1024
+#define HV_ROOT_SCHEDULER_MAX_VPS_PER_CHILD_PARTITION	1024
 /* The maximum array size of HV_GENERIC_SET (vp_set) buffer */
 #define HV_GENERIC_SET_QWORD_COUNT(max) (((((max) - 1) >> 6) + 1) + 2)
 
@@ -2071,7 +2073,7 @@ struct hv_psp_cpuid_leaf {
 	__u64 reserved_z;
 } __packed;
 
-#define HV_PSP_CPUID_LEAF_COUNT_MAX     64
+#define HV_PSP_CPUID_LEAF_COUNT_MAX	64
 
 struct hv_psp_cpuid_page {
 	__u32 count;

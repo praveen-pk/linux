@@ -30,7 +30,7 @@ EXPORT_SYMBOL_GPL(hv_context);
 
 #define REG_SIMP (hv_nested ? HV_SYN_REG_NESTED_SIMP : HV_SYN_REG_SIMP)
 #define REG_SIEFP (hv_nested ? HV_SYN_REG_NESTED_SIEFP : HV_SYN_REG_SIEFP)
-#define REG_SCTRL                                                              \
+#define REG_SCTRL							       \
 	(hv_nested ? HV_SYN_REG_NESTED_SCONTROL : HV_SYN_REG_SCONTROL)
 #define REG_SINT0 (hv_nested ? HV_SYN_REG_NESTED_SINT0 : HV_SYN_REG_SINT0)
 
@@ -340,20 +340,26 @@ void hv_synic_disable_regs(unsigned int cpu)
 
 #define HV_MAX_TRIES 3
 /*
- * Scan the event flags page of 'this' CPU looking for any bit that is set.  If we find one
- * bit set, then wait for a few milliseconds.  Repeat these steps for a maximum of 3 times.
- * Return 'true', if there is still any set bit after this operation; 'false', otherwise.
+ * Scan the event flags page of 'this' CPU looking for any bit that is set. If
+ * we find a bit set, then wait for a few milliseconds.  Repeat these steps
+ * for a maximum of 3 times.
+ * If a bit is set, that means there is a pending channel interrupt.  The
+ * expectation is that the normal interrupt handling mechanism will find and
+ * process the channel interrupt "very soon", and in the process clear the bit.
  *
- * If a bit is set, that means there is a pending channel interrupt.  The expectation is
- * that the normal interrupt handling mechanism will find and process the channel interrupt
- * "very soon", and in the process clear the bit.
+ * Returns: 'true'  if there is still any set bit after this operation
+ *	    'false'  otherwise.
+ *
  */
 static bool hv_synic_event_pending(void)
 {
-	struct hv_per_cpu_context *hv_cpu = this_cpu_ptr(hv_context.cpu_context);
+	struct hv_per_cpu_context *hv_cpu =
+					   this_cpu_ptr(hv_context.cpu_context);
 	union hv_synic_event_flags *event =
-		(union hv_synic_event_flags *)hv_cpu->synic_event_page + VMBUS_MESSAGE_SINT;
-	unsigned long *recv_int_page = event->flags; /* assumes VMBus version >= VERSION_WIN8 */
+		(union hv_synic_event_flags *)hv_cpu->synic_event_page
+			+ VMBUS_MESSAGE_SINT;
+	unsigned long *recv_int_page = event->ulflags;
+				    /* assumes VMBus version >= VERSION_WIN8 */
 	bool pending;
 	u32 relid;
 	int tries = 0;
@@ -422,7 +428,7 @@ int hv_synic_cleanup(unsigned int cpu)
 	/*
 	 * channel_found == false means that any channels that were previously
 	 * assigned to the CPU have been reassigned elsewhere with a call of
-	 * vmbus_send_modifychannel().  Scan the event flags page looking for
+	 * vmbus_send_modifychannel().	Scan the event flags page looking for
 	 * bits that are set and waiting with a timeout for vmbus_chan_sched()
 	 * to process such bits.  If bits are still set after this operation
 	 * and VMBus is connected, fail the CPU offlining operation.

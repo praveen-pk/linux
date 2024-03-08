@@ -263,9 +263,9 @@ static void mshv_vtl_vmbus_isr(void)
 
 	event_flags = (union hv_synic_event_flags *)per_cpu->synic_event_page +
 			VTL2_VMBUS_SINT_INDEX;
-	for (i = 0; i < HV_EVENT_FLAGS_LONG_COUNT; i++) {
-		if (READ_ONCE(event_flags->flags[i])) {
-			word = xchg(&event_flags->flags[i], 0);
+	for (i = 0; i < HV_EVENT_FLAGS_UL_COUNT; i++) {
+		if (READ_ONCE(event_flags->ulflags[i])) {
+			word = xchg(&event_flags->ulflags[i], 0);
 			for_each_set_bit(j, &word, BITS_PER_LONG) {
 				rcu_read_lock();
 				eventfd = READ_ONCE(flag_eventfds[i * BITS_PER_LONG + j]);

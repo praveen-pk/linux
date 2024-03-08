@@ -14,7 +14,6 @@
 #include <asm/apic.h>
 #include <asm/desc.h>
 #include <asm/hypervisor.h>
-#include <asm/hyperv-tlfs.h>
 #include <asm/mshyperv.h>
 #include <asm/idtentry.h>
 #include <linux/kexec.h>
@@ -62,8 +61,8 @@ static int hv_cpu_init(unsigned int cpu)
 		 * page, instead of allocating a new page.
 		 */
 		rdmsrl(HV_X64_MSR_VP_ASSIST_PAGE, msr.as_uint64);
-		*hvp = memremap(msr.pfn << HV_X64_MSR_VP_ASSIST_PAGE_ADDRESS_SHIFT,
-				PAGE_SIZE, MEMREMAP_WB);
+		*hvp = memremap(msr.pfn << HV_HYP_PAGE_SHIFT, PAGE_SIZE,
+                                MEMREMAP_WB);
 	} else {
 		/*
 		 * The VP assist page is an "overlay" page (see Hyper-V TLFS's
@@ -187,6 +186,7 @@ static int hv_cpu_die(unsigned int cpu)
 
 	if (hv_vp_assist_page && hv_vp_assist_page[cpu]) {
 		union hv_vp_assist_msr_contents msr = { 0 };
+
 		if (hv_root_partition()) {
 			/*
 			 * For root partition the VP assist page is mapped to
@@ -393,6 +393,7 @@ void __init hyperv_init(void)
 		struct page *pg;
 		void *src, *dst;
 		enum hv_scheduler_type scheduler_type;
+                ulong gpa;
 
 		/*
 		 * For the root partition, the hypervisor will set up its
@@ -406,10 +407,10 @@ void __init hyperv_init(void)
 		 */
 		wrmsrl(HV_X64_MSR_HYPERCALL, hypercall_msr.as_uint64);
 
+		gpa = hypercall_msr.guest_physical_address << HV_HYP_PAGE_SHIFT;
 		pg = vmalloc_to_page(hv_hypercall_pg);
 		dst = kmap(pg);
-		src = memremap(hypercall_msr.guest_physical_address << PAGE_SHIFT, PAGE_SIZE,
-				MEMREMAP_WB);
+		src = memremap(gpa, PAGE_SIZE, MEMREMAP_WB);
 		BUG_ON(!(src && dst));
 		memcpy(dst, src, HV_HYP_PAGE_SIZE);
 		memunmap(src);

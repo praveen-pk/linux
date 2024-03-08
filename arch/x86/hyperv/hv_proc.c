@@ -10,9 +10,7 @@
 #include <asm/hypervisor.h>
 #include <asm/mshyperv.h>
 #include <asm/apic.h>
-
 #include <asm/trace/hyperv.h>
-#include <asm-generic/hyperv-defs.h>
 
 #define HV_SET_REGISTER_BATCH_SIZE	\
 	((HV_HYP_PAGE_SIZE - sizeof(struct hv_input_set_vp_registers)) \
