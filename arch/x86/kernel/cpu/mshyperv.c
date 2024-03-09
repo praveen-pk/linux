@@ -35,8 +35,6 @@
 #include <asm/numa.h>
 #include <asm/e820/api.h>
 
-/* Linux partition type: guest, root or l1vh */
-enum hv_partition_type hv_current_partition;
 /* Is Linux running on nested Microsoft Hypervisor */
 bool hv_nested;
 struct ms_hyperv_info ms_hyperv;
@@ -605,7 +603,7 @@ static void __init ms_hyperv_init_platform(void)
 	if ((ms_hyperv.priv_high & HV_CREATE_PARTITIONS) &&
 	    !(ms_hyperv.priv_high & HV_ISOLATION)) {
 		if (ms_hyperv.priv_high & HV_CPU_MANAGEMENT) {
-			hv_current_partition = HV_PARTITION_ROOT;
+			ms_hyperv.hv_current_partition = HV_PARTITION_ROOT;
 			pr_info("Hyper-V: running as root partition\n");
 
 			/* very first thing, reserve/log exclusive hypervisor memory */
@@ -614,9 +612,11 @@ static void __init ms_hyperv_init_platform(void)
 			else
 				hv_resv_mshv_memory();
 		} else {
-			hv_current_partition = HV_PARTITION_L1VH;
+			ms_hyperv.hv_current_partition = HV_PARTITION_L1VH;
 			pr_info("Hyper-V: running as L1VH partition\n");
 		}
+	} else {
+		ms_hyperv.hv_current_partition = HV_PARTITION_GUEST;
 	}
 
 	if (ms_hyperv.hints & HV_X64_HYPERV_NESTED) {

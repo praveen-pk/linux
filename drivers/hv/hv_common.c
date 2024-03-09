@@ -27,17 +27,14 @@
 #include <acpi/acpi.h>
 
 /*
- * hv_current_partition and ms_hyperv are defined here with other Hyper-V
- * specific globals so they are shared across all architectures and are
+ * ms_hyperv is defined here with other Hyper-V specific
+ * globals so they are shared across all architectures and are
  * built only when CONFIG_HYPERV is defined.  But on x86,
  * ms_hyperv_init_platform() is built even when CONFIG_HYPERV is not
  * defined, and it uses these two variables.  So mark them as __weak
  * here, allowing for an overriding definition in the module containing
  * ms_hyperv_init_platform().
  */
-enum hv_partition_type __weak hv_current_partition = HV_PARTITION_GUEST;
-EXPORT_SYMBOL_GPL(hv_current_partition);
-
 bool __weak hv_nested;
 EXPORT_SYMBOL_GPL(hv_nested);
 

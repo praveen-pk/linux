@@ -44,6 +44,13 @@ numa_node_to_proximity_domain_info(int node)
 	return proximity_domain_info;
 }
 
+enum hv_partition_type {
+	HV_PARTITION_GUEST,
+	HV_PARTITION_ROOT,
+	HV_PARTITION_L1VH,
+	HV_PARTITION_MAX
+};
+
 struct ms_hyperv_info {
 	u32 features;
 	u32 priv_high;
@@ -54,6 +61,7 @@ struct ms_hyperv_info {
 	u32 max_lp_index;
 	u32 isolation_config_a;
 	u32 isolation_config_b;
+	enum hv_partition_type hv_current_partition;
 };
 extern struct ms_hyperv_info ms_hyperv;
 
@@ -165,23 +173,14 @@ void hv_remove_crash_handler(void);
 extern int vmbus_interrupt;
 extern int vmbus_irq;
 
-enum hv_partition_type {
-	HV_PARTITION_GUEST,
-	HV_PARTITION_ROOT,
-	HV_PARTITION_L1VH,
-	HV_PARTITION_MAX
-};
-
-extern enum hv_partition_type hv_current_partition;
-
 static inline int hv_root_partition(void)
 {
-	return hv_current_partition == HV_PARTITION_ROOT;
+	return ms_hyperv.hv_current_partition == HV_PARTITION_ROOT;
 }
 
 static inline int hv_l1vh_partition(void)
 {
-	return hv_current_partition == HV_PARTITION_L1VH;
+	return ms_hyperv.hv_current_partition == HV_PARTITION_L1VH;
 }
 
 static inline int hv_parent_partition(void)
