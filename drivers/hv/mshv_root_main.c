@@ -3058,9 +3058,23 @@ static long __mshv_ioctl_get_version_info(struct mshv_version_info *info)
 	return 0;
 }
 
+static long __mshv_dev_ioctl(struct file *filp, unsigned int ioctl,
+	unsigned long arg)
+{
+	struct miscdevice *misc = filp->private_data;
+
+	switch (ioctl) {
+	case MSHV_CREATE_PARTITION:
+		return __mshv_ioctl_create_partition((void __user *)arg,
+				misc->this_device);
+	}
+
+	return -ENOTTY;
+}
+
 static const struct mshv_ops mshv_root_ops = {
-	.create			= __mshv_ioctl_create_partition,
 	.get_version_info	= __mshv_ioctl_get_version_info,
+	.ioctl			= __mshv_dev_ioctl,
 };
 
 static int __init mshv_root_partition_init(struct device *dev)

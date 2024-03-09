@@ -123,20 +123,15 @@ mshv_ioctl_get_api_version(void __user *user_arg)
 static long
 mshv_dev_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 {
-	struct miscdevice *misc = filp->private_data;
-
 	if (!module_ops)
 		return -ENODEV;
 
 	switch (ioctl) {
 	case MSHV_GET_VERSION_INFO:
 		return mshv_ioctl_get_api_version((void __user *)arg);
-	case MSHV_CREATE_PARTITION:
-	case MSHV_CREATE_VTL:
-		return module_ops->create((void __user *)arg, misc->this_device);
 	}
 
-	return -ENOTTY;
+	return module_ops->ioctl(filp, ioctl, arg);
 }
 
 static int
