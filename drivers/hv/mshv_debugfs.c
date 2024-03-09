@@ -24,10 +24,10 @@ static u64 mshv_lps_count;
 
 static int lp_stats_show(struct seq_file *m, void *v)
 {
-	const u64 *stats = m->private;
+	const struct hv_stats_page *stats = m->private;
 
 #define LP_SEQ_PRINTF(cnt)		\
-	seq_printf(m, "%-29s: %llu\n", __stringify(cnt), stats[Lp##cnt])
+	seq_printf(m, "%-29s: %llu\n", __stringify(cnt), stats->lp_cntrs[Lp##cnt])
 
 	LP_SEQ_PRINTF(GlobalTime);
 	LP_SEQ_PRINTF(TotalRunTime);
@@ -220,10 +220,10 @@ remove_debugfs_lps:
 
 static int vp_stats_show(struct seq_file *m, void *v)
 {
-	const u64 *stats = m->private;
+	const struct hv_stats_page *stats = m->private;
 
 #define VP_SEQ_PRINTF(cnt)		\
-	seq_printf(m, "%-41s: %llu\n", __stringify(cnt), stats[Vp##cnt])
+	seq_printf(m, "%-41s: %llu\n", __stringify(cnt), stats->vp_cntrs[Vp##cnt])
 
 	VP_SEQ_PRINTF(TotalRunTime);
 	VP_SEQ_PRINTF(HypervisorRunTime);
@@ -606,10 +606,10 @@ remove_debugfs_vp_idx:
 
 static int partition_stats_show(struct seq_file *m, void *v)
 {
-	const u64 *stats = m->private;
+	const struct hv_stats_page *stats = m->private;
 
 #define PARTITION_SEQ_PRINTF(cnt)		\
-	seq_printf(m, "%-30s: %llu\n", __stringify(cnt), stats[Partition##cnt])
+	seq_printf(m, "%-30s: %llu\n", __stringify(cnt), stats->pt_cntrs[Partition##cnt])
 
 	PARTITION_SEQ_PRINTF(VirtualProcessors);
 	PARTITION_SEQ_PRINTF(TlbSize);
@@ -804,10 +804,10 @@ remove_debugfs_partition:
 
 static int hv_stats_show(struct seq_file *m, void *v)
 {
-	const u64 *stats = m->private;
+	const struct hv_stats_page *stats = m->private;
 
 #define HV_SEQ_PRINTF(cnt)		\
-	seq_printf(m, "%-25s: %llu\n", __stringify(cnt), stats[Hv##cnt])
+	seq_printf(m, "%-25s: %llu\n", __stringify(cnt), stats->hv_cntrs[Hv##cnt])
 
 	HV_SEQ_PRINTF(LogicalProcessors);
 	HV_SEQ_PRINTF(Partitions);
