@@ -646,3 +646,28 @@ int hv_retrieve_scheduler_type(enum hv_scheduler_type *out)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(hv_retrieve_scheduler_type);
+
+void hv_identify_partition_type(void)
+{
+	/*
+	 * Check partitions creation privilege.
+	 * Only root of L1VH partitions can have this privilege.
+	 *
+	 * Hyper-V should never specify running as root and as a Confidential
+	 * VM. But to protect against a compromised/malicious Hyper-V trying
+	 * to exploit root behavior to expose Confidential VM memory, ignore
+	 * the root partition setting if also a Confidential VM.
+	 */
+	if ((ms_hyperv.priv_high & HV_CREATE_PARTITIONS) &&
+	    !(ms_hyperv.priv_high & HV_ISOLATION)) {
+		if (ms_hyperv.priv_high & HV_CPU_MANAGEMENT) {
+			ms_hyperv.hv_current_partition = HV_PARTITION_ROOT;
+			pr_info("Hyper-V: running as root partition\n");
+		} else {
+			ms_hyperv.hv_current_partition = HV_PARTITION_L1VH;
+			pr_info("Hyper-V: running as L1VH partition\n");
+		}
+	} else {
+		ms_hyperv.hv_current_partition = HV_PARTITION_GUEST;
+	}
+}

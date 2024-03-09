@@ -420,6 +420,7 @@ int hv_call_delete_vp(u64 partition_id, u32 vp_index);
 int hv_call_deposit_pages(int node, u64 partition_id, u32 num_pages);
 int hv_sleep_notifiers_register(void);
 int hv_retrieve_scheduler_type(enum hv_scheduler_type *out);
+void hv_identify_partition_type(void);
 
 #if IS_ENABLED(CONFIG_MSHV_ROOT) && defined(CONFIG_KEXEC_CORE)
 void hv_root_crash_init(void);
