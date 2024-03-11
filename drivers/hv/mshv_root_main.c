@@ -326,8 +326,7 @@ mshv_vp_ioctl_set_regs(struct mshv_vp *vp, void __user *user_args)
 		 */
 		if (registers[i].name == HV_REGISTER_EXPLICIT_SUSPEND ||
 		    registers[i].name == HV_REGISTER_INTERCEPT_SUSPEND) {
-			pr_err("%s: not allowed to set suspend registers\n",
-			       __func__);
+			vp_err(vp, "Not allowed to set suspend registers\n");
 			ret = -EINVAL;
 			goto free_return;
 		}
@@ -376,16 +375,14 @@ mshv_suspend_vp(const struct mshv_vp *vp, bool *message_in_flight)
 	ret = mshv_set_vp_registers(vp->index, vp->partition->id,
 				    1, &explicit_suspend);
 	if (ret) {
-		pr_err("%s: failed to explicitly suspend vCPU#%d in partition %lld\n",
-				__func__, vp->index, vp->partition->id);
+		vp_err(vp, "Failed to explicitly suspend vCPU\n");
 		return ret;
 	}
 
 	ret = mshv_get_vp_registers(vp->index, vp->partition->id,
 				    1, &intercept_suspend);
 	if (ret) {
-		pr_err("%s: failed to get intercept suspend state vCPU#%d in partition %lld\n",
-			__func__, vp->index, vp->partition->id);
+		vp_err(vp, "Failed to get intercept suspend state\n");
 		return ret;
 	}
 
@@ -417,8 +414,7 @@ mshv_run_vp_with_hv_scheduler(struct mshv_vp *vp, void __user *ret_message,
 	ret = mshv_set_vp_registers(vp->index, vp->partition->id,
 				    count, registers);
 	if (ret) {
-		pr_err("%s: failed to resume vCPU#%d in partition %lld\n",
-		       __func__, vp->index, vp->partition->id);
+		vp_err(vp, "Failed to resume vp execution\n");
 		return ret;
 	}
 
@@ -456,8 +452,8 @@ mshv_run_vp_with_hv_scheduler(struct mshv_vp *vp, void __user *ret_message,
 }
 
 static int
-hv_call_vp_dispatch(u64 partition_id, u32 vp_index,
-		    u32 flags, struct hv_output_dispatch_vp *res)
+hv_call_vp_dispatch(struct mshv_vp *vp, u32 flags,
+		    struct hv_output_dispatch_vp *res)
 {
 	struct hv_input_dispatch_vp *input;
 	struct hv_output_dispatch_vp *output;
@@ -470,23 +466,24 @@ hv_call_vp_dispatch(u64 partition_id, u32 vp_index,
 	memset(input, 0, sizeof(*input));
 	memset(output, 0, sizeof(*output));
 
-	input->partition_id = partition_id;
-	input->vp_index = vp_index;
+	input->partition_id = vp->partition->id;
+	input->vp_index = vp->index;
 	input->time_slice = 0; /* Run forever until something happens */
 	input->spec_ctrl = 0; /* TODO: set sensible flags */
 	input->flags = flags;
 
 	status = hv_do_hypercall(HVCALL_DISPATCH_VP, input, output);
 
-	trace_mshv_hvcall_dispatch_vp(status, partition_id,
-				      vp_index, flags,
+	trace_mshv_hvcall_dispatch_vp(status, vp->partition->id,
+				      vp->index, flags,
 				      output->dispatch_state,
 				      output->dispatch_event);
 
 	*res = *output;
 
 	if (!hv_result_success(status))
-		pr_err("%s: status %s\n", __func__, hv_status_to_string(status));
+		vp_err(vp, "%s: status %s\n", __func__,
+		       hv_status_to_string(status));
 
 	return hv_status_to_errno(status);
 }
@@ -506,8 +503,7 @@ mshv_vp_clear_explicit_suspend(struct mshv_vp *vp)
 	trace_mshv_root_sched_unsuspend_vp(ret, vp->partition->id, vp->index);
 
 	if (ret)
-		pr_err("%s: failed to unsuspend partition %llu vp %u\n",
-		       __func__, vp->partition->id, vp->index);
+		vp_err(vp, "Failed to unsuspend\n");
 
 	return ret;
 }
@@ -598,8 +594,7 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 		if (vp->run.flags.intercept_suspend)
 			flags |= HV_DISPATCH_VP_FLAG_CLEAR_INTERCEPT_SUSPEND;
 
-		ret = hv_call_vp_dispatch(vp->partition->id, vp->index,
-					  flags, &output);
+		ret = hv_call_vp_dispatch(vp, flags, &output);
 		if (ret)
 			break;
 
@@ -707,8 +702,7 @@ mshv_vp_ioctl_run_vp_regs(struct mshv_vp *vp,
 		 */
 		if (vp->registers[i].name == HV_REGISTER_EXPLICIT_SUSPEND ||
 		    vp->registers[i].name == HV_REGISTER_INTERCEPT_SUSPEND) {
-			pr_err("%s: not allowed to set suspend registers\n",
-			       __func__);
+			vp_err(vp, "Not allowed to set suspend registers\n");
 			return -EINVAL;
 		}
 	}
@@ -757,7 +751,7 @@ mshv_vp_ioctl_get_set_state_pfn(struct mshv_vp *vp,
 				FOLL_WRITE,
 				&pages[page_count - remaining]);
 		if (completed < 0) {
-			pr_err("%s: failed to pin user pages error %i\n",
+			vp_err(vp, "%s: Failed to pin user pages error %i\n",
 			       __func__, completed);
 			ret = completed;
 			goto unpin_pages;
@@ -1225,7 +1219,8 @@ mshv_partition_ioctl_get_property(struct mshv_partition *partition,
 static int mshv_init_async_handler(struct mshv_partition *partition)
 {
 	if (completion_done(&partition->async_hypercall)) {
-		pr_err("Cannot issue another async hypercall, while another one in progress!\n");
+		pt_err(partition,
+		       "Cannot issue another async hypercall, while another one in progress!\n");
 		return -EPERM;
 	}
 
@@ -1238,8 +1233,7 @@ static void mshv_async_hvcall_handler(void *data, u64 *status)
 	struct mshv_partition *partition = data;
 
 	wait_for_completion(&partition->async_hypercall);
-	pr_debug("%s: Partition ID: %llu, async hypercall completed!\n",
-		 __func__, partition->id);
+	pt_dbg(partition, "Async hypercall completed!\n");
 
 	*status = partition->async_hypercall_status;
 }
@@ -1337,8 +1331,6 @@ static int mshv_region_pin(struct mshv_mem_region *region)
 					  batch_size, FOLL_WRITE | FOLL_LONGTERM,
 					  &pages[page_count - remaining]);
 		if (ret < 0) {
-			pr_err("%s: failed to pin user pages error %lli/%i\n",
-			       __func__, page_count, ret);
 			unpin_user_pages(pages, page_count - remaining);
 			return ret;
 		}
@@ -1381,8 +1373,9 @@ static int mshv_partition_chk_snp_map_ram(struct mshv_partition *partition,
 				excl_flags,
 				false);
 		if (ret) {
-			pr_err("%s: Failed to mark the region (guest_pfn: %llu) as exclusive.\n",
-			       __func__, region->guest_pfn);
+			pt_err(partition,
+			       "Failed to mark the region (guest_pfn: %llu) as exclusive.\n",
+			       region->guest_pfn);
 			unpin_user_pages(pages, numpgs);
 			return ret;
 		}
@@ -1400,8 +1393,9 @@ static int mshv_partition_chk_snp_map_ram(struct mshv_partition *partition,
 				     share_flags,
 				     true);
 		if (shrc)
-			pr_err("%s: Failed to mark shared. gfn:%llu rc:%d\n",
-			       __func__, region->guest_pfn, shrc);
+			pt_err(partition,
+			       "Failed to mark shared. gfn:%llu rc:%d\n",
+			       region->guest_pfn, shrc);
 	}
 
 	/*
@@ -1466,8 +1460,12 @@ mshv_partition_ioctl_map_memory(struct mshv_partition *partition,
 					     mmio_pfn, HVPFN_DOWN(mem.size));
 	} else {
 		ret = mshv_region_pin(region);
-		if (ret)
+		if (ret) {
+			pt_err(partition,
+			       "Failed to pin user pages error: %li\n",
+			       ret);
 			goto errout;
+		}
 
 		region->flags.range_pinned = true;
 
@@ -1907,16 +1905,14 @@ mshv_partition_ioctl_sev_snp_ap_create(struct mshv_partition *partition,
 	}
 
 	if (req.vp_id >= MSHV_MAX_VPS) {
-		pr_err("%s: VP index: %llu out of bounds for partition: %llu\n",
-		       __func__, req.vp_id, partition->id);
+		pt_err(partition, "VP index: %llu out of bounds\n", req.vp_id);
 		ret = -EINVAL;
 		goto out;
 	}
 
 	vp = partition->vps.array[req.vp_id];
 	if (!vp) {
-		pr_err("%s: Invalid VP index: %llu for partition: %llu\n",
-		       __func__, req.vp_id, partition->id);
+		pt_err(partition, "VP index: %llu invalid\n", req.vp_id);
 		ret = -EINVAL;
 		goto out;
 	}
@@ -1924,16 +1920,14 @@ mshv_partition_ioctl_sev_snp_ap_create(struct mshv_partition *partition,
 	ret = hv_set_sev_control_register(vp->index, vp->partition->id, 1,
 					  HVPFN_DOWN(req.vmsa_gpa));
 	if (ret) {
-		pr_err("%s: failed to set sev control register vCPU#%d in partition %lld\n",
-		       __func__, vp->index, vp->partition->id);
+		vp_err(vp, "Failed to set sev control register\n");
 		goto out;
 	}
 
 	ret = mshv_set_vp_registers(vp->index, vp->partition->id, 1,
 				    &internal_activity);
 	if (ret) {
-		pr_err("%s: failed to set internal activity %llu vp %u\n",
-		       __func__, vp->partition->id, vp->index);
+		vp_err(vp, "Failed to set internal activity\n");
 		goto out;
 	}
 
@@ -1965,8 +1959,9 @@ static int convert_gpa_list_to_page_list(struct mshv_partition *partition,
 		}
 
 		if (!region) {
-			pr_err("%s: Failed to find the region for GFN: %llx with partition id: %llu\n",
-			       __func__, gfn, partition->id);
+			pt_err(partition,
+			       "Failed to find the region for GFN: 0x%llx\n",
+			       gfn);
 			return -ERANGE;
 		}
 
@@ -1993,7 +1988,7 @@ static long mshv_partition_ioctl_modify_gpa_host_access(
 
 	if (args.gpa_list_size == 0) {
 		ret = -EINVAL;
-		pr_err("%s: Empty list of GPAs is not supported!\n", __func__);
+		pt_err(partition, "Empty list of GPAs is not supported!\n");
 		goto out;
 	}
 
@@ -2043,7 +2038,7 @@ static long mshv_partition_ioctl_import_isolated_pages(
 
 	if (args.num_pages == 0) {
 		ret = -EINVAL;
-		pr_err("%s: Empty list of isolated pages is not supported!\n", __func__);
+		pt_err(partition, "Empty list of isolated pages is not supported!\n");
 		goto out;
 	}
 
@@ -2162,8 +2157,9 @@ static long mshv_partition_snp_ioctl(unsigned int ioctl,
 
 	if (!mshv_partition_isolation_type_snp(partition)) {
 		ret = -EOPNOTSUPP;
-		pr_err("%s: Ioctl(%u) not supported for non SEV-SNP enabled partition ID: %llu!\n",
-		       __func__, ioctl, partition->id);
+		pt_err(partition,
+		       "Ioctl(%u) not supported for non SEV-SNP partition!\n",
+		       ioctl);
 		goto out;
 	}
 
@@ -2299,8 +2295,7 @@ disable_vp_dispatch(struct mshv_vp *vp)
 	ret = mshv_set_vp_registers(vp->index, vp->partition->id,
 				    1, &dispatch_suspend);
 	if (ret)
-		pr_err("%s: failed to suspend partition %llu vp %u\n",
-			__func__, vp->partition->id, vp->index);
+		vp_err(vp, "failed to suspend\n");
 
 	trace_mshv_disable_vp_dispatch(ret, vp->partition->id, vp->index);
 
@@ -2319,8 +2314,7 @@ get_vp_signaled_count(struct mshv_vp *vp, u64 *count)
 				    1, &root_signal_count);
 
 	if (ret) {
-		pr_err("%s: failed to get root signal count for partition %llu vp %u",
-			__func__, vp->partition->id, vp->index);
+		vp_err(vp, "Failed to get root signal count");
 		*count = 0;
 	}
 
@@ -2413,8 +2407,7 @@ static int destroy_snp_partition_state(struct mshv_partition *partition)
 		ret = hv_call_unmap_gpa_pages(partition->id, region->guest_pfn,
 					      page_count, unmap_flags);
 		if (ret) {
-			pr_err("%s: failed to unmap guest memory region for partition %lld\n",
-			       __func__, partition->id);
+			pt_err(partition, "Failed to unmap guest memory region\n");
 			goto out;
 		}
 	}
@@ -2430,8 +2423,7 @@ static int destroy_snp_partition_state(struct mshv_partition *partition)
 		ret = mshv_set_vp_registers(vp->index, vp->partition->id, 1,
 					    &explicit_suspend);
 		if (ret) {
-			pr_err("%s: failed to explicitly suspend vCPU#%d in partition %lld\n",
-			       __func__, vp->index, vp->partition->id);
+			vp_err(vp, "Failed to set explicit suspend");
 			goto out;
 		}
 
@@ -2441,8 +2433,7 @@ static int destroy_snp_partition_state(struct mshv_partition *partition)
 		 */
 		ret = hv_set_sev_control_register(vp->index, vp->partition->id, 0, 0);
 		if (ret) {
-			pr_err("%s: failed to clear sev control register vCPU#%d in partition %lld\n",
-			       __func__, vp->index, vp->partition->id);
+			vp_err(vp, "Failed to clear sev control register\n");
 			goto out;
 		}
 	}
@@ -2465,8 +2456,7 @@ static int destroy_snp_partition_state(struct mshv_partition *partition)
 			isolation_control.as_uint64,
 			mshv_async_hvcall_handler, partition);
 		if (ret) {
-			pr_err("%s: failed to clear runnable bit for partition %lld\n",
-			       __func__, vp->partition->id);
+			pt_err(partition, "Failed to clear runnable bit\n");
 			goto out;
 		}
 	}
@@ -2485,8 +2475,7 @@ static int destroy_snp_partition_state(struct mshv_partition *partition)
 		HV_PARTITION_ISOLATION_INSECURE_DIRTY,
 		mshv_async_hvcall_handler, partition);
 	if (ret) {
-		pr_err("%s: failed to set isolation state to INSECURE_DIRTY for partition %lld\n",
-		       __func__, vp->partition->id);
+		pt_err(partition, "Failed to set isolation state to INSECURE_DIRTY\n");
 		goto out;
 	}
 out:
@@ -2506,8 +2495,8 @@ static void destroy_partition(struct mshv_partition *partition)
 	if (mshv_partition_isolation_type_snp(partition)) {
 		ret = destroy_snp_partition_state(partition);
 		if (ret) {
-			pr_err("%s: failed to destroy SNP partition=%lld state, error=%d\n",
-			       __func__, partition->id, ret);
+			pt_err(partition,
+			       "Failed to destroy SNP state, error: %d\n", ret);
 			return;
 		}
 	}
@@ -2559,8 +2548,9 @@ static void destroy_partition(struct mshv_partition *partition)
 				HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_SHARED,
 				true);
 			if (ret) {
-				pr_err("%s: Failed to regain access to partition: %llu memory, unpinning user pages will fail and crash the host error=%d\n",
-				       __func__, partition->id, ret);
+				pt_err(partition,
+				       "Failed to regain access to memory, unpinning user pages will fail and crash the host error: %d\n",
+				      ret);
 				return;
 			}
 		}
@@ -2639,7 +2629,7 @@ add_partition(struct mshv_partition *partition)
 }
 
 static long
-__mshv_ioctl_create_partition(void __user *user_arg)
+__mshv_ioctl_create_partition(void __user *user_arg, struct device *module_dev)
 {
 	struct mshv_create_partition args;
 	struct mshv_partition *partition;
@@ -2659,6 +2649,7 @@ __mshv_ioctl_create_partition(void __user *user_arg)
 	if (!partition)
 		return -ENOMEM;
 
+	partition->module_dev = module_dev;
 	partition->isolation_type = args.isolation_properties.isolation_type;
 
 	refcount_set(&partition->ref_count, 1);
@@ -2774,7 +2765,7 @@ static const char *scheduler_type_to_string(enum hv_scheduler_type type)
 }
 
 /* Retrieve and stash the supported scheduler type */
-static int __init mshv_retrieve_scheduler_type(void)
+static int __init mshv_retrieve_scheduler_type(struct device *dev)
 {
 	int ret;
 
@@ -2782,7 +2773,8 @@ static int __init mshv_retrieve_scheduler_type(void)
 	if (ret)
 		return ret;
 
-	pr_info("mshv: hypervisor using %s\n", scheduler_type_to_string(hv_scheduler_type));
+	dev_info(dev, "Hypervisor using %s\n",
+		 scheduler_type_to_string(hv_scheduler_type));
 
 	switch (hv_scheduler_type) {
 		case HV_SCHEDULER_TYPE_CORE_SMT:
@@ -2792,7 +2784,7 @@ static int __init mshv_retrieve_scheduler_type(void)
 			/* Supported scheduler, nothing to do */
 			break;
 		default:
-			pr_err("mshv: unsupported scheduler 0x%x, bailing.\n",
+			dev_err(dev, "unsupported scheduler 0x%x, bailing.\n",
 				hv_scheduler_type);
 			return -EOPNOTSUPP;
 	}
@@ -2800,7 +2792,7 @@ static int __init mshv_retrieve_scheduler_type(void)
 	return 0;
 }
 
-static int mshv_print_max_sev_snp_partitions(void)
+static int mshv_print_max_sev_snp_partitions(struct device *dev)
 {
 #if defined(__x86_64__)
 	struct hv_input_get_system_property *input;
@@ -2821,19 +2813,21 @@ static int mshv_print_max_sev_snp_partitions(void)
 	status = hv_do_hypercall(HVCALL_GET_SYSTEM_PROPERTY, input, output);
 	if (!hv_result_success(status)) {
 		local_irq_restore(flags);
-		pr_err("%s: %s\n", __func__, hv_status_to_string(status));
+		dev_err(dev, "Failed to get max SNP partitions: %s\n",
+			hv_status_to_string(status));
 		return hv_status_to_errno(status);
 	}
 
 	snp_partition_count = output->hv_processor_feature_value;
 	local_irq_restore(flags);
 
-	pr_info("mshv: Maximum supported SEV-SNP partitions are: %llu\n", snp_partition_count);
+	dev_info(dev, "Maximum supported SEV-SNP partitions are: %llu\n",
+		 snp_partition_count);
 #endif
 	return 0;
 }
 
-static int __init mshv_check_sev_snp_support(void)
+static int __init mshv_check_sev_snp_support(struct device *dev)
 {
 #if defined(__x86_64__)
 	struct hv_input_get_system_property *input;
@@ -2854,7 +2848,8 @@ static int __init mshv_check_sev_snp_support(void)
 	status = hv_do_hypercall(HVCALL_GET_SYSTEM_PROPERTY, input, output);
 	if (!hv_result_success(status)) {
 		local_irq_restore(flags);
-		pr_err("%s: %s\n", __func__, hv_status_to_string(status));
+		dev_err(dev, "Failed to get SNP support: %s\n",
+			hv_status_to_string(status));
 		return hv_status_to_errno(status);
 	}
 
@@ -2862,8 +2857,8 @@ static int __init mshv_check_sev_snp_support(void)
 	local_irq_restore(flags);
 
 	if (snp_status == HV_SNP_STATUS_AVAILABLE) {
-		pr_info("mshv: SEV-SNP is supported\n");
-		return mshv_print_max_sev_snp_partitions();
+		dev_info(dev, "SEV-SNP is supported\n");
+		return mshv_print_max_sev_snp_partitions(dev);
 	}
 #endif
 
@@ -2907,7 +2902,7 @@ static int mshv_root_scheduler_cleanup(unsigned int cpu)
 
 /* Must be called after retrieving the scheduler type */
 static int
-root_scheduler_init(void)
+root_scheduler_init(struct device *dev)
 {
 	int ret;
 
@@ -2918,8 +2913,7 @@ root_scheduler_init(void)
 	root_scheduler_output = alloc_percpu(void *);
 
 	if (!root_scheduler_input || !root_scheduler_output) {
-		pr_err("%s: failed to allocate root scheduler buffers\n",
-			__func__);
+		dev_err(dev, "Failed to allocate root scheduler buffers\n");
 		ret = -ENOMEM;
 		goto out;
 	}
@@ -2929,8 +2923,7 @@ root_scheduler_init(void)
 				mshv_root_scheduler_cleanup);
 
 	if (ret < 0) {
-		pr_err("%s: failed to setup root scheduler state: %i\n",
-			__func__, ret);
+		dev_err(dev, "Failed to setup root scheduler state: %i\n", ret);
 		goto out;
 	}
 
@@ -2982,8 +2975,8 @@ static void mshv_panic_unlock_snp(struct mshv_partition *vm)
 						     numpgs, access, flags,
 						     true);
 		if (ret)
-			pr_err("Hyper-V: unlock snp failed. ret:0x%x gfn:%llx "
-			       "numpgs:%lld\n", ret, memreg->guest_pfn, numpgs);
+			pt_err(vm, "Unlock snp failed. ret:0x%x gfn:%llx numpgs:%lld\n",
+			       ret, memreg->guest_pfn, numpgs);
 	}
 }
 
@@ -2992,6 +2985,7 @@ static int mshv_root_panic_cb(struct notifier_block *this, unsigned long event,
 {
 	int i, done = 0;
 	struct mshv_partition *vm;
+	struct device *dev = NULL;
 
 	hash_for_each_rcu(mshv_root.partitions.items, i, vm, hnode) {
 		if (!mshv_partition_isolation_type_snp(vm))
@@ -2999,9 +2993,10 @@ static int mshv_root_panic_cb(struct notifier_block *this, unsigned long event,
 
 		done = 1;
 		mshv_panic_unlock_snp(vm);
+		dev = vm->module_dev;
 	}
-	if (done)
-		pr_info("Hyper-V: snp pages are unlocked for panic\n");
+	if (done && dev)
+		dev_info(dev, "SNP pages are unlocked for panic\n");
 
 	return NOTIFY_DONE;
 }
@@ -3039,10 +3034,11 @@ static void mshv_crashdump_init(void) {}
 static void mshv_crashdump_deinit(void) {}
 #endif /* #if defined(__x86_64__) */
 
-static int __init mshv_l1vh_partition_init(void)
+static int __init mshv_l1vh_partition_init(struct device *dev)
 {
 	hv_scheduler_type = HV_SCHEDULER_TYPE_CORE_SMT;
-	pr_info("mshv: hypervisor using %s\n", scheduler_type_to_string(hv_scheduler_type));
+	dev_info(dev, "Hypervisor using %s\n",
+		 scheduler_type_to_string(hv_scheduler_type));
 
 	return 0;
 }
@@ -3067,17 +3063,17 @@ static const struct mshv_ops mshv_root_ops = {
 	.get_version_info	= __mshv_ioctl_get_version_info,
 };
 
-static int __init mshv_root_partition_init(void)
+static int __init mshv_root_partition_init(struct device *dev)
 {
 	int err;
 
-	if (mshv_retrieve_scheduler_type())
+	if (mshv_retrieve_scheduler_type(dev))
 		return -ENODEV;
 
-	if (mshv_check_sev_snp_support())
+	if (mshv_check_sev_snp_support(dev))
 		return -ENODEV;
 
-	err = root_scheduler_init();
+	err = root_scheduler_init(dev);
 	if (err)
 		return err;
 
@@ -3103,6 +3099,7 @@ root_sched_deinit:
 int __init mshv_parent_partition_init(void)
 {
 	int ret;
+	struct device *dev;
 	union hv_hypervisor_version_info version_info;
 
 	if (!hv_parent_partition() || is_kdump_kernel())
@@ -3111,44 +3108,45 @@ int __init mshv_parent_partition_init(void)
 	if (hv_get_hypervisor_version(&version_info))
 		return -ENODEV;
 
+	ret = mshv_set_ops(&mshv_root_ops, &dev);
+	if (ret)
+		return ret;
+
 	if (version_info.build_number < MSHV_HV_MIN_VERSION ||
 	    version_info.build_number > MSHV_HV_MAX_VERSION) {
-		pr_warn("%s: Hypervisor version %u not supported!\n",
-				__func__, version_info.build_number);
-		pr_warn("%s: Min version: %u, max version: %u\n",
-			__func__, MSHV_HV_MIN_VERSION,
-			MSHV_HV_MAX_VERSION);
+		dev_warn(dev, "Hypervisor version %u not supported!\n",
+			 version_info.build_number);
+		dev_warn(dev, "Min version: %u, max version: %u\n",
+			 MSHV_HV_MIN_VERSION, MSHV_HV_MAX_VERSION);
 		if (ignore_hv_version) {
-			pr_warn("%s: Continuing because param mshv_root.ignore_hv_version is set\n",
-				__func__);
+			dev_warn(dev, "Continuing because param mshv_root.ignore_hv_version is set\n");
 		} else {
-			pr_err("%s: Failing because version is not supported. Use param mshv_root.ignore_hv_version=1 to proceed anyway\n",
-			       __func__);
-			return -ENODEV;
+			dev_err(dev, "Failing because version is not supported. Use param mshv_root.ignore_hv_version=1 to proceed anyway\n");
+			goto unset_ops;
 		}
 	}
 
 	mshv_root.synic_pages = alloc_percpu(struct hv_synic_pages);
 	if (!mshv_root.synic_pages) {
-		pr_err("%s: failed to allocate percpu synic page\n", __func__);
-		return -ENOMEM;
+		dev_err(dev, "Failed to allocate percpu synic page\n");
+		ret = -ENOMEM;
+		goto unset_ops;
 	}
 
 	ret = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN, "mshv_synic",
 				mshv_synic_init,
 				mshv_synic_cleanup);
 	if (ret < 0) {
-		pr_err("%s: failed to setup cpu hotplug state: %i\n",
-		       __func__, ret);
+		dev_err(dev, "Failed to setup cpu hotplug state: %i\n", ret);
 		goto free_synic_pages;
 	}
 
 	mshv_cpuhp_online = ret;
 
 	if (hv_root_partition())
-		ret = mshv_root_partition_init();
+		ret = mshv_root_partition_init(dev);
 	else
-		ret = mshv_l1vh_partition_init();
+		ret = mshv_l1vh_partition_init(dev);
 	if (ret)
 		goto remove_cpu_state;
 
@@ -3160,10 +3158,6 @@ int __init mshv_parent_partition_init(void)
 	if (ret)
 		goto destroy_irqds_wq;
 
-	ret = mshv_set_ops(&mshv_root_ops);
-	if (ret)
-		goto exit_vfio_ops;
-
 	spin_lock_init(&mshv_root.partitions.lock);
 	hash_init(mshv_root.partitions.items);
 
@@ -3171,8 +3165,6 @@ int __init mshv_parent_partition_init(void)
 
 	return 0;
 
-exit_vfio_ops:
-	mshv_vfio_ops_exit();
 destroy_irqds_wq:
 	mshv_irqfd_wq_cleanup();
 exit_partition:
@@ -3182,6 +3174,8 @@ remove_cpu_state:
 	cpuhp_remove_state(mshv_cpuhp_online);
 free_synic_pages:
 	free_percpu(mshv_root.synic_pages);
+unset_ops:
+	mshv_set_ops(NULL, NULL);
 	return ret;
 }
 
@@ -3189,7 +3183,7 @@ void __exit mshv_parent_partition_exit(void)
 {
 	hv_remove_mshv_irq();
 	mshv_port_table_fini();
-	mshv_set_ops(NULL);
+	mshv_set_ops(NULL, NULL);
 	mshv_vfio_ops_exit();
 	mshv_irqfd_wq_cleanup();
 	if (hv_root_partition())

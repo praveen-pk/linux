@@ -36,24 +36,6 @@ static const struct mshv_ops *module_ops;
 static int mshv_register_dev(void);
 static void mshv_deregister_dev(void);
 
-int mshv_set_ops(const struct mshv_ops *ops)
-{
-	int ret = 0;
-
-	mutex_lock(&mshv_ops_mutex);
-	if (ops)
-		ret = mshv_register_dev();
-	else
-		mshv_deregister_dev();
-
-	if (!ret)
-		module_ops = ops;
-	mutex_unlock(&mshv_ops_mutex);
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(mshv_set_ops);
-
 static int mshv_dev_open(struct inode *inode, struct file *filp);
 static int mshv_dev_release(struct inode *inode, struct file *filp);
 static long mshv_dev_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg);
@@ -73,13 +55,33 @@ static struct miscdevice mshv_dev = {
 	.mode = 0600,
 };
 
+int mshv_set_ops(const struct mshv_ops *ops, struct device **dev)
+{
+	int ret = 0;
+
+	mutex_lock(&mshv_ops_mutex);
+	if (ops && dev) {
+		*dev = mshv_dev.this_device;
+		ret = mshv_register_dev();
+	} else {
+		mshv_deregister_dev();
+	}
+
+	if (!ret)
+		module_ops = ops;
+	mutex_unlock(&mshv_ops_mutex);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(mshv_set_ops);
+
 static int mshv_register_dev(void)
 {
 	int ret;
 
 	if (mshv_dev.this_device &&
 	    device_is_registered(mshv_dev.this_device)) {
-		pr_err("%s: mshv device already registered\n", __func__);
+		dev_err(mshv_dev.this_device, "mshv device already registered\n");
 		return -ENODEV;
 	}
 
@@ -121,6 +123,8 @@ mshv_ioctl_get_api_version(void __user *user_arg)
 static long
 mshv_dev_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 {
+	struct miscdevice *misc = filp->private_data;
+
 	if (!module_ops)
 		return -ENODEV;
 
@@ -129,7 +133,7 @@ mshv_dev_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 		return mshv_ioctl_get_api_version((void __user *)arg);
 	case MSHV_CREATE_PARTITION:
 	case MSHV_CREATE_VTL:
-		return module_ops->create((void __user *)arg);
+		return module_ops->create((void __user *)arg, misc->this_device);
 	}
 
 	return -ENOTTY;

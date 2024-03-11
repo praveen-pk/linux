@@ -182,13 +182,13 @@ struct mshv_partition *mshv_partition_find(u64 partition_id) __must_hold(RCU);
 
 int mshv_xfer_to_guest_mode_handle_work(unsigned long ti_work);
 
-typedef long (*mshv_create_func_t)(void __user *user_arg);
+typedef long (*mshv_create_func_t)(void __user *user_arg, struct device *dev);
 typedef long (*mshv_get_version_func_t)(struct mshv_version_info *info);
 struct mshv_ops {
 	mshv_create_func_t	create;
 	mshv_get_version_func_t	get_version_info;
 };
-int mshv_set_ops(const struct mshv_ops *ops);
+int mshv_set_ops(const struct mshv_ops *ops, struct device **dev);
 
 #if IS_ENABLED(CONFIG_MSHV_DIAG)
 void mshv_trace_buffer_complete(const struct hv_eventlog_message_payload *msg);
