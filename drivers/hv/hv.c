@@ -28,18 +28,18 @@ EXPORT_SYMBOL_GPL(hv_context);
 
 #ifdef HV_SUPPORTS_NESTED
 
-#define REG_SIMP (hv_nested ? HV_SYN_REG_NESTED_SIMP : HV_SYN_REG_SIMP)
-#define REG_SIEFP (hv_nested ? HV_SYN_REG_NESTED_SIEFP : HV_SYN_REG_SIEFP)
-#define REG_SCTRL							       \
-	(hv_nested ? HV_SYN_REG_NESTED_SCONTROL : HV_SYN_REG_SCONTROL)
-#define REG_SINT0 (hv_nested ? HV_SYN_REG_NESTED_SINT0 : HV_SYN_REG_SINT0)
+#define REG_SIMP (hv_nested ? HV_REGISTER_NESTED_SIMP : HV_REGISTER_SIMP)
+#define REG_SIEFP (hv_nested ? HV_REGISTER_NESTED_SIEFP : HV_REGISTER_SIEFP)
+#define REG_SCTRL                                                              \
+	(hv_nested ? HV_REGISTER_NESTED_SCONTROL : HV_REGISTER_SCONTROL)
+#define REG_SINT0 (hv_nested ? HV_REGISTER_NESTED_SINT0 : HV_REGISTER_SINT0)
 
 #else
 
-#define REG_SIMP (HV_SYN_REG_SIMP)
-#define REG_SIEFP (HV_SYN_REG_SIEFP)
-#define REG_SCTRL (HV_SYN_REG_SCONTROL)
-#define REG_SINT0 (HV_SYN_REG_SINT0)
+#define REG_SIMP (HV_REGISTER_SIMP)
+#define REG_SIEFP (HV_REGISTER_SIEFP)
+#define REG_SCTRL (HV_REGISTER_SCONTROL)
+#define REG_SINT0 (HV_REGISTER_SINT0)
 
 #endif
 
