@@ -95,6 +95,8 @@ static int __init hyperv_init(void)
 		version.build_number, version.service_number,
 		version.service_pack, version.service_branch);
 
+	hv_identify_partition_type();
+
 	ret = hv_common_init();
 	if (ret)
 		return ret;

@@ -27,17 +27,14 @@
 #include <acpi/acpi.h>
 
 /*
- * hv_current_partition and ms_hyperv are defined here with other Hyper-V
- * specific globals so they are shared across all architectures and are
+ * ms_hyperv is defined here with other Hyper-V specific
+ * globals so they are shared across all architectures and are
  * built only when CONFIG_HYPERV is defined.  But on x86,
  * ms_hyperv_init_platform() is built even when CONFIG_HYPERV is not
  * defined, and it uses these two variables.  So mark them as __weak
  * here, allowing for an overriding definition in the module containing
  * ms_hyperv_init_platform().
  */
-enum hv_partition_type __weak hv_current_partition = HV_PARTITION_GUEST;
-EXPORT_SYMBOL_GPL(hv_current_partition);
-
 bool __weak hv_nested;
 EXPORT_SYMBOL_GPL(hv_nested);
 
@@ -649,3 +646,28 @@ int hv_retrieve_scheduler_type(enum hv_scheduler_type *out)
 	return 0;
 }
 EXPORT_SYMBOL_GPL(hv_retrieve_scheduler_type);
+
+void hv_identify_partition_type(void)
+{
+	/*
+	 * Check partitions creation privilege.
+	 * Only root of L1VH partitions can have this privilege.
+	 *
+	 * Hyper-V should never specify running as root and as a Confidential
+	 * VM. But to protect against a compromised/malicious Hyper-V trying
+	 * to exploit root behavior to expose Confidential VM memory, ignore
+	 * the root partition setting if also a Confidential VM.
+	 */
+	if ((ms_hyperv.priv_high & HV_CREATE_PARTITIONS) &&
+	    !(ms_hyperv.priv_high & HV_ISOLATION)) {
+		if (ms_hyperv.priv_high & HV_CPU_MANAGEMENT) {
+			ms_hyperv.hv_current_partition = HV_PARTITION_ROOT;
+			pr_info("Hyper-V: running as root partition\n");
+		} else {
+			ms_hyperv.hv_current_partition = HV_PARTITION_L1VH;
+			pr_info("Hyper-V: running as L1VH partition\n");
+		}
+	} else {
+		ms_hyperv.hv_current_partition = HV_PARTITION_GUEST;
+	}
+}
