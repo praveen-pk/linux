@@ -1083,6 +1083,8 @@ mshv_partition_ioctl_create_vp(struct mshv_partition *partition,
 	struct mshv_create_vp args;
 	struct mshv_vp *vp;
 	struct page *intercept_message_page, *register_page;
+	union hv_stats_object_identity identity;
+	void *stats_page;
 	long ret;
 
 	if (copy_from_user(&args, arg, sizeof(args)))
@@ -1111,9 +1113,17 @@ mshv_partition_ioctl_create_vp(struct mshv_partition *partition,
 	if (ret)
 		goto unmap_intercept_message_page;
 
+	identity.vp.partition_id = partition->id;
+	identity.vp.vp_index = args.vp_index;
+	identity.vp.flags = 0;
+
+	ret = hv_call_map_stat_page(HV_STATS_OBJECT_VP, &identity, &stats_page);
+	if (ret)
+		goto unmap_register_page;
+
 	vp = kzalloc(sizeof(*vp), GFP_KERNEL);
 	if (!vp)
-		goto unmap_register_page;
+		goto unmap_stats_page;
 
 	vp->registers = kmalloc_array(MSHV_VP_MAX_REGISTERS,
 				      sizeof(*vp->registers), GFP_KERNEL);
@@ -1135,6 +1145,7 @@ mshv_partition_ioctl_create_vp(struct mshv_partition *partition,
 	vp->index = args.vp_index;
 	vp->intercept_message_page = page_to_virt(intercept_message_page);
 	vp->register_page = page_to_virt(register_page);
+	vp->stats_page = stats_page;
 
 	ret = mshv_debugfs_vp_create(vp);
 	if (ret)
@@ -1164,6 +1175,8 @@ free_registers:
 	kfree(vp->registers);
 free_vp:
 	kfree(vp);
+unmap_stats_page:
+	hv_call_unmap_stat_page(HV_STATS_OBJECT_VP, &identity);
 unmap_register_page:
 	hv_call_unmap_vp_state_page(partition->id, args.vp_index,
 				    HV_VP_STATE_PAGE_REGISTERS);
@@ -2502,11 +2515,21 @@ static void destroy_partition(struct mshv_partition *partition)
 
 	/* Remove vps */
 	for (i = 0; i < MSHV_MAX_VPS; ++i) {
+		union hv_stats_object_identity identity;
+
 		vp = partition->vps.array[i];
 		if (!vp)
 			continue;
 
 		mshv_debugfs_vp_remove(vp);
+
+		identity.vp.partition_id = partition->id;
+		identity.vp.vp_index = vp->index;
+		identity.vp.flags = 0;
+
+		(void)hv_call_unmap_stat_page(HV_STATS_OBJECT_VP, &identity);
+
+		vp->stats_page = NULL;
 
 		(void)hv_call_unmap_vp_state_page(partition->id, vp->index,
 						  HV_VP_STATE_PAGE_REGISTERS);
