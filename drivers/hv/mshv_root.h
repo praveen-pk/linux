@@ -32,7 +32,7 @@ struct mshv_vp {
 	u32 index;
 	struct mshv_partition *partition;
 	struct mutex mutex;
-	struct page *register_page;
+	struct hv_vp_register_page *register_page;
 	struct hv_message *intercept_message_page;
 	struct hv_register_assoc *registers;
 	struct {
