@@ -183,13 +183,12 @@ static void mshv_synic_enable_regs(unsigned int cpu)
 	sint.auto_eoi = hv_recommend_using_aeoi();
 
 	/* Setup VTL2 Host VSP SINT. */
-	hv_set_register(HV_SYN_REG_SINT0 + VTL2_VMBUS_SINT_INDEX,
-			sint.as_uint64);
+	hv_set_msr(HV_MSR_SINT0 + VTL2_VMBUS_SINT_INDEX, sint.as_uint64);
 
 	/* Enable intercepts */
 	if (!mshv_vsm_capabilities.intercept_page_available)
-		hv_set_register(HV_SYN_REG_SINT0 + HV_SYNIC_INTERCEPTION_SINT_INDEX,
-				sint.as_uint64);
+		hv_set_msr(HV_MSR_SINT0 + HV_SYNIC_INTERCEPTION_SINT_INDEX,
+			   sint.as_uint64);
 }
 
 static int mshv_vtl_get_vsm_regs(void)

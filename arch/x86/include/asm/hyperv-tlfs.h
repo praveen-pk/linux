@@ -205,7 +205,6 @@ enum hv_isolation_type {
 #define HV_X64_MSR_SIEFP			0x40000082
 #define HV_X64_MSR_SIMP				0x40000083
 #define HV_X64_MSR_EOM				0x40000084
-#define HV_X64_MSR_SIRBP			0x40000085
 #define HV_X64_MSR_SINT0			0x40000090
 #define HV_X64_MSR_SINT1			0x40000091
 #define HV_X64_MSR_SINT2			0x40000092
@@ -223,7 +222,10 @@ enum hv_isolation_type {
 #define HV_X64_MSR_SINT14			0x4000009E
 #define HV_X64_MSR_SINT15			0x4000009F
 
-/* Define synthetic interrupt controller model specific registers for nested hypervisor */
+/*
+ * Define synthetic interrupt controller model specific registers for
+ * nested hypervisor.
+ */
 #define HV_X64_MSR_NESTED_SCONTROL		0x40001080
 #define HV_X64_MSR_NESTED_SVERSION		0x40001081
 #define HV_X64_MSR_NESTED_SIEFP			0x40001082
@@ -263,35 +265,37 @@ enum hv_isolation_type {
 #define HV_X64_MSR_TSC_INVARIANT_CONTROL	0x40000118
 
 /*
- * To support non-arch-specific code calling hv_set/get_register:
- * - On x86,   HV_SYN_REG_ indicates an MSR accessed via rdmsrl/wrmsrl
- * - On ARM64, HV_SYN_REG_ indicates a VP register accessed via hypercall
+ * To support arch-generic code calling hv_set/get_register:
+ * - On x86, HV_MSR_ indicates an MSR accessed via rdmsrl/wrmsrl
+ * - On ARM, HV_MSR_ indicates a VP register accessed via hypercall
  */
-#define HV_SYN_REG_VP_INDEX		(HV_X64_MSR_VP_INDEX)
-#define HV_SYN_REG_TIME_REF_COUNT	(HV_X64_MSR_TIME_REF_COUNT)
-#define HV_SYN_REG_REFERENCE_TSC	(HV_X64_MSR_REFERENCE_TSC)
-#define HV_SYN_REG_STIMER0_CONFIG	(HV_X64_MSR_STIMER0_CONFIG)
-#define HV_SYN_REG_STIMER0_COUNT	(HV_X64_MSR_STIMER0_COUNT)
+#define HV_MSR_CRASH_P0		(HV_X64_MSR_CRASH_P0)
+#define HV_MSR_CRASH_P1		(HV_X64_MSR_CRASH_P1)
+#define HV_MSR_CRASH_P2		(HV_X64_MSR_CRASH_P2)
+#define HV_MSR_CRASH_P3		(HV_X64_MSR_CRASH_P3)
+#define HV_MSR_CRASH_P4		(HV_X64_MSR_CRASH_P4)
+#define HV_MSR_CRASH_CTL	(HV_X64_MSR_CRASH_CTL)
 
-#define HV_SYN_REG_SCONTROL		(HV_X64_MSR_SCONTROL)
-#define HV_SYN_REG_SIEFP		(HV_X64_MSR_SIEFP)
-#define HV_SYN_REG_SIMP			(HV_X64_MSR_SIMP)
-#define HV_SYN_REG_SIRBP		(HV_X64_MSR_SIRBP)
-#define HV_SYN_REG_EOM			(HV_X64_MSR_EOM)
-#define HV_SYN_REG_SINT0		(HV_X64_MSR_SINT0)
+#define HV_MSR_VP_INDEX		(HV_X64_MSR_VP_INDEX)
+#define HV_MSR_TIME_REF_COUNT	(HV_X64_MSR_TIME_REF_COUNT)
+#define HV_MSR_REFERENCE_TSC	(HV_X64_MSR_REFERENCE_TSC)
 
-#define HV_SYN_REG_NESTED_SCONTROL	(HV_X64_MSR_NESTED_SCONTROL)
-#define HV_SYN_REG_NESTED_SIEFP		(HV_X64_MSR_NESTED_SIEFP)
-#define HV_SYN_REG_NESTED_SIMP		(HV_X64_MSR_NESTED_SIMP)
-#define HV_SYN_REG_NESTED_EOM		(HV_X64_MSR_NESTED_EOM)
-#define HV_SYN_REG_NESTED_SINT0		(HV_X64_MSR_NESTED_SINT0)
+#define HV_MSR_SINT0		(HV_X64_MSR_SINT0)
+#define HV_MSR_SVERSION		(HV_X64_MSR_SVERSION)
+#define HV_MSR_SCONTROL		(HV_X64_MSR_SCONTROL)
+#define HV_MSR_SIEFP		(HV_X64_MSR_SIEFP)
+#define HV_MSR_SIMP		(HV_X64_MSR_SIMP)
+#define HV_MSR_EOM		(HV_X64_MSR_EOM)
 
-#define HV_SYN_REG_CRASH_P0		(HV_X64_MSR_CRASH_P0)
-#define HV_SYN_REG_CRASH_P1		(HV_X64_MSR_CRASH_P1)
-#define HV_SYN_REG_CRASH_P2		(HV_X64_MSR_CRASH_P2)
-#define HV_SYN_REG_CRASH_P3		(HV_X64_MSR_CRASH_P3)
-#define HV_SYN_REG_CRASH_P4		(HV_X64_MSR_CRASH_P4)
-#define HV_SYN_REG_CRASH_CTL		(HV_X64_MSR_CRASH_CTL)
+#define HV_MSR_NESTED_SCONTROL	(HV_X64_MSR_NESTED_SCONTROL)
+#define HV_MSR_NESTED_SVERSION	(HV_X64_MSR_NESTED_SVERSION)
+#define HV_MSR_NESTED_SIEFP	(HV_X64_MSR_NESTED_SIEFP)
+#define HV_MSR_NESTED_SIMP	(HV_X64_MSR_NESTED_SIMP)
+#define HV_MSR_NESTED_EOM	(HV_X64_MSR_NESTED_EOM)
+#define HV_MSR_NESTED_SINT0	(HV_X64_MSR_NESTED_SINT0)
+
+#define HV_MSR_STIMER0_CONFIG	(HV_X64_MSR_STIMER0_CONFIG)
+#define HV_MSR_STIMER0_COUNT	(HV_X64_MSR_STIMER0_COUNT)
 
 // x86 supports nested virtualization
 #define HV_SUPPORTS_NESTED

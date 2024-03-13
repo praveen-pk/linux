@@ -190,12 +190,6 @@ static inline int hv_parent_partition(void)
 
 extern bool hv_nested;
 
-#ifdef HV_SUPPORTS_NESTED
-#define REG_EOM (hv_nested ? HV_SYN_REG_NESTED_EOM : HV_SYN_REG_EOM)
-#else
-#define REG_EOM (HV_SYN_REG_EOM)
-#endif
-
 /* Free the message slot and signal end-of-message if required */
 static inline void vmbus_signal_eom(struct hv_message *msg, u32 old_msg_type)
 {
@@ -227,7 +221,7 @@ static inline void vmbus_signal_eom(struct hv_message *msg, u32 old_msg_type)
 		 * possibly deliver another msg from the
 		 * hypervisor
 		 */
-		hv_set_register(REG_EOM, 0);
+		hv_set_msr(HV_MSR_EOM, 0);
 	}
 }
 
