@@ -458,13 +458,23 @@ struct hv_stats_page {
 } __packed;
 
 /* Bits for dirty mask of hv_vp_register_page */
-#define HV_X64_REGISTER_CLASS_GENERAL	0
-#define HV_X64_REGISTER_CLASS_IP	1
-#define HV_X64_REGISTER_CLASS_XMM	2
-#define HV_X64_REGISTER_CLASS_SEGMENT	3
-#define HV_X64_REGISTER_CLASS_FLAGS	4
+#define HV_X64_REGISTER_CLASS_GENERAL		0
+#define HV_X64_REGISTER_CLASS_IP		1
+#define HV_X64_REGISTER_CLASS_XMM		2
+#define HV_X64_REGISTER_CLASS_SEGMENT		3
+#define HV_X64_REGISTER_CLASS_FLAGS		4
 
-#define HV_VP_REGISTER_PAGE_VERSION_1	1u
+#define HV_VP_REGISTER_PAGE_VERSION_1		1u
+
+#define HV_VP_REGISTER_PAGE_MAX_VECTOR_COUNT	7
+
+union hv_vp_register_page_interrupt_vectors {
+	__u64 as_uint64;
+	struct {
+		__u8 vector_count;
+		__u8 vector[HV_VP_REGISTER_PAGE_MAX_VECTOR_COUNT];
+	} __packed;
+} __packed;
 
 struct hv_vp_register_page {
 	__u16 version;
@@ -547,6 +557,17 @@ struct hv_vp_register_page {
 	union hv_x64_interrupt_state_register interrupt_state;
 	__u64 instruction_emulation_hints;
 	__u64 xfem;
+
+	/*
+	 * Fields from this point are not included in the register page save chunk.
+	 * The reserved field is intended to maintain alignment for unsaved fields.
+	 */
+	__u8 reserved1[0x100];
+
+	/*
+	 * Interrupts injected as part of HvCallDispatchVp.
+	 */
+	union hv_vp_register_page_interrupt_vectors interrupt_vectors;
 
 #elif defined(__aarch64__)
 	/* Not yet supported in ARM */
