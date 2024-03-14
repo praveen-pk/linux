@@ -1530,6 +1530,20 @@ static vm_fault_t mshv_vtl_low_fault(struct vm_fault *vmf)
 	return mshv_vtl_low_huge_fault(vmf, PE_SIZE_PTE);
 }
 
+static long __mshv_dev_ioctl(struct file *filp, unsigned int ioctl,
+	unsigned long arg)
+{
+	struct miscdevice *misc = filp->private_data;
+
+	switch (ioctl) {
+	case MSHV_CREATE_VTL:
+		return __mshv_ioctl_create_vtl((void __user *)arg,
+				misc->this_device);
+	}
+
+	return -ENOTTY;
+}
+
 static const struct vm_operations_struct mshv_vtl_low_vm_ops = {
 	.fault = mshv_vtl_low_fault,
 	.huge_fault = mshv_vtl_low_huge_fault,
@@ -1557,8 +1571,8 @@ static struct miscdevice mshv_vtl_low = {
 };
 
 static const struct mshv_ops mshv_vtl_ops = {
-	.create			= __mshv_ioctl_create_vtl,
 	.get_version_info	= __mshv_vtl_ioctl_get_version_info,
+	.ioctl			= __mshv_dev_ioctl,
 };
 
 static int __init mshv_vtl_init(void)
