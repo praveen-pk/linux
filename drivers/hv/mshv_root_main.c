@@ -48,9 +48,6 @@ struct mshv_root mshv_root = {};
 
 enum hv_scheduler_type hv_scheduler_type;
 
-static bool ignore_hv_version;
-module_param(ignore_hv_version, bool, 0);
-
 /* Once we implement the fast extended hypercall ABI they can go away. */
 static void __percpu **root_scheduler_input;
 static void __percpu **root_scheduler_output;
@@ -3077,16 +3074,10 @@ int __init mshv_parent_partition_init(void)
 
 	if (version_info.build_number < MSHV_HV_MIN_VERSION ||
 	    version_info.build_number > MSHV_HV_MAX_VERSION) {
-		dev_warn(dev, "Hypervisor version %u not supported!\n",
-			 version_info.build_number);
-		dev_warn(dev, "Min version: %u, max version: %u\n",
-			 MSHV_HV_MIN_VERSION, MSHV_HV_MAX_VERSION);
-		if (ignore_hv_version) {
-			dev_warn(dev, "Continuing because param mshv_root.ignore_hv_version is set\n");
-		} else {
-			dev_err(dev, "Failing because version is not supported. Use param mshv_root.ignore_hv_version=1 to proceed anyway\n");
-			goto unset_ops;
-		}
+		dev_err(dev, "Running on unvalidated Hyper-V version\n");
+		dev_err(dev, "Versions: current: %u  min: %u  max: %u\n",
+			version_info.build_number, MSHV_HV_MIN_VERSION,
+			MSHV_HV_MAX_VERSION);
 	}
 
 	mshv_root.synic_pages = alloc_percpu(struct hv_synic_pages);
