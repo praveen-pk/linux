@@ -61,8 +61,9 @@ int mshv_set_ops(const struct mshv_ops *ops, struct device **dev)
 
 	mutex_lock(&mshv_ops_mutex);
 	if (ops && dev) {
-		*dev = mshv_dev.this_device;
 		ret = mshv_register_dev();
+		if (!ret)
+			*dev = mshv_dev.this_device;
 	} else {
 		mshv_deregister_dev();
 	}
