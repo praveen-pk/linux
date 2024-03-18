@@ -991,7 +991,7 @@ mshv_vp_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 						  (void __user *)arg);
 		break;
 	default:
-		printk("%s: invalid ioctl: %#x\n", __func__, ioctl);
+		vp_warn(vp, "Invalid ioctl: %#x\n", ioctl);
 		break;
 	}
 	mutex_unlock(&vp->mutex);
@@ -1314,7 +1314,8 @@ static int mshv_partition_chk_snp_map_ram(struct mshv_partition *partition,
 	 * access to guest memory regions.
 	 */
 	if (mshv_partition_isolation_type_snp(partition)) {
-		u32 excl_flags = access_flags | HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_EXCLUSIVE;
+		u32 excl_flags = access_flags |
+				  HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_EXCLUSIVE;
 		ret = hv_call_modify_spa_host_access(
 				partition->id, pages, numpgs, 0,
 				excl_flags,
@@ -1333,7 +1334,8 @@ static int mshv_partition_chk_snp_map_ram(struct mshv_partition *partition,
 				    map_flags, pages);
 
 	if (ret && mshv_partition_isolation_type_snp(partition)) {
-		u32 share_flags = access_flags | HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_SHARED;
+		u32 share_flags = access_flags |
+				     HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_SHARED;
 		shrc = hv_call_modify_spa_host_access(partition->id, pages,
 				     numpgs,
 				     HV_MAP_GPA_READABLE | HV_MAP_GPA_WRITABLE,
