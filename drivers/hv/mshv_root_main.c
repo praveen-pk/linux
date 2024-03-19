@@ -48,9 +48,6 @@ struct mshv_root mshv_root = {};
 
 enum hv_scheduler_type hv_scheduler_type;
 
-static bool ignore_hv_version;
-module_param(ignore_hv_version, bool, 0);
-
 /* Once we implement the fast extended hypercall ABI they can go away. */
 static void __percpu **root_scheduler_input;
 static void __percpu **root_scheduler_output;
@@ -991,7 +988,7 @@ mshv_vp_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 						  (void __user *)arg);
 		break;
 	default:
-		printk("%s: invalid ioctl: %#x\n", __func__, ioctl);
+		vp_warn(vp, "Invalid ioctl: %#x\n", ioctl);
 		break;
 	}
 	mutex_unlock(&vp->mutex);
@@ -1314,7 +1311,8 @@ static int mshv_partition_chk_snp_map_ram(struct mshv_partition *partition,
 	 * access to guest memory regions.
 	 */
 	if (mshv_partition_isolation_type_snp(partition)) {
-		u32 excl_flags = access_flags | HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_EXCLUSIVE;
+		u32 excl_flags = access_flags |
+				  HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_EXCLUSIVE;
 		ret = hv_call_modify_spa_host_access(
 				partition->id, pages, numpgs, 0,
 				excl_flags,
@@ -1333,7 +1331,8 @@ static int mshv_partition_chk_snp_map_ram(struct mshv_partition *partition,
 				    map_flags, pages);
 
 	if (ret && mshv_partition_isolation_type_snp(partition)) {
-		u32 share_flags = access_flags | HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_SHARED;
+		u32 share_flags = access_flags |
+				     HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_SHARED;
 		shrc = hv_call_modify_spa_host_access(partition->id, pages,
 				     numpgs,
 				     HV_MAP_GPA_READABLE | HV_MAP_GPA_WRITABLE,
@@ -3075,16 +3074,10 @@ int __init mshv_parent_partition_init(void)
 
 	if (version_info.build_number < MSHV_HV_MIN_VERSION ||
 	    version_info.build_number > MSHV_HV_MAX_VERSION) {
-		dev_warn(dev, "Hypervisor version %u not supported!\n",
-			 version_info.build_number);
-		dev_warn(dev, "Min version: %u, max version: %u\n",
-			 MSHV_HV_MIN_VERSION, MSHV_HV_MAX_VERSION);
-		if (ignore_hv_version) {
-			dev_warn(dev, "Continuing because param mshv_root.ignore_hv_version is set\n");
-		} else {
-			dev_err(dev, "Failing because version is not supported. Use param mshv_root.ignore_hv_version=1 to proceed anyway\n");
-			goto unset_ops;
-		}
+		dev_err(dev, "Running on unvalidated Hyper-V version\n");
+		dev_err(dev, "Versions: current: %u  min: %u  max: %u\n",
+			version_info.build_number, MSHV_HV_MIN_VERSION,
+			MSHV_HV_MAX_VERSION);
 	}
 
 	mshv_root.synic_pages = alloc_percpu(struct hv_synic_pages);
