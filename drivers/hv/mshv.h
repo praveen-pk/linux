@@ -65,8 +65,7 @@ int hv_call_clear_virtual_interrupt(u64 partition_id);
 int hv_call_get_vp_state(
 		u32 vp_index,
 		u64 partition_id,
-		enum hv_get_set_vp_state_type type,
-		struct hv_vp_state_data_xsave xsave,
+		struct hv_vp_state_data state_data,
 		/* Choose between pages and ret_output */
 		u64 page_count,
 		struct page **pages,
@@ -74,8 +73,7 @@ int hv_call_get_vp_state(
 int hv_call_set_vp_state(
 		u32 vp_index,
 		u64 partition_id,
-		enum hv_get_set_vp_state_type type,
-		struct hv_vp_state_data_xsave xsave,
+		struct hv_vp_state_data state_data,
 		/* Choose between pages and bytes */
 		u64 page_count,
 		struct page **pages,

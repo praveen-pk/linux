@@ -1928,7 +1928,6 @@ struct hv_input_get_vp_state {
 } __packed;
 
 union hv_output_get_vp_state {
-	struct hv_local_interrupt_controller_state interrupt_controller_state;
 	struct hv_synthetic_timers_state synthetic_timers_state;
 } __packed;
 
