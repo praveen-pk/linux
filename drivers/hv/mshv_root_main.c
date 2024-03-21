@@ -486,6 +486,21 @@ hv_call_vp_dispatch(struct mshv_vp *vp, u32 flags,
 }
 
 static int
+mshv_vp_dispatch(struct mshv_vp *vp,
+		 u32 flags, struct hv_output_dispatch_vp *output)
+{
+	int ret;
+
+	vp->run.flags.dispatched = 1;
+
+	ret = hv_call_vp_dispatch(vp, flags, output);
+
+	vp->run.flags.dispatched = 0;
+
+	return ret;
+}
+
+static int
 mshv_vp_clear_explicit_suspend(struct mshv_vp *vp)
 {
 	struct hv_register_assoc explicit_suspend = {
@@ -511,7 +526,12 @@ mshv_vp_wait_for_hv_kick(struct mshv_vp *vp)
 	int ret;
 
 	ret = wait_event_interruptible(vp->run.suspend_queue,
-				       vp->run.kicked_by_hv == 1);
+		(vp->run.kicked_by_hv == 1 &&
+		 !vp->stats_page->vp_cntrs[VpRootDispatchThreadBlocked])
+#if defined(__x86_64__)
+		|| vp->register_page->interrupt_vectors.as_uint64
+#endif
+		);
 	if (ret)
 		return -EINTR;
 
@@ -591,7 +611,12 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 		if (vp->run.flags.intercept_suspend)
 			flags |= HV_DISPATCH_VP_FLAG_CLEAR_INTERCEPT_SUSPEND;
 
-		ret = hv_call_vp_dispatch(vp, flags, &output);
+#if defined(__x86_64__)
+		if (vp->register_page->interrupt_vectors.as_uint64)
+			flags |= HV_DISPATCH_VP_FLAG_SCAN_INTERRUPT_INJECTION;
+#endif
+
+		ret = mshv_vp_dispatch(vp, flags, &output);
 		if (ret)
 			break;
 
