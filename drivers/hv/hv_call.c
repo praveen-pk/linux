@@ -27,7 +27,7 @@ int hv_call_get_vp_registers(
 	u16 completed = 0;
 	unsigned long remaining = count;
 	int rep_count, i;
-	u64 status;
+	u64 status = HV_STATUS_SUCCESS;
 	unsigned long flags;
 
 	local_irq_save(flags);
