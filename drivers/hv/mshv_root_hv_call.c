@@ -508,8 +508,7 @@ int hv_call_assert_virtual_interrupt(
 int hv_call_get_vp_state(
 		u32 vp_index,
 		u64 partition_id,
-		enum hv_get_set_vp_state_type type,
-		struct hv_vp_state_data_xsave xsave,
+		struct hv_vp_state_data state_data,
 		/* Choose between pages and ret_output */
 		u64 page_count,
 		struct page **pages,
@@ -538,8 +537,7 @@ int hv_call_get_vp_state(
 
 		input->partition_id = partition_id;
 		input->vp_index = vp_index;
-		input->state_data.type = type;
-		memcpy(&input->state_data.xsave, &xsave, sizeof(xsave));
+		input->state_data = state_data;
 		for (i = 0; i < page_count; i++)
 			input->output_data_pfns[i] = page_to_pfn(pages[i]);
 
@@ -571,8 +569,7 @@ int hv_call_get_vp_state(
 int hv_call_set_vp_state(
 		u32 vp_index,
 		u64 partition_id,
-		enum hv_get_set_vp_state_type type,
-		struct hv_vp_state_data_xsave xsave,
+		struct hv_vp_state_data state_data,
 		/* Choose between pages and bytes */
 		u64 page_count,
 		struct page **pages,
@@ -596,7 +593,7 @@ int hv_call_set_vp_state(
 		/* round up to 8 and divide by 8 */
 		varhead_sz = (num_bytes + 7) >> 3;
 	else if (page_count)
-		varhead_sz =  page_count;
+		varhead_sz = page_count;
 	else
 		return -EINVAL;
 
@@ -607,8 +604,7 @@ int hv_call_set_vp_state(
 
 		input->partition_id = partition_id;
 		input->vp_index = vp_index;
-		input->state_data.type = type;
-		memcpy(&input->state_data.xsave, &xsave, sizeof(xsave));
+		input->state_data = state_data;
 		if (num_bytes) {
 			memcpy((u8 *)input->data, bytes, num_bytes);
 		} else {

@@ -70,19 +70,28 @@ struct mshv_assert_interrupt {
 	union hv_interrupt_control control;
 	__u64 dest_addr;
 	__u32 vector;
+	__u32 rsvd;
 };
 
 #ifdef HV_SUPPORTS_VP_STATE
 
-struct mshv_vp_state {
-	enum hv_get_set_vp_state_type type;
-	struct hv_vp_state_data_xsave xsave; /* only for xsave request */
+enum {
+	MSHV_VP_STATE_LAPIC = 0,
+	MSHV_VP_STATE_XSAVE, /* XSAVE data in compacted form */
+	MSHV_VP_STATE_SIMP,
+	MSHV_VP_STATE_SIEFP,
+	MSHV_VP_STATE_SYNTHETIC_TIMERS,
+	MSHV_VP_STATE_COUNT,
+};
 
-	__u64 buf_size; /* If xsave, must be page-aligned */
-	union {
-		struct hv_local_interrupt_controller_state *lapic;
-		__u8 *bytes; /* Xsave data. must be page-aligned */
-	} buf;
+struct mshv_get_set_vp_state {
+	__u8 type;	/* MSHV_VP_STATE_* */
+	__u8 rsvd[3];	/* MBZ */
+	__u32 buf_sz;	/* in - 4k page-aligned size of buffer.
+			 * out - actual size of data.
+			 * On EINVAL, check this to see if buffer was too small
+			 */
+	__u64 buf_ptr;	/* 4k page-aligned data buffer. */
 };
 
 #endif
@@ -257,8 +266,8 @@ struct mshv_root_hvcall {
 #define MSHV_SET_VP_REGISTERS   _IOW(MSHV_IOCTL, 0x06, struct mshv_vp_registers)
 #define MSHV_RUN_VP		_IOR(MSHV_IOCTL, 0x07, struct hv_message)
 #ifdef HV_SUPPORTS_VP_STATE
-#define MSHV_GET_VP_STATE	_IOWR(MSHV_IOCTL, 0x0A, struct mshv_vp_state)
-#define MSHV_SET_VP_STATE	_IOWR(MSHV_IOCTL, 0x0B, struct mshv_vp_state)
+#define MSHV_GET_VP_STATE	_IOWR(MSHV_IOCTL, 0x0A, struct mshv_get_set_vp_state)
+#define MSHV_SET_VP_STATE	_IOWR(MSHV_IOCTL, 0x0B, struct mshv_get_set_vp_state)
 #endif
 #define MSHV_TRANSLATE_GVA	_IOWR(MSHV_IOCTL, 0x0E, struct mshv_translate_gva)
 #ifdef HV_SUPPORTS_REGISTER_INTERCEPT

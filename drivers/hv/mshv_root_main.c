@@ -664,117 +664,166 @@ mshv_vp_ioctl_run_vp(struct mshv_vp *vp, void __user *ret_message)
 
 #ifdef HV_SUPPORTS_VP_STATE
 
-static long
+static int
 mshv_vp_ioctl_get_set_state_pfn(struct mshv_vp *vp,
-				struct mshv_vp_state *args,
+				struct hv_vp_state_data state_data,
+				unsigned long user_pfn, size_t page_count,
 				bool is_set)
 {
-	u64 page_count, remaining;
-	int completed;
+	int completed, ret = 0;
+	unsigned long check;
 	struct page **pages;
-	long ret;
-	unsigned long u_buf;
 
-	/* Buffer must be page aligned */
-	if (!PAGE_ALIGNED(args->buf_size) ||
-	    !PAGE_ALIGNED(args->buf.bytes))
+	if (page_count > INT_MAX)
 		return -EINVAL;
-
-	if (!access_ok(args->buf.bytes, args->buf_size))
-		return -EFAULT;
+	/*
+	 * Check the arithmetic for wraparound/overflow.
+	 * The last page address in the buffer is:
+	 * (user_pfn + (page_count - 1)) * PAGE_SIZE
+	 */
+	if (check_add_overflow(user_pfn, (page_count - 1), &check))
+		return -EOVERFLOW;
+	if (check_mul_overflow(check, PAGE_SIZE, &check))
+		return -EOVERFLOW;
 
 	/* Pin user pages so hypervisor can copy directly to them */
-	page_count = HVPFN_DOWN(args->buf_size);
 	pages = kcalloc(page_count, sizeof(struct page *), GFP_KERNEL);
 	if (!pages)
 		return -ENOMEM;
 
-	remaining = page_count;
-	u_buf = (unsigned long)args->buf.bytes;
-	while (remaining) {
-		completed = pin_user_pages_fast(
-				u_buf,
-				remaining,
-				FOLL_WRITE,
-				&pages[page_count - remaining]);
-		if (completed < 0) {
+	for (completed = 0; completed < page_count; completed += ret) {
+		unsigned long user_addr = (user_pfn + completed) * PAGE_SIZE;
+		int remaining = page_count - completed;
+
+		ret = pin_user_pages_fast(user_addr, remaining, FOLL_WRITE,
+					  &pages[completed]);
+		if (ret < 0) {
 			vp_err(vp, "%s: Failed to pin user pages error %i\n",
-			       __func__, completed);
-			ret = completed;
+			       __func__, ret);
 			goto unpin_pages;
 		}
-		remaining -= completed;
-		u_buf += completed * HV_HYP_PAGE_SIZE;
 	}
 
 	if (is_set)
-		ret = hv_call_set_vp_state(vp->index,
-					   vp->partition->id,
-					   args->type, args->xsave,
-					   page_count, pages,
+		ret = hv_call_set_vp_state(vp->index, vp->partition->id,
+					   state_data, page_count, pages,
 					   0, NULL);
 	else
-		ret = hv_call_get_vp_state(vp->index,
-					   vp->partition->id,
-					   args->type, args->xsave,
-					   page_count, pages,
+		ret = hv_call_get_vp_state(vp->index, vp->partition->id,
+					   state_data, page_count, pages,
 					   NULL);
 
 unpin_pages:
-	unpin_user_pages(pages, page_count - remaining);
+	unpin_user_pages(pages, completed);
 	kfree(pages);
 	return ret;
 }
 
 static long
-mshv_vp_ioctl_get_set_state(struct mshv_vp *vp, void __user *user_args, bool is_set)
+mshv_vp_ioctl_get_set_state(struct mshv_vp *vp,
+			    struct mshv_get_set_vp_state __user *user_args,
+			    bool is_set)
 {
-	struct mshv_vp_state args;
+	struct mshv_get_set_vp_state args;
 	long ret = 0;
 	union hv_output_get_vp_state vp_state;
+	u32 data_sz;
+	struct hv_vp_state_data state_data = {};
 
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
 
-	/* For now just support these */
-	if (args.type != HV_GET_SET_VP_STATE_LOCAL_INTERRUPT_CONTROLLER_STATE &&
-	    args.type != HV_GET_SET_VP_STATE_XSAVE)
+	if (args.type >= MSHV_VP_STATE_COUNT ||
+	    memchr_inv(args.rsvd, 0, sizeof(args.rsvd)) ||
+	    !args.buf_sz || !PAGE_ALIGNED(args.buf_sz) ||
+	    !PAGE_ALIGNED(args.buf_ptr))
 		return -EINVAL;
 
-	/* If we need to pin pfns, delegate to helper */
-	if (args.type & HV_GET_SET_VP_STATE_TYPE_PFN)
-		return mshv_vp_ioctl_get_set_state_pfn(vp, &args, is_set);
+	if (!access_ok(args.buf_ptr, args.buf_sz))
+		return -EFAULT;
 
-	if (args.buf_size < sizeof(vp_state))
+	switch (args.type) {
+	case MSHV_VP_STATE_LAPIC:
+		state_data.type = HV_GET_SET_VP_STATE_LOCAL_INTERRUPT_CONTROLLER_STATE;
+		data_sz = HV_HYP_PAGE_SIZE;
+		break;
+	case MSHV_VP_STATE_XSAVE:
+	{
+		u64 data_sz_64;
+
+		ret = hv_call_get_partition_property(vp->partition->id,
+						     HV_PARTITION_PROPERTY_XSAVE_STATES,
+						     &state_data.xsave.states.as_uint64);
+		if (ret)
+			return ret;
+
+		ret = hv_call_get_partition_property(vp->partition->id,
+						     HV_PARTITION_PROPERTY_MAX_XSAVE_DATA_SIZE,
+						     &data_sz_64);
+		if (ret)
+			return ret;
+
+		data_sz = (u32)data_sz_64;
+		state_data.xsave.flags = 0;
+		/* Always request legacy states */
+		state_data.xsave.states.legacy_x87 = 1;
+		state_data.xsave.states.legacy_sse = 1;
+		state_data.type = HV_GET_SET_VP_STATE_XSAVE;
+		break;
+	}
+	case MSHV_VP_STATE_SIMP:
+		state_data.type = HV_GET_SET_VP_STATE_SIM_PAGE;
+		data_sz = HV_HYP_PAGE_SIZE;
+		break;
+	case MSHV_VP_STATE_SIEFP:
+		state_data.type = HV_GET_SET_VP_STATE_SIEF_PAGE;
+		data_sz = HV_HYP_PAGE_SIZE;
+		break;
+	case MSHV_VP_STATE_SYNTHETIC_TIMERS:
+		state_data.type = HV_GET_SET_VP_STATE_SYNTHETIC_TIMERS;
+		data_sz = sizeof(vp_state.synthetic_timers_state);
+		break;
+	default:
 		return -EINVAL;
-
-	if (is_set) {
-		if (copy_from_user(
-				&vp_state,
-				args.buf.lapic,
-				sizeof(vp_state)))
-			return -EFAULT;
-
-		return hv_call_set_vp_state(vp->index,
-					    vp->partition->id,
-					    args.type, args.xsave,
-					    0, NULL,
-					    sizeof(vp_state),
-					    (u8 *)&vp_state);
 	}
 
-	ret = hv_call_get_vp_state(vp->index,
-				   vp->partition->id,
-				   args.type, args.xsave,
-				   0, NULL,
-				   &vp_state);
+	if (copy_to_user(&user_args->buf_sz, &data_sz, sizeof(user_args->buf_sz)))
+		return -EFAULT;
+
+	if (data_sz > args.buf_sz)
+		return -EINVAL;
+
+	/* If the data is transmitted via pfns, delegate to helper */
+	if (state_data.type & HV_GET_SET_VP_STATE_TYPE_PFN) {
+		unsigned long user_pfn = PFN_DOWN(args.buf_ptr);
+		size_t page_count = PFN_DOWN(args.buf_sz);
+
+		return mshv_vp_ioctl_get_set_state_pfn(vp, state_data, user_pfn,
+						       page_count, is_set);
+	}
+
+	/* Paranoia check - this shouldn't happen! */
+	if (data_sz > sizeof(vp_state)) {
+		vp_err(vp, "Invalid vp state data size!\n");
+		return -EINVAL;
+	}
+
+	if (is_set) {
+		if (copy_from_user(&vp_state, (__user void *)args.buf_ptr, data_sz))
+			return -EFAULT;
+
+		return hv_call_set_vp_state(vp->index, vp->partition->id,
+					    state_data, 0, NULL,
+					    sizeof(vp_state), (u8 *)&vp_state);
+	}
+
+	ret = hv_call_get_vp_state(vp->index, vp->partition->id, state_data,
+				   0, NULL, &vp_state);
 
 	if (ret)
 		return ret;
 
-	if (copy_to_user(args.buf.lapic,
-			 &vp_state.interrupt_controller_state,
-			 sizeof(vp_state.interrupt_controller_state)))
+	if (copy_to_user((void __user *)args.buf_ptr, &vp_state, data_sz))
 		return -EFAULT;
 
 	return 0;
