@@ -458,13 +458,23 @@ struct hv_stats_page {
 } __packed;
 
 /* Bits for dirty mask of hv_vp_register_page */
-#define HV_X64_REGISTER_CLASS_GENERAL	0
-#define HV_X64_REGISTER_CLASS_IP	1
-#define HV_X64_REGISTER_CLASS_XMM	2
-#define HV_X64_REGISTER_CLASS_SEGMENT	3
-#define HV_X64_REGISTER_CLASS_FLAGS	4
+#define HV_X64_REGISTER_CLASS_GENERAL		0
+#define HV_X64_REGISTER_CLASS_IP		1
+#define HV_X64_REGISTER_CLASS_XMM		2
+#define HV_X64_REGISTER_CLASS_SEGMENT		3
+#define HV_X64_REGISTER_CLASS_FLAGS		4
 
-#define HV_VP_REGISTER_PAGE_VERSION_1	1u
+#define HV_VP_REGISTER_PAGE_VERSION_1		1u
+
+#define HV_VP_REGISTER_PAGE_MAX_VECTOR_COUNT	7
+
+union hv_vp_register_page_interrupt_vectors {
+	__u64 as_uint64;
+	struct {
+		__u8 vector_count;
+		__u8 vector[HV_VP_REGISTER_PAGE_MAX_VECTOR_COUNT];
+	} __packed;
+} __packed;
 
 struct hv_vp_register_page {
 	__u16 version;
@@ -547,6 +557,17 @@ struct hv_vp_register_page {
 	union hv_x64_interrupt_state_register interrupt_state;
 	__u64 instruction_emulation_hints;
 	__u64 xfem;
+
+	/*
+	 * Fields from this point are not included in the register page save chunk.
+	 * The reserved field is intended to maintain alignment for unsaved fields.
+	 */
+	__u8 reserved1[0x100];
+
+	/*
+	 * Interrupts injected as part of HvCallDispatchVp.
+	 */
+	union hv_vp_register_page_interrupt_vectors interrupt_vectors;
 
 #elif defined(__aarch64__)
 	/* Not yet supported in ARM */
@@ -2043,12 +2064,13 @@ static_assert(sizeof(struct hv_vp_signal_pair_scheduler_message) ==
 #endif
 
 /* Input and output structures for HVCALL_DISPATCH_VP */
-#define HV_DISPATCH_VP_FLAG_CLEAR_INTERCEPT_SUSPEND 0x1
-#define HV_DISPATCH_VP_FLAG_ENABLE_CALLER_INTERRUPTS 0x2
-#define HV_DISPATCH_VP_FLAG_SET_CALLER_SPEC_CTRL 0x4
-#define HV_DISPATCH_VP_FLAG_SKIP_VP_SPEC_FLUSH 0x8
-#define HV_DISPATCH_VP_FLAG_SKIP_CALLER_SPEC_FLUSH 0x10
-#define HV_DISPATCH_VP_FLAG_SKIP_CALLER_USER_SPEC_FLUSH 0x20
+#define HV_DISPATCH_VP_FLAG_CLEAR_INTERCEPT_SUSPEND		0x1
+#define HV_DISPATCH_VP_FLAG_ENABLE_CALLER_INTERRUPTS		0x2
+#define HV_DISPATCH_VP_FLAG_SET_CALLER_SPEC_CTRL		0x4
+#define HV_DISPATCH_VP_FLAG_SKIP_VP_SPEC_FLUSH			0x8
+#define HV_DISPATCH_VP_FLAG_SKIP_CALLER_SPEC_FLUSH		0x10
+#define HV_DISPATCH_VP_FLAG_SKIP_CALLER_USER_SPEC_FLUSH		0x20
+#define HV_DISPATCH_VP_FLAG_SCAN_INTERRUPT_INJECTION		0x40
 
 struct hv_input_dispatch_vp {
 	__u64 partition_id;

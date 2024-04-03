@@ -486,6 +486,21 @@ hv_call_vp_dispatch(struct mshv_vp *vp, u32 flags,
 }
 
 static int
+mshv_vp_dispatch(struct mshv_vp *vp,
+		 u32 flags, struct hv_output_dispatch_vp *output)
+{
+	int ret;
+
+	vp->run.flags.dispatched = 1;
+
+	ret = hv_call_vp_dispatch(vp, flags, output);
+
+	vp->run.flags.dispatched = 0;
+
+	return ret;
+}
+
+static int
 mshv_vp_clear_explicit_suspend(struct mshv_vp *vp)
 {
 	struct hv_register_assoc explicit_suspend = {
@@ -511,7 +526,12 @@ mshv_vp_wait_for_hv_kick(struct mshv_vp *vp)
 	int ret;
 
 	ret = wait_event_interruptible(vp->run.suspend_queue,
-				       vp->run.kicked_by_hv == 1);
+		(vp->run.kicked_by_hv == 1 &&
+		 !vp->stats_page->vp_cntrs[VpRootDispatchThreadBlocked])
+#if defined(__x86_64__)
+		|| vp->register_page->interrupt_vectors.as_uint64
+#endif
+		);
 	if (ret)
 		return -EINTR;
 
@@ -591,7 +611,12 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 		if (vp->run.flags.intercept_suspend)
 			flags |= HV_DISPATCH_VP_FLAG_CLEAR_INTERCEPT_SUSPEND;
 
-		ret = hv_call_vp_dispatch(vp, flags, &output);
+#if defined(__x86_64__)
+		if (vp->register_page->interrupt_vectors.as_uint64)
+			flags |= HV_DISPATCH_VP_FLAG_SCAN_INTERRUPT_INJECTION;
+#endif
+
+		ret = mshv_vp_dispatch(vp, flags, &output);
 		if (ret)
 			break;
 
@@ -1049,35 +1074,16 @@ static vm_fault_t mshv_vp_fault(struct vm_fault *vmf)
 {
 	struct mshv_vp *vp = vmf->vma->vm_file->private_data;
 
-	vmf->page = vp->register_page;
-	get_page(vp->register_page);
+	vmf->page = virt_to_page(vp->register_page);
+	get_page(vmf->page);
 
 	return 0;
 }
 
 static int mshv_vp_mmap(struct file *file, struct vm_area_struct *vma)
 {
-	int ret;
-	struct mshv_vp *vp = file->private_data;
-
 	if (vma->vm_pgoff != MSHV_VP_MMAP_REGISTERS_OFFSET)
 		return -EINVAL;
-
-	if (mutex_lock_killable(&vp->mutex))
-		return -EINTR;
-
-	if (!vp->register_page) {
-		ret = hv_call_map_vp_state_page(vp->partition->id,
-						vp->index,
-						HV_VP_STATE_PAGE_REGISTERS,
-						&vp->register_page);
-		if (ret) {
-			mutex_unlock(&vp->mutex);
-			return ret;
-		}
-	}
-
-	mutex_unlock(&vp->mutex);
 
 	vma->vm_ops = &mshv_vp_vm_ops;
 	return 0;
@@ -1101,7 +1107,9 @@ mshv_partition_ioctl_create_vp(struct mshv_partition *partition,
 {
 	struct mshv_create_vp args;
 	struct mshv_vp *vp;
-	struct page *page;
+	struct page *intercept_message_page, *register_page;
+	union hv_stats_object_identity identity;
+	void *stats_page;
 	long ret;
 
 	if (copy_from_user(&args, arg, sizeof(args)))
@@ -1120,13 +1128,27 @@ mshv_partition_ioctl_create_vp(struct mshv_partition *partition,
 
 	ret = hv_call_map_vp_state_page(partition->id, args.vp_index,
 					HV_VP_STATE_PAGE_INTERCEPT_MESSAGE,
-					&page);
+					&intercept_message_page);
 	if (ret)
 		goto destroy_vp;
 
+	ret = hv_call_map_vp_state_page(partition->id, args.vp_index,
+					HV_VP_STATE_PAGE_REGISTERS,
+					&register_page);
+	if (ret)
+		goto unmap_intercept_message_page;
+
+	identity.vp.partition_id = partition->id;
+	identity.vp.vp_index = args.vp_index;
+	identity.vp.flags = 0;
+
+	ret = hv_call_map_stat_page(HV_STATS_OBJECT_VP, &identity, &stats_page);
+	if (ret)
+		goto unmap_register_page;
+
 	vp = kzalloc(sizeof(*vp), GFP_KERNEL);
 	if (!vp)
-		goto unmap_vp_state;
+		goto unmap_stats_page;
 
 	vp->registers = kmalloc_array(MSHV_VP_MAX_REGISTERS,
 				      sizeof(*vp->registers), GFP_KERNEL);
@@ -1146,7 +1168,9 @@ mshv_partition_ioctl_create_vp(struct mshv_partition *partition,
 	atomic64_set(&vp->run.signaled_count, 0);
 
 	vp->index = args.vp_index;
-	vp->intercept_message_page = page_to_virt(page);
+	vp->intercept_message_page = page_to_virt(intercept_message_page);
+	vp->register_page = page_to_virt(register_page);
+	vp->stats_page = stats_page;
 
 	ret = mshv_debugfs_vp_create(vp);
 	if (ret)
@@ -1176,7 +1200,12 @@ free_registers:
 	kfree(vp->registers);
 free_vp:
 	kfree(vp);
-unmap_vp_state:
+unmap_stats_page:
+	hv_call_unmap_stat_page(HV_STATS_OBJECT_VP, &identity);
+unmap_register_page:
+	hv_call_unmap_vp_state_page(partition->id, args.vp_index,
+				    HV_VP_STATE_PAGE_REGISTERS);
+unmap_intercept_message_page:
 	hv_call_unmap_vp_state_page(partition->id, args.vp_index,
 				    HV_VP_STATE_PAGE_INTERCEPT_MESSAGE);
 destroy_vp:
@@ -2511,18 +2540,31 @@ static void destroy_partition(struct mshv_partition *partition)
 
 	/* Remove vps */
 	for (i = 0; i < MSHV_MAX_VPS; ++i) {
+		union hv_stats_object_identity identity;
+
 		vp = partition->vps.array[i];
 		if (!vp)
 			continue;
 
 		mshv_debugfs_vp_remove(vp);
 
+		identity.vp.partition_id = partition->id;
+		identity.vp.vp_index = vp->index;
+		identity.vp.flags = 0;
+
+		(void)hv_call_unmap_stat_page(HV_STATS_OBJECT_VP, &identity);
+
+		vp->stats_page = NULL;
+
+		(void)hv_call_unmap_vp_state_page(partition->id, vp->index,
+						  HV_VP_STATE_PAGE_REGISTERS);
+		vp->register_page = NULL;
+
+		(void)hv_call_unmap_vp_state_page(partition->id, vp->index,
+						  HV_VP_STATE_PAGE_INTERCEPT_MESSAGE);
+		vp->intercept_message_page = NULL;
+
 		kfree(vp->registers);
-		if (vp->intercept_message_page) {
-			(void)hv_call_unmap_vp_state_page(partition->id, vp->index,
-					HV_VP_STATE_PAGE_INTERCEPT_MESSAGE);
-			vp->intercept_message_page = NULL;
-		}
 		kfree(vp);
 	}
 

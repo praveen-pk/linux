@@ -16,6 +16,9 @@
 #include <linux/workqueue.h>
 #include <linux/eventfd.h>
 
+#if defined(__x86_64__)
+#include <asm/apic.h>
+#endif
 #include <asm/mshyperv.h>
 
 #include "mshv_eventfd.h"
@@ -85,6 +88,93 @@ irqfd_resampler_ack(struct mshv_irq_ack_notifier *mian)
 
 	srcu_read_unlock(&partition->irq_srcu, idx);
 }
+
+#if defined(__x86_64__)
+static bool
+mshv_vp_irq_vector_injected(union hv_vp_register_page_interrupt_vectors iv,
+			      u32 vector)
+{
+	int i;
+
+	for (i = 0; i < iv.vector_count; i++) {
+		if (iv.vector[i] == vector)
+			return true;
+	}
+
+	return false;
+}
+
+static int
+mshv_vp_irq_try_inject_vector(struct mshv_vp *vp, u32 vector)
+{
+	union hv_vp_register_page_interrupt_vectors iv, new_iv;
+
+	new_iv = iv = vp->register_page->interrupt_vectors;
+
+	if (mshv_vp_irq_vector_injected(iv, vector))
+		return 0;
+
+	if (iv.vector_count >= HV_VP_REGISTER_PAGE_MAX_VECTOR_COUNT)
+		return -ENOSPC;
+
+	new_iv.vector[new_iv.vector_count++] = vector;
+
+	if (cmpxchg(&vp->register_page->interrupt_vectors.as_uint64,
+		    iv.as_uint64, new_iv.as_uint64) != iv.as_uint64)
+		return -EAGAIN;
+
+	return 0;
+}
+
+static int
+mshv_vp_irq_inject_vector(struct mshv_vp *vp, u32 vector)
+{
+	int ret;
+
+	do {
+		ret = mshv_vp_irq_try_inject_vector(vp, vector);
+	} while (ret == -EAGAIN && !need_resched());
+
+	return ret;
+}
+
+static int
+irq_inject_fast(struct mshv_kernel_irqfd *irqfd)
+{
+	struct mshv_partition *partition = irqfd->partition;
+	struct mshv_lapic_irq *irq = &irqfd->lapic_irq;
+	struct mshv_vp *vp;
+
+	if (!(ms_hyperv.ext_features &
+	      HV_VP_DISPATCH_INTERRUPT_INJECTION_AVAILABLE))
+		return -EOPNOTSUPP;
+
+	if (hv_scheduler_type != HV_SCHEDULER_TYPE_ROOT)
+		return -EOPNOTSUPP;
+
+	if (irq->control.logical_dest_mode)
+		return -EOPNOTSUPP;
+
+	vp = partition->vps.array[irq->apic_id];
+
+	if (mshv_vp_irq_inject_vector(vp, irq->vector))
+		return -EINVAL;
+
+	if (vp->run.flags.dispatched &&
+	    vp->register_page->interrupt_vectors.as_uint64)
+		return -EBUSY;
+
+	wake_up(&vp->run.suspend_queue);
+
+	return 0;
+}
+#else /* !__x86_64__ */
+static int
+irq_inject_fast(struct mshv_kernel_irqfd *irqfd)
+{
+	return -EOPNOTSUPP;
+}
+#endif
 
 static void
 irqfd_inject(struct mshv_kernel_irqfd *irqfd)
@@ -211,7 +301,9 @@ irqfd_wakeup(wait_queue_entry_t *wait, unsigned int mode,
 		} while (read_seqcount_retry(&irqfd->msi_entry_sc, seq));
 
 		/* An event has been signaled, inject an interrupt */
-		irqfd_inject(irqfd);
+		if (irq_inject_fast(irqfd))
+			irqfd_inject(irqfd);
+
 		srcu_read_unlock(&partition->irq_srcu, idx);
 
 		ret = 1;

@@ -32,14 +32,16 @@ struct mshv_vp {
 	u32 index;
 	struct mshv_partition *partition;
 	struct mutex mutex;
-	struct page *register_page;
+	struct hv_vp_register_page *register_page;
 	struct hv_message *intercept_message_page;
+	struct hv_stats_page *stats_page;
 	struct hv_register_assoc *registers;
 	struct {
 		atomic64_t signaled_count;
 		struct {
 			u64 intercept_suspend: 1;
 			u64 blocked: 1; /* root scheduler only */
+			u64 dispatched: 1; /* root scheduler only */
 			u64 reserved: 62;
 		} flags;
 		unsigned int kicked_by_hv;
@@ -305,6 +307,7 @@ static inline bool mshv_partition_isolation_type_snp(struct mshv_partition *part
 }
 
 extern struct mshv_root mshv_root;
+extern enum hv_scheduler_type hv_scheduler_type;
 
 #ifdef CONFIG_DEBUG_FS
 extern int __init mshv_debugfs_init(void);
