@@ -43,7 +43,7 @@
 #define VF_TAKEOVER_INT (HZ / 10)
 
 /* Macros to define the context of vf registration */
-#define VF_REG_IN_PROBE			1
+#define VF_REG_IN_PROBE		1
 #define VF_REG_IN_NOTIFIER	2
 
 static unsigned int ring_size __ro_after_init = 128;
@@ -2523,13 +2523,13 @@ static int check_dev_is_matching_vf(struct net_device *event_ndev)
 
 	/* Avoid Vlan dev with same MAC registering as VF */
 	if (is_vlan_dev(event_ndev))
-	return -ENODEV;
+		return -ENODEV;
 
 	/* Avoid Bonding master dev with same MAC registering as VF */
 	if (netif_is_bond_master(event_ndev))
 		return -ENODEV;
 
-       return 0;
+	return 0;
 }
 
 static int netvsc_probe(struct hv_device *dev,
