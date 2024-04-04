@@ -15,11 +15,64 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/vfio.h>
+#include <linux/anon_inodes.h>
+#include <linux/nospec.h>
 
 #include "mshv.h"
 #include "mshv_root.h"
 #include "vfio.h"
 
+struct mshv_device {
+	const struct mshv_device_ops *ops;
+	struct mshv_partition *partition;
+	void *private;
+	struct hlist_node partition_node;
+
+};
+
+/* create, destroy, and name are mandatory */
+struct mshv_device_ops {
+	const char *name;
+
+	/*
+	 * create is called holding partition->mutex and any operations not suitable
+	 * to do while holding the lock should be deferred to init (see
+	 * below).
+	 */
+	int (*create)(struct mshv_device *dev, u32 type);
+
+	/*
+	 * init is called after create if create is successful and is called
+	 * outside of holding partition->mutex.
+	 */
+	void (*init)(struct mshv_device *dev);
+
+	/*
+	 * Destroy is responsible for freeing dev.
+	 *
+	 * Destroy may be called before or after destructors are called
+	 * on emulated I/O regions, depending on whether a reference is
+	 * held by a vcpu or other mshv component that gets destroyed
+	 * after the emulated I/O.
+	 */
+	void (*destroy)(struct mshv_device *dev);
+
+	/*
+	 * Release is an alternative method to free the device. It is
+	 * called when the device file descriptor is closed. Once
+	 * release is called, the destroy method will not be called
+	 * anymore as the device is removed from the device list of
+	 * the VM. partition->mutex is held.
+	 */
+	void (*release)(struct mshv_device *dev);
+
+	int (*set_attr)(struct mshv_device *dev, struct mshv_device_attr *attr);
+	int (*get_attr)(struct mshv_device *dev, struct mshv_device_attr *attr);
+	int (*has_attr)(struct mshv_device *dev, struct mshv_device_attr *attr);
+	long (*ioctl)(struct mshv_device *dev, unsigned int ioctl,
+		      unsigned long arg);
+	int (*mmap)(struct mshv_device *dev, struct vm_area_struct *vma);
+};
 
 struct mshv_vfio_group {
 	struct list_head node;
@@ -232,6 +285,177 @@ static int mshv_vfio_create(struct mshv_device *dev, u32 type)
 	dev->private = mv;
 
 	return 0;
+}
+
+static int mshv_device_release(struct inode *inode, struct file *filp);
+static long mshv_device_ioctl(struct file *filp, unsigned int ioctl,
+			      unsigned long arg);
+
+static const struct file_operations mshv_device_fops = {
+	.owner = THIS_MODULE,
+	.unlocked_ioctl = mshv_device_ioctl,
+	.release = mshv_device_release,
+};
+
+static const struct mshv_device_ops *mshv_device_ops_table[MSHV_DEV_TYPE_MAX];
+
+static int mshv_device_ioctl_attr(struct mshv_device *dev,
+				 int (*accessor)(struct mshv_device *dev,
+						 struct mshv_device_attr *attr),
+				 unsigned long arg)
+{
+	struct mshv_device_attr attr;
+
+	if (!accessor)
+		return -EPERM;
+
+	if (copy_from_user(&attr, (void __user *)arg, sizeof(attr)))
+		return -EFAULT;
+
+	return accessor(dev, &attr);
+}
+
+static long mshv_device_ioctl(struct file *filp, unsigned int ioctl,
+			      unsigned long arg)
+{
+	struct mshv_device *dev = filp->private_data;
+
+	switch (ioctl) {
+	case MSHV_SET_DEVICE_ATTR:
+		return mshv_device_ioctl_attr(dev, dev->ops->set_attr, arg);
+	case MSHV_GET_DEVICE_ATTR:
+		return mshv_device_ioctl_attr(dev, dev->ops->get_attr, arg);
+	case MSHV_HAS_DEVICE_ATTR:
+		return mshv_device_ioctl_attr(dev, dev->ops->has_attr, arg);
+	default:
+		if (dev->ops->ioctl)
+			return dev->ops->ioctl(dev, ioctl, arg);
+
+		return -ENOTTY;
+	}
+}
+
+static int mshv_device_release(struct inode *inode, struct file *filp)
+{
+	struct mshv_device *dev = filp->private_data;
+	struct mshv_partition *partition = dev->partition;
+
+	if (dev->ops->release) {
+		mutex_lock(&partition->mutex);
+		hlist_del(&dev->partition_node);
+		dev->ops->release(dev);
+		mutex_unlock(&partition->mutex);
+	}
+
+	mshv_partition_put(partition);
+	return 0;
+}
+
+long mshv_partition_ioctl_create_device(struct mshv_partition *partition,
+					void __user *user_args)
+{
+	long r;
+	struct mshv_create_device tmp, *cd;
+	struct mshv_device *dev;
+	const struct mshv_device_ops *ops;
+	int type;
+
+	if (copy_from_user(&tmp, user_args, sizeof(tmp))) {
+		r = -EFAULT;
+		goto out;
+	}
+
+	cd = &tmp;
+
+	if (cd->type >= ARRAY_SIZE(mshv_device_ops_table)) {
+		r = -ENODEV;
+		goto out;
+	}
+
+	type = array_index_nospec(cd->type, ARRAY_SIZE(mshv_device_ops_table));
+	ops = mshv_device_ops_table[type];
+	if (ops == NULL) {
+		r = -ENODEV;
+		goto out;
+	}
+
+	if (cd->flags & MSHV_CREATE_DEVICE_TEST) {
+		r = 0;
+		goto out;
+	}
+
+	dev = kzalloc(sizeof(*dev), GFP_KERNEL_ACCOUNT);
+	if (!dev) {
+		r = -ENOMEM;
+		goto out;
+	}
+
+	dev->ops = ops;
+	dev->partition = partition;
+
+	r = ops->create(dev, type);
+	if (r < 0) {
+		kfree(dev);
+		goto out;
+	}
+
+	hlist_add_head(&dev->partition_node, &partition->devices);
+
+	if (ops->init)
+		ops->init(dev);
+
+	mshv_partition_get(partition);
+	r = anon_inode_getfd(ops->name, &mshv_device_fops, dev, O_RDWR | O_CLOEXEC);
+	if (r < 0) {
+		mshv_partition_put(partition);
+		hlist_del(&dev->partition_node);
+		ops->destroy(dev);
+		goto out;
+	}
+
+	cd->fd = r;
+	r = 0;
+
+	if (copy_to_user(user_args, &tmp, sizeof(tmp))) {
+		r = -EFAULT;
+		goto out;
+	}
+out:
+	return r;
+}
+
+void mshv_destroy_devices(struct mshv_partition *partition)
+{
+	struct mshv_device *dev;
+	struct hlist_node *n;
+
+	/*
+	 * No need to take any lock since at this point nobody else can
+	 * reference this partition.
+	 */
+	hlist_for_each_entry_safe(dev, n, &partition->devices, partition_node) {
+		hlist_del(&dev->partition_node);
+		dev->ops->destroy(dev);
+	}
+}
+
+static int mshv_register_device_ops(const struct mshv_device_ops *ops, u32 type)
+{
+	if (type >= ARRAY_SIZE(mshv_device_ops_table))
+		return -ENOSPC;
+
+	if (mshv_device_ops_table[type] != NULL)
+		return -EEXIST;
+
+	mshv_device_ops_table[type] = ops;
+	return 0;
+}
+
+static void mshv_unregister_device_ops(u32 type)
+{
+	if (type >= ARRAY_SIZE(mshv_device_ops_table))
+		return;
+	mshv_device_ops_table[type] = NULL;
 }
 
 int mshv_vfio_ops_init(void)

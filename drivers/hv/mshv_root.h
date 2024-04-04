@@ -190,58 +190,6 @@ struct mshv_root {
 	} partitions;
 };
 
-struct mshv_device {
-	const struct mshv_device_ops *ops;
-	struct mshv_partition *partition;
-	void *private;
-	struct hlist_node partition_node;
-
-};
-
-/* create, destroy, and name are mandatory */
-struct mshv_device_ops {
-	const char *name;
-
-	/*
-	 * create is called holding partition->mutex and any operations not suitable
-	 * to do while holding the lock should be deferred to init (see
-	 * below).
-	 */
-	int (*create)(struct mshv_device *dev, u32 type);
-
-	/*
-	 * init is called after create if create is successful and is called
-	 * outside of holding partition->mutex.
-	 */
-	void (*init)(struct mshv_device *dev);
-
-	/*
-	 * Destroy is responsible for freeing dev.
-	 *
-	 * Destroy may be called before or after destructors are called
-	 * on emulated I/O regions, depending on whether a reference is
-	 * held by a vcpu or other mshv component that gets destroyed
-	 * after the emulated I/O.
-	 */
-	void (*destroy)(struct mshv_device *dev);
-
-	/*
-	 * Release is an alternative method to free the device. It is
-	 * called when the device file descriptor is closed. Once
-	 * release is called, the destroy method will not be called
-	 * anymore as the device is removed from the device list of
-	 * the VM. partition->mutex is held.
-	 */
-	void (*release)(struct mshv_device *dev);
-
-	int (*set_attr)(struct mshv_device *dev, struct mshv_device_attr *attr);
-	int (*get_attr)(struct mshv_device *dev, struct mshv_device_attr *attr);
-	int (*has_attr)(struct mshv_device *dev, struct mshv_device_attr *attr);
-	long (*ioctl)(struct mshv_device *dev, unsigned int ioctl,
-		      unsigned long arg);
-	int (*mmap)(struct mshv_device *dev, struct vm_area_struct *vma);
-};
-
 /*
  * Callback for doorbell events.
  * NOTE: This is called in interrupt context. Callback
@@ -294,9 +242,6 @@ int mshv_register_doorbell(u64 partition_id, doorbell_cb_t doorbell_cb,
 			   void *data, u64 gpa, u64 val, u64 flags);
 int mshv_unregister_doorbell(u64 partition_id, int doorbell_portid);
 
-int mshv_register_device_ops(const struct mshv_device_ops *ops, u32 type);
-void mshv_unregister_device_ops(u32 type);
-
 void mshv_isr(void);
 int mshv_synic_init(unsigned int cpu);
 int mshv_synic_cleanup(unsigned int cpu);
@@ -305,6 +250,10 @@ static inline bool mshv_partition_isolation_type_snp(struct mshv_partition *part
 {
 	return partition->isolation_type == HV_PARTITION_ISOLATION_TYPE_SNP;
 }
+
+struct mshv_partition *mshv_partition_get(struct mshv_partition *partition);
+void mshv_partition_put(struct mshv_partition *partition);
+struct mshv_partition *mshv_partition_find(u64 partition_id) __must_hold(RCU);
 
 extern struct mshv_root mshv_root;
 extern enum hv_scheduler_type hv_scheduler_type;

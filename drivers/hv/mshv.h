@@ -184,8 +184,6 @@ int hv_call_issue_psp_guest_request(
 	void *completion_data);
 #endif /* HV_SUPPORTS_SEV_SNP_GUESTS */
 
-struct mshv_partition *mshv_partition_find(u64 partition_id) __must_hold(RCU);
-
 int mshv_xfer_to_guest_mode_handle_work(unsigned long ti_work);
 
 typedef long (*mshv_get_version_func_t)(struct mshv_version_info *info);
