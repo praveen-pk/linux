@@ -87,6 +87,7 @@ enum hv_partition_property_code {
 
     /* Time properties */
     HV_PARTITION_PROPERTY_TIME_FREEZE				= 0x00030003,
+    HV_PARTITION_PROPERTY_REFERENCE_TIME			= 0x00030005,
 
     /* Debugging properties */
     HV_PARTITION_PROPERTY_DEBUG_CHANNEL_ID			= 0x00040000,
