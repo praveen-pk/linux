@@ -1052,6 +1052,7 @@ union hv_partition_isolation_properties {
 #define HV_PARTITION_ISOLATION_HOST_TYPE_HARDWARE   0x1
 #define HV_PARTITION_ISOLATION_HOST_TYPE_RESERVED   0x2
 
+#define HV_PARTITION_CREATION_FLAG_GPA_SUPER_PAGES_ENABLED	    (1 << 4)
 /* Note: Exo partition is enabled by default */
 #define HV_PARTITION_CREATION_FLAG_EXO_PARTITION		    (1 << 8)
 #define HV_PARTITION_CREATION_FLAG_LAPIC_ENABLED		    (1 << 13)

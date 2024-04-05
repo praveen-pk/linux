@@ -2703,6 +2703,8 @@ __mshv_ioctl_create_partition(void __user *user_arg, struct device *module_dev)
 	args.flags |= HV_PARTITION_CREATION_FLAG_EXO_PARTITION;
 	/* Enable intercept message page */
 	args.flags |= HV_PARTITION_CREATION_FLAG_INTERCEPT_MESSAGE_PAGE_ENABLED;
+	/* Consolidate 2MB pages into 1GB pages whenever possible */
+	args.flags |= HV_PARTITION_CREATION_FLAG_GPA_SUPER_PAGES_ENABLED;
 
 	partition = kzalloc(sizeof(*partition), GFP_KERNEL);
 	if (!partition)
