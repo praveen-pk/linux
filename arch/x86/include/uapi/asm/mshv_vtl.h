@@ -6,6 +6,8 @@
 #include <linux/types.h>
 #include <asm/fpu/types.h>
 
+#define MAX_RUN_MSG_SIZE		256
+
 struct mshv_set_eventfd {
 	int fd;
 	u32 flag;

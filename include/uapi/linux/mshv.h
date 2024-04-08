@@ -1,35 +1,50 @@
 /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
+/*
+ * Userspace interfaces for /dev/mshv* devices and derived fds
+ * Includes:
+ * - VMM APIs for parent (nested/baremetal root, L1VH) partition APIs
+ * - VMM APIs for VTL0 APIs
+ * - Debug and performance metrics APIs
+ *
+ * This file is divided into sections containing data structures and IOCTLs for
+ * a particular set of related devices or derived file descriptors.
+ *
+ * The IOCTL definitions are at the end of each section. They are grouped by
+ * device/fd, so that new IOCTLs can easily be added with a monotonically
+ * increasing number.
+ */
 #ifndef _UAPI_LINUX_MSHV_H
 #define _UAPI_LINUX_MSHV_H
 
-/*
- * Microsoft Hypervisor root + vtl partition APIs
- * Userspace interface for /dev/mshv
- */
-
 #include <linux/types.h>
+
+/*
+ * TODO: Remove this include
+ * The goal is for this file to not explicitly depend on hypervisor ABIs.
+ * The VMM may still rely on the hypervisor ABI, but not directly via these
+ * kernel interfaces.
+ */
 #include <hyperv/hvhdk.h>
 
-#define MSHV_API_VERSION		0
+/*
+ * This IOCTL number is reserved for use by mshv drivers in ioctl-number.rst.
+ * It is not necessary to use any other IOCTL number in this file.
+ */
+#define MSHV_IOCTL	0xB8
 
-#define MSHV_VP_MMAP_REGISTERS_OFFSET	(HV_VP_STATE_PAGE_REGISTERS * 0x1000)
-#define MAX_RUN_MSG_SIZE		256
+/*************************************************************************
+ * This section contains data structures that depend on hvhdk.h, or are
+ * superceded by making a generic hypercall via MSHV_ROOT_HVCALL.
+ * Group them here independently to easily remove later.
+ *
+ * IOCTL definitions using these remain grouped with the others for that
+ * device/fd so they remain in context and don't collide.
+ *
+ * TODO: Remove this section when no longer needed
+ *************************************************************************
+ */
 
-enum {
-	MSHV_CAP_RSVD = 0,
-	MSHV_CAP_VTL_REGISTER_PAGE,
-	MSHV_CAP_VTL_RETURN_ACTION,
-	MSHV_CAP_VTL_DR6_SHARED,
-};
-
-struct mshv_version_info {
-	__u32 mshv_uapi_version; /* must contain MSHV_API_VERSION */
-	__u32 rsvd_0[3];	 /* Must Be Zero (MBZ) */
-	/* output - MBZ on ioctl call */
-	__u32 mshv_api_version;	 /* kernel api version */
-	__u32 rsvd_1;		 /* MBZ */
-	__u64 mshv_capabilities; /* bitmask of 1 << MSHV_CAP_* */
-};
+#define MSHV_VP_MMAP_REGISTERS_OFFSET  (HV_VP_STATE_PAGE_REGISTERS * 0x1000)
 
 struct mshv_create_partition {
 	__u64 flags;
@@ -47,10 +62,6 @@ struct mshv_user_mem_region {
 	__u64 guest_pfn;
 	__u64 userspace_addr;	/* start of the userspace allocated memory */
 	__u32 flags;		/* ignored on unmap */
-};
-
-struct mshv_create_vp {
-	__u32 vp_index;
 };
 
 #define MSHV_VP_MAX_REGISTERS	128
@@ -73,29 +84,6 @@ struct mshv_assert_interrupt {
 	__u32 rsvd;
 };
 
-#ifdef HV_SUPPORTS_VP_STATE
-
-enum {
-	MSHV_VP_STATE_LAPIC = 0,
-	MSHV_VP_STATE_XSAVE, /* XSAVE data in compacted form */
-	MSHV_VP_STATE_SIMP,
-	MSHV_VP_STATE_SIEFP,
-	MSHV_VP_STATE_SYNTHETIC_TIMERS,
-	MSHV_VP_STATE_COUNT,
-};
-
-struct mshv_get_set_vp_state {
-	__u8 type;	/* MSHV_VP_STATE_* */
-	__u8 rsvd[3];	/* MBZ */
-	__u32 buf_sz;	/* in - 4k page-aligned size of buffer.
-			 * out - actual size of data.
-			 * On EINVAL, check this to see if buffer was too small
-			 */
-	__u64 buf_ptr;	/* 4k page-aligned data buffer. */
-};
-
-#endif
-
 struct mshv_partition_property {
 	enum hv_partition_property_code property_code;
 	__u64 property_value;
@@ -106,51 +94,6 @@ struct mshv_translate_gva {
 	__u64 flags;
 	union hv_translate_gva_result *result;
 	__u64 *gpa;
-};
-
-#define MSHV_IRQFD_FLAG_DEASSIGN (1 << 0)
-#define MSHV_IRQFD_FLAG_RESAMPLE (1 << 1)
-
-struct mshv_irqfd {
-	__s32 fd;
-	__s32 resamplefd;
-	__u32 gsi;
-	__u32 flags;
-};
-
-enum {
-	mshv_ioeventfd_flag_nr_datamatch,
-	mshv_ioeventfd_flag_nr_pio,
-	mshv_ioeventfd_flag_nr_deassign,
-	mshv_ioeventfd_flag_nr_max,
-};
-
-#define MSHV_IOEVENTFD_FLAG_DATAMATCH (1 << mshv_ioeventfd_flag_nr_datamatch)
-#define MSHV_IOEVENTFD_FLAG_PIO       (1 << mshv_ioeventfd_flag_nr_pio)
-#define MSHV_IOEVENTFD_FLAG_DEASSIGN  (1 << mshv_ioeventfd_flag_nr_deassign)
-
-#define MSHV_IOEVENTFD_VALID_FLAG_MASK  ((1 << mshv_ioeventfd_flag_nr_max) - 1)
-
-struct mshv_ioeventfd {
-	__u64 datamatch;
-	__u64 addr;        /* legal pio/mmio address */
-	__u32 len;         /* 1, 2, 4, or 8 bytes    */
-	__s32 fd;
-	__u32 flags;
-	__u8  pad[4];
-};
-
-struct mshv_msi_routing_entry {
-	__u32 gsi;
-	__u32 address_lo;
-	__u32 address_hi;
-	__u32 data;
-};
-
-struct mshv_msi_routing {
-	__u32 nr;
-	__u32 pad;
-	struct mshv_msi_routing_entry entries[0];
 };
 
 #ifdef HV_SUPPORTS_REGISTER_INTERCEPT
@@ -195,15 +138,115 @@ struct mshv_get_vp_cpuid_values {
 	__u32 edx;
 };
 
-struct mshv_trace_config {
-	__u32 mode; /* enum hv_eventlog_mode */
-	__u32 max_buffers_count;
-	__u32 pages_per_buffer;
-	__u32 buffers_threshold;
-	__u32 time_basis; /* enum hv_eventlog_entry_time_basis */
-	__u64 system_time;
+struct mshv_get_gpa_pages_access_state {
+	__u32 count;
+	__u64 flags;
+	__u64 hv_gpa_page_number;
+	union hv_gpa_page_access_state *states;
+} __packed;
+
+struct mshv_read_write_gpa {
+	__u64 base_gpa;
+	__u32 byte_count;
+	__u32 flags;
+	__u8 data[HV_READ_WRITE_GPA_MAX_SIZE];
 };
 
+struct mshv_sev_snp_ap_create {
+	__u64 vp_id;
+	__u64 vmsa_gpa;
+};
+
+struct mshv_issue_psp_guest_request {
+	__u64 req_gpa;
+	__u64 rsp_gpa;
+};
+
+/*
+ *******************************************
+ * Entry point to main VMM APIs: /dev/mshv *
+ *******************************************
+ */
+
+#define MSHV_API_VERSION	0
+
+enum {
+	MSHV_CAP_RSVD = 0,
+	MSHV_CAP_VTL_REGISTER_PAGE,
+	MSHV_CAP_VTL_RETURN_ACTION,
+	MSHV_CAP_VTL_DR6_SHARED,
+};
+
+struct mshv_version_info {
+	__u32 mshv_uapi_version;	/* in: Must contain MSHV_API_VERSION */
+	__u32 rsvd_0[3];		/* Must Be Zero (MBZ) */
+	__u32 mshv_api_version;		/* out: kernel api version */
+	__u32 rsvd_1;			/* MBZ */
+	__u64 mshv_capabilities;	/* out: bitmask of 1 << MSHV_CAP_* */
+};
+
+/* /dev/mshv */
+#define MSHV_GET_VERSION_INFO	_IOWR(MSHV_IOCTL, 0x00, struct mshv_version_info)
+#define MSHV_CREATE_PARTITION	_IOW(MSHV_IOCTL, 0x01, struct mshv_create_partition)
+#define MSHV_CREATE_VTL		_IOR(MSHV_IOCTL, 0x1D, char)
+
+/*
+ ************************
+ * Child partition APIs *
+ ************************
+ */
+
+struct mshv_create_vp {
+	__u32 vp_index;
+};
+
+#define MSHV_IRQFD_FLAG_DEASSIGN	(1 << 0)
+#define MSHV_IRQFD_FLAG_RESAMPLE	(1 << 1)
+
+struct mshv_irqfd {
+	__s32 fd;
+	__s32 resamplefd;
+	__u32 gsi;
+	__u32 flags;
+};
+
+enum {
+	/* TODO: convert to CAPS_SNAKE_CASE */
+	mshv_ioeventfd_flag_nr_datamatch,
+	mshv_ioeventfd_flag_nr_pio,
+	mshv_ioeventfd_flag_nr_deassign,
+	mshv_ioeventfd_flag_nr_max,
+};
+
+#define MSHV_IOEVENTFD_FLAG_DATAMATCH	(1 << mshv_ioeventfd_flag_nr_datamatch)
+#define MSHV_IOEVENTFD_FLAG_PIO		(1 << mshv_ioeventfd_flag_nr_pio)
+#define MSHV_IOEVENTFD_FLAG_DEASSIGN	(1 << mshv_ioeventfd_flag_nr_deassign)
+
+#define MSHV_IOEVENTFD_VALID_FLAG_MASK	((1 << mshv_ioeventfd_flag_nr_max) - 1)
+
+struct mshv_ioeventfd {
+	__u64 datamatch;
+	__u64 addr;        /* legal pio/mmio address */
+	__u32 len;         /* 1, 2, 4, or 8 bytes    */
+	__s32 fd;
+	__u32 flags;
+	__u8  pad[4];
+};
+
+struct mshv_msi_routing_entry {
+	__u32 gsi;
+	__u32 address_lo;
+	__u32 address_hi;
+	__u32 data;
+};
+
+struct mshv_msi_routing {
+	__u32 nr;
+	__u32 pad;
+	struct mshv_msi_routing_entry entries[0];
+};
+
+/* Subsection - SEV/SNP data structures */
 struct mshv_modify_gpa_host_access {
 	__u32 host_access;
 	__u32 flags;
@@ -223,12 +266,7 @@ struct mshv_complete_isolated_import {
 	union hv_partition_complete_isolated_import_data import_data;
 };
 
-struct mshv_issue_psp_guest_request {
-	__u64 req_gpa;
-	__u64 rsp_gpa;
-};
-
-/* Passthrough hypercall - partition id is added by the kernel */
+/* Generic hypercall data structure, useable by partition OR VP fds */
 struct mshv_root_hvcall {
 	__u16 code;	/* HV_CALL_CODE */
 	__u16 reps;	/* in(repcount)/out(repcomp). MBZ unless rep hvcall */
@@ -236,138 +274,100 @@ struct mshv_root_hvcall {
 	__u16 out_sz;	/* <= HV_HYP_PAGE_SIZE. MBZ iff out_ptr is 0 */
 	__u16 status;	/* out(HV_STATUS). MBZ */
 	__u16 rsvd[3];	/* MBZ */
-	__u64 in_ptr;	/* HV_INPUT_* struct */
+	__u64 in_ptr;	/* HV_INPUT_* struct. Partition id is added by kernel */
 	__u64 out_ptr;	/* Optional buffer for hypercall output */
 };
 
-#define MSHV_IOCTL 0xB8
-
-/* mshv device */
-#define MSHV_GET_VERSION_INFO	_IOWR(MSHV_IOCTL, 0x00, struct mshv_version_info)
-#define MSHV_CREATE_PARTITION	_IOW(MSHV_IOCTL, 0x01, struct mshv_create_partition)
-
-/* partition device */
-#define MSHV_MAP_GUEST_MEMORY	_IOW(MSHV_IOCTL, 0x02, struct mshv_user_mem_region)
-#define MSHV_UNMAP_GUEST_MEMORY	_IOW(MSHV_IOCTL, 0x03, struct mshv_user_mem_region)
-#define MSHV_CREATE_VP		_IOW(MSHV_IOCTL, 0x04, struct mshv_create_vp)
-#define MSHV_INSTALL_INTERCEPT	_IOW(MSHV_IOCTL, 0x08, struct mshv_install_intercept)
-#define MSHV_ASSERT_INTERRUPT	_IOW(MSHV_IOCTL, 0x09, struct mshv_assert_interrupt)
-#define MSHV_SET_PARTITION_PROPERTY \
-				_IOW(MSHV_IOCTL, 0xC, struct mshv_partition_property)
-#define MSHV_GET_PARTITION_PROPERTY \
-				_IOWR(MSHV_IOCTL, 0xD, struct mshv_partition_property)
-#define MSHV_IRQFD		_IOW(MSHV_IOCTL, 0xE, struct mshv_irqfd)
-#define MSHV_IOEVENTFD		_IOW(MSHV_IOCTL, 0xF, struct mshv_ioeventfd)
-#define MSHV_SET_MSI_ROUTING	_IOW(MSHV_IOCTL, 0x11, struct mshv_msi_routing)
-#define MSHV_GET_GPA_ACCESS_STATES \
-				_IOWR(MSHV_IOCTL, 0x12, struct mshv_get_gpa_pages_access_state)
-/* vp device */
-#define MSHV_GET_VP_REGISTERS   _IOWR(MSHV_IOCTL, 0x05, struct mshv_vp_registers)
-#define MSHV_SET_VP_REGISTERS   _IOW(MSHV_IOCTL, 0x06, struct mshv_vp_registers)
-#define MSHV_RUN_VP		_IOR(MSHV_IOCTL, 0x07, struct hv_message)
-#ifdef HV_SUPPORTS_VP_STATE
-#define MSHV_GET_VP_STATE	_IOWR(MSHV_IOCTL, 0x0A, struct mshv_get_set_vp_state)
-#define MSHV_SET_VP_STATE	_IOWR(MSHV_IOCTL, 0x0B, struct mshv_get_set_vp_state)
-#endif
-#define MSHV_TRANSLATE_GVA	_IOWR(MSHV_IOCTL, 0x0E, struct mshv_translate_gva)
-#ifdef HV_SUPPORTS_REGISTER_INTERCEPT
-#define MSHV_VP_REGISTER_INTERCEPT_RESULT \
-				_IOW(MSHV_IOCTL, 0x17, struct mshv_register_intercept_result)
-#endif
-#define MSHV_SIGNAL_EVENT_DIRECT \
-	_IOWR(MSHV_IOCTL, 0x18, struct mshv_signal_event_direct)
-#define MSHV_POST_MESSAGE_DIRECT \
-	_IOW(MSHV_IOCTL, 0x19, struct mshv_post_message_direct)
-#define MSHV_REGISTER_DELIVERABILITY_NOTIFICATIONS \
-	_IOW(MSHV_IOCTL, 0x1A, struct mshv_register_deliverabilty_notifications)
-#define MSHV_GET_VP_CPUID_VALUES \
-	_IOWR(MSHV_IOCTL, 0x1B, struct mshv_get_vp_cpuid_values)
-
-#define MSHV_READ_GPA		_IOWR(MSHV_IOCTL, 0x32, struct mshv_read_write_gpa)
-#define MSHV_WRITE_GPA		_IOW(MSHV_IOCTL, 0x33, struct mshv_read_write_gpa)
-
-/* ioctl for creating APs for SEV-SNP enabled partitions */
-#define MSHV_SEV_SNP_AP_CREATE	_IOW(MSHV_IOCTL, 0x34, struct mshv_sev_snp_ap_create)
-
-/* partition OR vcpu hvcalls */
-#define MSHV_ROOT_HVCALL	_IOWR(MSHV_IOCTL, 0x35, struct mshv_root_hvcall)
-
-/* vtl device */
-#define MSHV_CREATE_VTL			_IOR(MSHV_IOCTL, 0x1D, char)
-#define MSHV_VTL_ADD_VTL0_MEMORY	_IOW(MSHV_IOCTL, 0x21, struct mshv_ram_disposition)
-#define MSHV_VTL_SET_POLL_FILE		_IOW(MSHV_IOCTL, 0x25, struct mshv_set_poll_file)
-#define MSHV_VTL_RETURN_TO_LOWER_VTL	_IO(MSHV_IOCTL, 0x27)
-
-/* VMBus device IOCTLs */
-#define MSHV_SINT_SIGNAL_EVENT    _IOW(MSHV_IOCTL, 0x22, struct mshv_signal_event)
-#define MSHV_SINT_POST_MESSAGE    _IOW(MSHV_IOCTL, 0x23, struct mshv_sint_post_msg)
-#define MSHV_SINT_SET_EVENTFD     _IOW(MSHV_IOCTL, 0x24, struct mshv_set_eventfd)
-
-/* hv_hvcall device */
-#define MSHV_HVCALL_SETUP        _IOW(MSHV_IOCTL, 0x1E, struct mshv_hvcall_setup)
-#define MSHV_HVCALL              _IOWR(MSHV_IOCTL, 0x1F, struct mshv_hvcall)
-
-/* ioctl for device fd */
-#define MSHV_CREATE_DEVICE	  _IOWR(MSHV_IOCTL, 0x13, struct mshv_create_device)
-
-/* ioctls for fds returned by MSHV_CREATE_DEVICE */
-#define MSHV_SET_DEVICE_ATTR	  _IOW(MSHV_IOCTL, 0x14, struct mshv_device_attr)
-#define MSHV_GET_DEVICE_ATTR	  _IOW(MSHV_IOCTL, 0x15, struct mshv_device_attr)
-#define MSHV_HAS_DEVICE_ATTR	  _IOW(MSHV_IOCTL, 0x16, struct mshv_device_attr)
-
-/* ioctls for changing gpa host visibility */
-#define MSHV_MODIFY_GPA_HOST_ACCESS    _IOW(MSHV_IOCTL, 0x28, struct mshv_modify_gpa_host_access)
-
-/* ioctl for importing isolated pages */
-#define MSHV_IMPORT_ISOLATED_PAGES     _IOW(MSHV_IOCTL, 0x29, struct mshv_import_isolated_pages)
-
-/* ioctls related to SEV-SNP enabled guest */
-#define MSHV_COMPLETE_ISOLATED_IMPORT                                          \
-	_IOW(MSHV_IOCTL, 0x30, struct mshv_complete_isolated_import)
-
-/* ioctls for fetching attestation report for SEV-SNP guest */
-#define MSHV_ISSUE_PSP_GUEST_REQUEST                                           \
-	_IOW(MSHV_IOCTL, 0x31, struct mshv_issue_psp_guest_request)
-
-/* Ioctls for mshv_diag device */
-#define MSHV_DIAG_IOCTL 0xB9
-#define MSHV_GET_TRACE_FD				\
-		_IO(MSHV_DIAG_IOCTL, HV_EVENT_LOG_TYPE_LOCAL_DIAGNOSTICS)
-#define MSHV_GET_DIAGLOG_FD                             \
-		_IO(MSHV_DIAG_IOCTL, HV_EVENT_LOG_TYPE_SYSTEM_DIAGNOSTICS)
-
-/* ioctls for fds returned by MSHV_GET_TRACE_FD */
-#define MSHV_TRACE_IOCTL		0xBA
-#define MSHV_TRACE_STATE_CREATE		_IOW(MSHV_TRACE_IOCTL, 0x0, \
-					     struct mshv_trace_config)
-#define MSHV_TRACE_STATE_INFO		_IOR(MSHV_TRACE_IOCTL, 0x1, \
-					     struct mshv_trace_config)
-#define MSHV_TRACE_STATE_DESTROY	_IO(MSHV_TRACE_IOCTL, 0x2)
-#define MSHV_TRACE_STATE_ATTACH		_IO(MSHV_TRACE_IOCTL, 0x3)
-#define MSHV_TRACE_STATE_DETACH		_IO(MSHV_TRACE_IOCTL, 0x4)
-#define MSHV_TRACE_START		_IO(MSHV_TRACE_IOCTL, 0x5)
-#define MSHV_TRACE_STOP			_IO(MSHV_TRACE_IOCTL, 0x6)
-
-/* register page mapping example:
- * struct hv_vp_register_page *regs = mmap(NULL,
- *					   4096,
- *					   PROT_READ | PROT_WRITE,
- *					   MAP_SHARED,
- *					   vp_fd,
- *					   HV_VP_MMAP_REGISTERS_OFFSET);
- * munmap(regs, 4096);
- */
-
-struct mshv_get_gpa_pages_access_state {
-	__u32 count;
-	__u64 flags;
-	__u64 hv_gpa_page_number;
-	union hv_gpa_page_access_state *states;
-} __packed;
+/* Partition fds created with MSHV_CREATE_PARTITION */
+/* TODO: renumber from 0x00*/
+#define MSHV_CREATE_VP			_IOW(MSHV_IOCTL, 0x04, struct mshv_create_vp)
+#define MSHV_CREATE_DEVICE		_IOWR(MSHV_IOCTL, 0x13, struct mshv_create_device)
+#define MSHV_MAP_GUEST_MEMORY		_IOW(MSHV_IOCTL, 0x02, struct mshv_user_mem_region)
+#define MSHV_UNMAP_GUEST_MEMORY		_IOW(MSHV_IOCTL, 0x03, struct mshv_user_mem_region)
+#define MSHV_IRQFD			_IOW(MSHV_IOCTL, 0xE, struct mshv_irqfd)
+#define MSHV_IOEVENTFD			_IOW(MSHV_IOCTL, 0xF, struct mshv_ioeventfd)
+#define MSHV_SET_MSI_ROUTING		_IOW(MSHV_IOCTL, 0x11, struct mshv_msi_routing)
+#define MSHV_GET_GPA_ACCESS_STATES	_IOWR(MSHV_IOCTL, 0x12, \
+					      struct mshv_get_gpa_pages_access_state)
+/* SEV/SNP-related partition IOCTLs */
+#define MSHV_MODIFY_GPA_HOST_ACCESS	_IOW(MSHV_IOCTL, 0x28, struct mshv_modify_gpa_host_access)
+#define MSHV_IMPORT_ISOLATED_PAGES	_IOW(MSHV_IOCTL, 0x29, struct mshv_import_isolated_pages)
+/* Generic hypercall */
+#define MSHV_ROOT_HVCALL		_IOWR(MSHV_IOCTL, 0x35, struct mshv_root_hvcall)
+/* TODO: Remove the following. They are replaceable with MSHV_ROOT_HVCALL */
+#define MSHV_INSTALL_INTERCEPT		_IOW(MSHV_IOCTL, 0x08, struct mshv_install_intercept)
+#define MSHV_ASSERT_INTERRUPT		_IOW(MSHV_IOCTL, 0x09, struct mshv_assert_interrupt)
+#define MSHV_SET_PARTITION_PROPERTY	_IOW(MSHV_IOCTL, 0xC, struct mshv_partition_property)
+#define MSHV_GET_PARTITION_PROPERTY	_IOWR(MSHV_IOCTL, 0xD, struct mshv_partition_property)
+#define MSHV_COMPLETE_ISOLATED_IMPORT	_IOW(MSHV_IOCTL, 0x30, struct mshv_complete_isolated_import)
+#define MSHV_ISSUE_PSP_GUEST_REQUEST	_IOW(MSHV_IOCTL, 0x31, struct mshv_issue_psp_guest_request)
+#define MSHV_SEV_SNP_AP_CREATE		_IOW(MSHV_IOCTL, 0x34, struct mshv_sev_snp_ap_create)
 
 /*
- * Device control API.
+ ********************************
+ * VP APIs for child partitions *
+ ********************************
  */
+
+#ifdef HV_SUPPORTS_VP_STATE
+
+enum {
+	MSHV_VP_STATE_LAPIC = 0,
+	MSHV_VP_STATE_XSAVE, /* XSAVE data in compacted form */
+	MSHV_VP_STATE_SIMP,
+	MSHV_VP_STATE_SIEFP,
+	MSHV_VP_STATE_SYNTHETIC_TIMERS,
+	MSHV_VP_STATE_COUNT,
+};
+
+struct mshv_get_set_vp_state {
+	__u8 type;	/* MSHV_VP_STATE_* */
+	__u8 rsvd[3];	/* MBZ */
+	__u32 buf_sz;	/* in - 4k page-aligned size of buffer.
+			 * out - actual size of data.
+			 * On EINVAL, check this to see if buffer was too small
+			 */
+	__u64 buf_ptr;	/* 4k page-aligned data buffer. */
+};
+
+#endif
+
+/* VP fds created with MSHV_CREATE_VP */
+/* TODO: renumber from 0x00*/
+#define MSHV_RUN_VP			_IOR(MSHV_IOCTL, 0x07, struct hv_message)
+#ifdef HV_SUPPORTS_VP_STATE
+#define MSHV_GET_VP_STATE		_IOWR(MSHV_IOCTL, 0x0A, struct mshv_get_set_vp_state)
+#define MSHV_SET_VP_STATE		_IOWR(MSHV_IOCTL, 0x0B, struct mshv_get_set_vp_state)
+#endif
+/*
+ * Generic hypercall
+ * Defined above in partition IOCTLs, avoid redefining it here
+ * #define MSHV_ROOT_HVCALL			_IOWR(MSHV_IOCTL, 0x35, struct mshv_root_hvcall)
+ */
+/* TODO: Remove the following. They are replaceable with MSHV_ROOT_HVCALL */
+#define MSHV_GET_VP_REGISTERS		_IOWR(MSHV_IOCTL, 0x05, struct mshv_vp_registers)
+#define MSHV_SET_VP_REGISTERS		_IOW(MSHV_IOCTL, 0x06, struct mshv_vp_registers)
+#define MSHV_TRANSLATE_GVA		_IOWR(MSHV_IOCTL, 0x0E, struct mshv_translate_gva)
+#ifdef HV_SUPPORTS_REGISTER_INTERCEPT
+#define MSHV_VP_REGISTER_INTERCEPT_RESULT \
+					_IOW(MSHV_IOCTL, 0x17, \
+					     struct mshv_register_intercept_result)
+#endif
+#define MSHV_SIGNAL_EVENT_DIRECT	_IOWR(MSHV_IOCTL, 0x18, struct mshv_signal_event_direct)
+#define MSHV_POST_MESSAGE_DIRECT	_IOW(MSHV_IOCTL, 0x19, struct mshv_post_message_direct)
+#define MSHV_REGISTER_DELIVERABILITY_NOTIFICATIONS \
+					_IOW(MSHV_IOCTL, 0x1A, \
+					     struct mshv_register_deliverabilty_notifications)
+#define MSHV_GET_VP_CPUID_VALUES	_IOWR(MSHV_IOCTL, 0x1B, struct mshv_get_vp_cpuid_values)
+#define MSHV_READ_GPA			_IOWR(MSHV_IOCTL, 0x32, struct mshv_read_write_gpa)
+#define MSHV_WRITE_GPA			_IOW(MSHV_IOCTL, 0x33, struct mshv_read_write_gpa)
+
+/*
+ **************************
+ * Passthrough device API *
+ **************************
+ */
+
 #define MSHV_CREATE_DEVICE_TEST		1
 
 struct mshv_create_device {
@@ -393,16 +393,67 @@ struct mshv_device_attr {
 	__u64	addr;		/* userspace address of attr data */
 };
 
-struct mshv_read_write_gpa {
-	__u64 base_gpa;
-	__u32 byte_count;
-	__u32 flags;
-	__u8 data[HV_READ_WRITE_GPA_MAX_SIZE];
+/* Device fds created with MSHV_CREATE_DEVICE */
+/* TODO: renumber from 0x00*/
+#define MSHV_SET_DEVICE_ATTR	_IOW(MSHV_IOCTL, 0x14, struct mshv_device_attr)
+#define MSHV_GET_DEVICE_ATTR	_IOW(MSHV_IOCTL, 0x15, struct mshv_device_attr)
+#define MSHV_HAS_DEVICE_ATTR	_IOW(MSHV_IOCTL, 0x16, struct mshv_device_attr)
+
+/*
+ ***********************
+ * Diag and trace APIs *
+ ***********************
+ */
+
+/* TODO: remove and use MSHV_IOCTL */
+#define MSHV_DIAG_IOCTL		0xB9
+/* TODO: remove and use MSHV_IOCTL */
+#define MSHV_TRACE_IOCTL	0xBA
+
+struct mshv_trace_config {
+	__u32 mode; /* enum hv_eventlog_mode */
+	__u32 max_buffers_count;
+	__u32 pages_per_buffer;
+	__u32 buffers_threshold;
+	__u32 time_basis; /* enum hv_eventlog_entry_time_basis */
+	__u64 system_time;
 };
 
-struct mshv_sev_snp_ap_create {
-	__u64 vp_id;
-	__u64 vmsa_gpa;
-};
+/* /dev/mshv_diag device */
+#define MSHV_GET_TRACE_FD				\
+		_IO(MSHV_DIAG_IOCTL, HV_EVENT_LOG_TYPE_LOCAL_DIAGNOSTICS)
+#define MSHV_GET_DIAGLOG_FD                             \
+		_IO(MSHV_DIAG_IOCTL, HV_EVENT_LOG_TYPE_SYSTEM_DIAGNOSTICS)
+
+/* Trace fd created with MSHV_GET_TRACE_FD */
+#define MSHV_TRACE_STATE_CREATE		_IOW(MSHV_TRACE_IOCTL, 0x0, \
+					     struct mshv_trace_config)
+#define MSHV_TRACE_STATE_INFO		_IOR(MSHV_TRACE_IOCTL, 0x1, \
+					     struct mshv_trace_config)
+#define MSHV_TRACE_STATE_DESTROY	_IO(MSHV_TRACE_IOCTL, 0x2)
+#define MSHV_TRACE_STATE_ATTACH		_IO(MSHV_TRACE_IOCTL, 0x3)
+#define MSHV_TRACE_STATE_DETACH		_IO(MSHV_TRACE_IOCTL, 0x4)
+#define MSHV_TRACE_START		_IO(MSHV_TRACE_IOCTL, 0x5)
+#define MSHV_TRACE_STOP			_IO(MSHV_TRACE_IOCTL, 0x6)
+
+/*
+ ************
+ * VTL APIs *
+ ************
+ */
+
+/* vtl fd created with MSHV_CREATE_VTL */
+#define MSHV_VTL_ADD_VTL0_MEMORY	_IOW(MSHV_IOCTL, 0x21, struct mshv_ram_disposition)
+#define MSHV_VTL_SET_POLL_FILE		_IOW(MSHV_IOCTL, 0x25, struct mshv_set_poll_file)
+#define MSHV_VTL_RETURN_TO_LOWER_VTL	_IO(MSHV_IOCTL, 0x27)
+
+/* /dev/mshv_sint */
+#define MSHV_SINT_SIGNAL_EVENT		_IOW(MSHV_IOCTL, 0x22, struct mshv_signal_event)
+#define MSHV_SINT_POST_MESSAGE		_IOW(MSHV_IOCTL, 0x23, struct mshv_sint_post_msg)
+#define MSHV_SINT_SET_EVENTFD		_IOW(MSHV_IOCTL, 0x24, struct mshv_set_eventfd)
+
+/* /dev/mshv_hvcall */
+#define MSHV_HVCALL_SETUP		_IOW(MSHV_IOCTL, 0x1E, struct mshv_hvcall_setup)
+#define MSHV_HVCALL			_IOWR(MSHV_IOCTL, 0x1F, struct mshv_hvcall)
 
 #endif
