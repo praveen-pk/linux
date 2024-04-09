@@ -209,15 +209,10 @@ static int mshv_vtl_get_vsm_regs(void)
 	mshv_vsm_page_offsets.as_uint64 = registers[0].value.reg64;
 	mshv_vsm_capabilities.as_uint64 = registers[1].value.reg64;
 
-	pr_debug("%s: VSM code page offsets: %#016llx\n", __func__,
-		 mshv_vsm_page_offsets.as_uint64);
-	pr_info("%s: VSM capabilities: %#016llx\n", __func__,
-		mshv_vsm_capabilities.as_uint64);
-
 	return ret;
 }
 
-static int mshv_vtl_configure_vsm_partition(void)
+static int mshv_vtl_configure_vsm_partition(struct device *dev)
 {
 	union hv_register_vsm_partition_config config;
 	struct hv_register_assoc reg_assoc;
@@ -231,7 +226,7 @@ static int mshv_vtl_configure_vsm_partition(void)
 	config.intercept_cpuid_unimplemented = 1;
 
 	if (mshv_vsm_capabilities.intercept_page_available) {
-		pr_debug("%s: using intercept page", __func__);
+		dev_dbg(dev, "%s: using intercept page", __func__);
 		config.intercept_page = 1;
 	}
 
@@ -333,7 +328,7 @@ static int vtl_set_vp_registers(u16 count,
 					count, input_vtl, registers);
 }
 
-static int mshv_vtl_ioctl_add_vtl0_mem(void __user *arg)
+static int mshv_vtl_ioctl_add_vtl0_mem(struct mshv_vtl *vtl, void __user *arg)
 {
 	struct mshv_ram_disposition vtl0_mem;
 	struct dev_pagemap *pgmap;
@@ -343,8 +338,9 @@ static int mshv_vtl_ioctl_add_vtl0_mem(void __user *arg)
 		return -EFAULT;
 
 	if (vtl0_mem.last_pfn <= vtl0_mem.start_pfn) {
-		pr_err("%s: range start pfn (%llx) > end pfn (%llx)\n",
-		       __func__, vtl0_mem.start_pfn, vtl0_mem.last_pfn);
+		dev_err(vtl->module_dev,
+			"vtl0 mem range start pfn (%llx) > end pfn (%llx)\n",
+			vtl0_mem.start_pfn, vtl0_mem.last_pfn);
 		return -EFAULT;
 	}
 
@@ -362,12 +358,14 @@ static int mshv_vtl_ioctl_add_vtl0_mem(void __user *arg)
 	 * This works best when the range is aligned; i.e. start and length.
 	 */
 	pgmap->vmemmap_shift = count_trailing_zeros(vtl0_mem.start_pfn | vtl0_mem.last_pfn);
-	pr_debug("Add VTL0 memory: start: 0x%llx, end_pfn: 0x%llx, page order: %lu\n",
-		 vtl0_mem.start_pfn, vtl0_mem.last_pfn, pgmap->vmemmap_shift);
+	dev_dbg(vtl->module_dev,
+		"Add VTL0 memory: start: 0x%llx, end_pfn: 0x%llx, page order: %lu\n",
+		vtl0_mem.start_pfn, vtl0_mem.last_pfn, pgmap->vmemmap_shift);
 
 	addr = devm_memremap_pages(mem_dev, pgmap);
 	if (IS_ERR(addr)) {
-		pr_err("%s: devm_memremap_pages error: %ld\n", __func__, PTR_ERR(addr));
+		dev_err(vtl->module_dev, "devm_memremap_pages error: %ld\n",
+			PTR_ERR(addr));
 		kfree(pgmap);
 		return -EFAULT;
 	}
@@ -969,17 +967,16 @@ done:
 }
 
 static long
-mshv_vtl_ioctl_set_regs(void __user *user_args)
+mshv_vtl_ioctl_get_set_regs(void __user *user_args, bool set)
 {
 	struct mshv_vp_registers args;
 	struct hv_register_assoc *registers;
 	long ret;
-	int i;
 
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
 
-	if (args.count > MSHV_VP_MAX_REGISTERS)
+	if (args.count == 0 || args.count > MSHV_VP_MAX_REGISTERS)
 		return -EINVAL;
 
 	registers = kmalloc_array(args.count,
@@ -994,77 +991,48 @@ mshv_vtl_ioctl_set_regs(void __user *user_args)
 		goto free_return;
 	}
 
-	for (i = 0; i < args.count; i++) {
-		/*
-		 * Disallow setting suspend registers to ensure run vp state
-		 * is consistent
-		 */
-		if (registers[i].name == HV_REGISTER_EXPLICIT_SUSPEND ||
-		    registers[i].name == HV_REGISTER_INTERCEPT_SUSPEND) {
-			pr_err("%s: not allowed to set suspend registers\n",
-			       __func__);
-			ret = -EINVAL;
-			goto free_return;
-		}
-	}
+	if (set) {
+		ret = mshv_vtl_set_reg(registers);
+		if (!ret)
+			goto free_return; /* No need of hypercall */
+		ret = vtl_set_vp_registers(args.count, registers);
 
-	ret = mshv_vtl_set_reg(registers);
-	if (!ret)
-		goto free_return; /* No need of hypercall */
-	ret = vtl_set_vp_registers(args.count, registers);
+	} else {
+		ret = mshv_vtl_get_reg(registers);
+		if (!ret)
+			goto copy_args; /* No need of hypercall */
+		ret = vtl_get_vp_registers(args.count, registers);
+		if (ret)
+			goto free_return;
+
+copy_args:
+		if (copy_to_user(args.regs, registers,
+				 sizeof(*registers) * args.count))
+			ret = -EFAULT;
+	}
 
 free_return:
 	kfree(registers);
 	return ret;
 }
 
-static long
+static inline long
+mshv_vtl_ioctl_set_regs(void __user *user_args)
+{
+	return mshv_vtl_ioctl_get_set_regs(user_args, true);
+}
+
+static inline long
 mshv_vtl_ioctl_get_regs(void __user *user_args)
 {
-	struct mshv_vp_registers args;
-	struct hv_register_assoc *registers;
-	long ret;
-
-	if (copy_from_user(&args, user_args, sizeof(args)))
-		return -EFAULT;
-
-	if (args.count > MSHV_VP_MAX_REGISTERS)
-		return -EINVAL;
-
-	registers = kmalloc_array(args.count,
-				  sizeof(*registers),
-				  GFP_KERNEL);
-	if (!registers)
-		return -ENOMEM;
-
-	if (copy_from_user(registers, args.regs,
-			   sizeof(*registers) * args.count)) {
-		ret = -EFAULT;
-		goto free_return;
-	}
-
-	ret = mshv_vtl_get_reg(registers);
-	if (!ret)
-		goto copy_args; /* No need of hypercall */
-	ret = vtl_get_vp_registers(args.count, registers);
-	if (ret)
-		goto free_return;
-
-copy_args:
-	if (copy_to_user(args.regs, registers,
-			 sizeof(*registers) * args.count)) {
-		ret = -EFAULT;
-	}
-
-free_return:
-	kfree(registers);
-	return ret;
+	return mshv_vtl_ioctl_get_set_regs(user_args, false);
 }
 
 static long
 mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 {
 	long ret;
+	struct mshv_vtl *vtl = filp->private_data;
 
 	switch (ioctl) {
 	case MSHV_VTL_SET_POLL_FILE:
@@ -1080,10 +1048,10 @@ mshv_vtl_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 		ret = mshv_vtl_ioctl_return_to_lower_vtl();
 		break;
 	case MSHV_VTL_ADD_VTL0_MEMORY:
-		ret = mshv_vtl_ioctl_add_vtl0_mem((void __user *)arg);
+		ret = mshv_vtl_ioctl_add_vtl0_mem(vtl, (void __user *)arg);
 		break;
 	default:
-		pr_err("%s: invalid vtl ioctl: %#x\n", __func__, ioctl);
+		dev_err(vtl->module_dev, "invalid vtl ioctl: %#x\n", ioctl);
 		ret = -ENOTTY;
 	}
 
@@ -1351,8 +1319,9 @@ static int mshv_vtl_hvcall_setup(struct mshv_hvcall_fd *fd,
 	mutex_lock(&fd->init_mutex);
 
 	if (fd->allow_map_intialized) {
-		pr_err("%s: Hypercall allow map has already been set, pid %d\n",
-		       __func__, current->pid);
+		dev_err(fd->dev->this_device,
+			"Hypercall allow map has already been set, pid %d\n",
+			current->pid);
 		ret = -EINVAL;
 		goto exit;
 	}
@@ -1371,7 +1340,8 @@ static int mshv_vtl_hvcall_setup(struct mshv_hvcall_fd *fd,
 		goto exit;
 	}
 
-	pr_info("%s: Hypercall allow map has been set, pid %d\n", __func__, current->pid);
+	dev_info(fd->dev->this_device, "Hypercall allow map has been set, pid %d\n",
+		 current->pid);
 	fd->allow_map_intialized = true;
 
 exit:
@@ -1409,8 +1379,9 @@ static int mshv_vtl_hvcall_call(struct mshv_hvcall_fd *fd, struct mshv_hvcall __
 	 */
 
 	if (!mshv_hvcall_is_allowed(fd, hvcall.control & 0xFFFF)) {
-		pr_err("%s: Hypercall with control data %#llx isn't allowed\n",
-		       __func__, hvcall.control);
+		dev_err(fd->dev->this_device,
+			"Hypercall with control data %#llx isn't allowed\n",
+			hvcall.control);
 		return -EPERM;
 	}
 
@@ -1592,7 +1563,7 @@ static int __init mshv_vtl_init(void)
 		ret = -ENODEV;
 		goto unset_ops;
 	}
-	if (mshv_vtl_configure_vsm_partition()) {
+	if (mshv_vtl_configure_vsm_partition(dev)) {
 		dev_emerg(dev, "VSM configuration failed!\n");
 		ret = -ENODEV;
 		goto unset_ops;

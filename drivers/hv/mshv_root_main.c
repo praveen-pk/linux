@@ -2340,6 +2340,7 @@ get_vp_signaled_count(struct mshv_vp *vp, u64 *count)
 	if (ret) {
 		vp_err(vp, "Failed to get root signal count");
 		*count = 0;
+		return ret;
 	}
 
 	*count = root_signal_count.value.reg64;

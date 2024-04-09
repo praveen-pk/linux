@@ -27,23 +27,6 @@
 #include <asm/ptrace.h>
 #include <asm-generic/hyperv-defs.h>
 
-static inline union hv_proximity_domain_info
-numa_node_to_proximity_domain_info(int node)
-{
-	union hv_proximity_domain_info proximity_domain_info;
-
-	if (node != NUMA_NO_NODE) {
-		proximity_domain_info.domain_id = node_to_pxm(node);
-		proximity_domain_info.flags.reserved = 0;
-		proximity_domain_info.flags.proximity_info_valid = 1;
-		proximity_domain_info.flags.proximity_preferred = 1;
-	} else {
-		proximity_domain_info.as_uint64 = 0;
-	}
-
-	return proximity_domain_info;
-}
-
 enum hv_partition_type {
 	HV_PARTITION_GUEST,
 	HV_PARTITION_ROOT,
@@ -84,6 +67,20 @@ static inline bool hv_recommend_using_aeoi(void)
 #else
 	return false;
 #endif
+}
+
+static inline struct hv_proximity_domain_info hv_numa_node_to_pxm_info(int node)
+{
+	struct hv_proximity_domain_info pxm_info = {};
+
+	if (node != NUMA_NO_NODE) {
+		pxm_info.domain_id = node_to_pxm(node);
+		pxm_info.flags.reserved = 0;
+		pxm_info.flags.proximity_info_valid = 1;
+		pxm_info.flags.proximity_preferred = 1;
+	}
+
+	return pxm_info;
 }
 
 /* Helper functions that provide a consistent pattern for checking Hyper-V hypercall status. */

@@ -38,8 +38,7 @@ int hv_call_add_logical_proc(int node, u32 lp_index, u32 apic_id)
 
 		input->lp_index = lp_index;
 		input->apic_id = apic_id;
-		input->proximity_domain_info =
-			numa_node_to_proximity_domain_info(node);
+		input->proximity_domain_info = hv_numa_node_to_pxm_info(node);
 		status = hv_do_hypercall(HVCALL_ADD_LOGICAL_PROCESSOR,
 					 input, output);
 		local_irq_restore(flags);
@@ -92,7 +91,7 @@ int hv_call_set_vp_registers(
 	u16 completed;
 	unsigned long remaining = count;
 	int rep_count;
-	u64 status;
+	u64 status = HV_STATUS_SUCCESS;
 	unsigned long flags;
 
 	local_irq_save(flags);

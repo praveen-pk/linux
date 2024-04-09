@@ -269,7 +269,8 @@ irqfd_is_active(struct mshv_kernel_irqfd *irqfd)
 static void
 irqfd_deactivate(struct mshv_kernel_irqfd *irqfd)
 {
-	BUG_ON(!irqfd_is_active(irqfd));
+	if (!irqfd_is_active(irqfd))
+		return;
 
 	hlist_del(&irqfd->hnode);
 

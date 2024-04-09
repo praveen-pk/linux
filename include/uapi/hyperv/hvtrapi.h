@@ -61,7 +61,7 @@ union hv_input_create_eventlog_buffer {
 	struct {
 		__u32 type; /* enum hv_eventlog_type */
 		__u32 buffer_index;
-		union hv_proximity_domain_info proximity_info;
+		struct hv_proximity_domain_info proximity_info;
 	} __packed;
 };
 

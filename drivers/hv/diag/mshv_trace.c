@@ -394,8 +394,7 @@ static int hv_call_create_event_log_buffer(enum hv_eventlog_type type,
 	 * the moment.
 	 * Disable it for now.
 	 */
-	input.proximity_info =
-		numa_node_to_proximity_domain_info(NUMA_NO_NODE);
+	input.proximity_info = hv_numa_node_to_pxm_info(NUMA_NO_NODE);
 
 	status = hv_do_fast_hypercall16(HVCALL_CREATE_EVENT_LOG_BUFFER,
 					input.as_uint64[0], input.as_uint64[1]);

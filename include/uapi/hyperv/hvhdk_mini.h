@@ -262,13 +262,9 @@ struct hv_proximity_domain_flags {
 	__u32 proximity_info_valid : 1;
 } __packed;
 
-/* Not a union in windows but useful for zeroing */
-union hv_proximity_domain_info {
-	struct {
-		__u32 domain_id;
-		struct hv_proximity_domain_flags flags;
-	};
-	__u64 as_uint64;
+struct hv_proximity_domain_info {
+	__u32 domain_id;
+	struct hv_proximity_domain_flags flags;
 } __packed;
 
 /* HvDepositMemory hypercall */
@@ -279,7 +275,7 @@ struct hv_deposit_memory {	/* HV_INPUT_DEPOSIT_MEMORY */
 
 struct hv_input_withdraw_memory {
 	__u64 partition_id;
-	union hv_proximity_domain_info proximity_domain_info;
+	struct hv_proximity_domain_info proximity_domain_info;
 } __packed;
 
 struct hv_output_withdraw_memory {
@@ -451,7 +447,7 @@ struct hv_lp_startup_status {
 struct hv_input_add_logical_processor {
 	__u32 lp_index;
 	__u32 apic_id;
-	union hv_proximity_domain_info proximity_domain_info;
+	struct hv_proximity_domain_info proximity_domain_info;
 } __packed;
 
 struct hv_output_add_logical_processor {
@@ -486,7 +482,7 @@ struct hv_create_vp {	/* HV_INPUT_CREATE_VP */
 	__u8 padding[3];
 	__u8 subnode_type;
 	__u64 subnode_id;
-	union hv_proximity_domain_info proximity_domain_info;
+	struct hv_proximity_domain_info proximity_domain_info;
 	__u64 flags;
 } __packed;
 
