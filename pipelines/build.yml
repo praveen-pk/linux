@@ -1,7 +1,4 @@
 parameters:
-  - name: azure_vm_size
-    type: string
-    default: "Standard_D16ds_v5"
   - name: run_functional_tests
     type: boolean
     default: True
@@ -48,7 +45,8 @@ resources:
     - repository: lisa
       type: git
       name: LSG/lsg-lisa
-      ref: refs/tags/virtstack/stable
+      #ref: refs/tags/virtstack/stable
+      ref: main
 
 trigger:
   batch: false
@@ -69,6 +67,32 @@ pr:
       - main
       - msft/mshv-stable
       - msft/mshv-rolling
+
+variables:
+  - group: azure_subscription_testonly
+  - group: azure_subscription_devtest
+  - group: lis_database
+  - group: mail
+  - group: virtstackvalidation_variables
+  - name: enable_publish
+    value: False
+  - name: kernel_source
+    value: "current"
+  - name: kernel_artifact
+    value: "kernel_image_dom0-built-in_x86_64"
+  - name: kernel_pattern
+    value: "vmlinuz-*"
+  - name: modules_pattern
+    value: "kernel_modules_*"
+  - name: kernel_params_to_lisa
+    value: '{\"kernel_source\":\"$(kernel_source)\",\"kernel_artifact\":\"$(kernel_artifact)\",\"kernel_pattern\":\"$(kernel_pattern)\",\"modules_pattern\":\"$(modules_pattern)\"}'
+  - name: ch_integration_tests
+    # Should be of comma separated strings format
+    ${{ if eq(variables['Build.Reason'], 'Manual') }}:
+      value: ""
+    ${{ else }}:
+      # Following are VM life cycle tests from ch integration tests
+      value: 'common_parallel::test_api_http_create_boot,common_parallel::test_api_http_shutdown,common_parallel::test_api_http_delete,common_parallel::test_macvtap,common_parallel::test_virtio_vsock,common_parallel::test_virtio_vsock_hotplug,common_parallel::test_pty_interaction'
 
 stages:
 - stage: "Linux_Dom0_Build"
@@ -496,37 +520,16 @@ stages:
 
 - stage: "Linux_Dom0_Test"
   displayName: "Linux Dom0 Test"
+  dependsOn: Linux_Dom0_Build
 
   pool:
     name: LSG_Virt_1ES_Pool
 
   variables:
-    - group: azure_subscription_testonly
-    - group: azure_subscription_devtest
-    - group: lis_database
-    - group: mail
-    - group: virtstackvalidation_variables
     - name: test_project
       value: "Linux Dom0 Test"
-    - name: enable_publish
-      value: False
-    - name: kernel_source
-      value: "current"
-    - name: kernel_artifact
-      value: "kernel_image_dom0-built-in_x86_64"
-    - name: kernel_pattern
-      value: "vmlinuz-*"
-    - name: modules_pattern
-      value: "kernel_modules_*"
-    - name: kernel_params_to_lisa
-      value: '{\"kernel_source\":\"$(kernel_source)\",\"kernel_artifact\":\"$(kernel_artifact)\",\"kernel_pattern\":\"$(kernel_pattern)\",\"modules_pattern\":\"$(modules_pattern)\"}'
-    - name: ch_integration_tests
-      # Should be of comma separated strings format
-      ${{ if eq(variables['Build.Reason'], 'Manual') }}:
-        value: ""
-      ${{ else }}:
-        # Following are VM life cycle tests from ch integration tests
-        value: 'common_parallel::test_api_http_create_boot,common_parallel::test_api_http_pause_resume,common_parallel::test_api_http_shutdown,common_parallel::test_macvtap'
+    - name: ch_tests_exclude_list
+      value: "common_parallel::test_virtio_balloon_deflate_on_oom,common_parallel::test_vdpa_block,common_parallel::test_vdpa_net,common_parallel::test_watchdog,common_parallel::test_focal_ovmf"
 
   jobs:
     - template: virtstack\pipelines\templates\linux_dom0_test_template.yml@lisa
@@ -536,15 +539,18 @@ stages:
         kernel_params: $(kernel_params_to_lisa)
         use_ms_clh_repo: "yes"
         use_ms_guest_kernel: "YES"
+        use_ms_hypervisor_fw: "YES"
+        use_ms_ovmf_fw: "YES"
         system_access_token: $(System.AccessToken)
         run_on_intel: True
         intel_vm_size_perf: "Standard_D96ds_v5"
+        ch_subtest_exclude_list: $(ch_tests_exclude_list)
         ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
           intel_vm_size_func: "Standard_D16ds_v5"
           run_functional_tests: True
           run_ch_integration_tests: True
           run_mshv_functional_tests: True
-          ch_subtest_include_list: $(ch_integration_tests)
+          ch_subtest_include_list: "$(ch_integration_tests),common_parallel::test_api_http_pause_resume"
         ${{ if eq(variables['Build.Reason'], 'IndividualCI') }}:
           intel_vm_size_func: "Standard_D32ds_v5"
           run_functional_tests: True
@@ -567,4 +573,49 @@ stages:
           run_ch_perf_tests: ${{ parameters.run_ch_perf_tests }}
           run_mshv_functional_tests: ${{ parameters.run_mshv_functional_tests }}
           run_mshv_stress_tests: ${{ parameters.run_mshv_stress_tests }}
+
+- stage: "Linux_Dom0_Test_CVM"
+  displayName: "Linux Dom0 Test - CVM"
+  dependsOn: Linux_Dom0_Build
+
+  pool:
+    name: LSG_Virt_1ES_Pool
+
+  variables:
+    - name: test_project
+      value: "Linux Dom0 Test - CVM"
+    - name: ch_tests_exclude_list_cvm
+      # Should be of comma separated strings format
+      # Following are known failures
+      value: 'common_parallel::test_boot_from_vhost_user_blk_default,common_parallel::test_boot_from_virtio_pmem,common_parallel::test_cpu_hotplug,common_parallel::test_cpu_topology_142,common_parallel::test_cpu_topology_262,common_parallel::test_cpu_topology_421,common_parallel::test_initramfs,common_parallel::test_iommu_segments,common_parallel::test_memory_hotplug,common_parallel::test_pmem_hotplug,common_parallel::test_pmem_multi_segment_hotplug,common_parallel::test_tpm,common_parallel::test_vhost_user_blk_default,common_parallel::test_vhost_user_blk_direct,common_parallel::test_vhost_user_blk_readonly,common_parallel::test_vhost_user_net_client_mode,common_parallel::test_vhost_user_net_default,common_parallel::test_vhost_user_net_existing_tap,common_parallel::test_vhost_user_net_host_mac,common_parallel::test_vhost_user_net_multiple_queues,common_parallel::test_vhost_user_net_named_tap,common_parallel::test_vhost_user_net_tap_multiple_queues,common_parallel::test_virtio_balloon_deflate_on_oom,common_parallel::test_virtio_fs,common_parallel::test_virtio_fs_hotplug,common_parallel::test_virtio_iommu,common_parallel::test_virtio_pmem_discard_writes,common_parallel::test_virtio_pmem_persist_writes,common_parallel::test_virtio_pmem_with_size,common_parallel::test_watchdog,common_parallel::test_snapshot_restore_basic,common_parallel::test_dmi_serial_number,common_parallel::test_dmi_uuid,common_parallel::test_dmi_oem_strings,common_parallel::test_vfio_user,common_parallel::test_focal_hypervisor_fw,common_parallel::test_focal_ovmf,common_parallel::test_power_button,common_parallel::test_api_http_pause_resume,common_parallel::test_vdpa_net,common_parallel::test_vdpa_block,common_parallel::test_pci_multiple_segments_numa_node,boot_time_pmem_ms,boot_time_16_vcpus_pmem_ms'
+
+  jobs:
+    - template: virtstack\pipelines\templates\linux_dom0_test_template.yml@lisa
+      parameters:
+        checkout_repo: "lisa"
+        kernel_change_needed: True
+        kernel_params: $(kernel_params_to_lisa)
+        use_ms_clh_repo: "yes"
+        system_access_token: $(System.AccessToken)
+        run_on_amd: True
+        amd_vm_size_perf: "Standard_DC96ads_cc_v5"
+        ch_subtest_exclude_list: $(ch_tests_exclude_list_cvm)
+        clh_guest_vm_type: "CVM"
+        ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
+          amd_vm_size_func: "Standard_DC16ads_cc_v5"
+          run_ch_integration_tests: True
+          run_mshv_functional_tests: True
+          ch_subtest_include_list: $(ch_integration_tests)
+        ${{ if eq(variables['Build.Reason'], 'IndividualCI') }}:
+          amd_vm_size_func: "Standard_DC32ads_cc_v5"
+          run_ch_integration_tests: True
+          run_ch_live_migration_tests: False
+          run_ch_perf_tests: True
+          run_mshv_functional_tests: True
+        ${{ if eq(variables['Build.Reason'], 'Manual') }}:
+          amd_vm_size_func: "Standard_DC32ads_cc_v5"
+          run_ch_integration_tests: ${{ parameters.run_ch_integration_tests }}
+          run_ch_live_migration_tests: ${{ parameters.run_ch_live_migration_tests }}
+          run_ch_perf_tests: ${{ parameters.run_ch_perf_tests }}
+          run_mshv_functional_tests: ${{ parameters.run_mshv_functional_tests }}
 
