@@ -131,6 +131,7 @@ struct mshv_partition {
 	struct mshv_girq_routing_table __rcu *part_girq_tbl;
 	u64 isolation_type;
 	bool import_completed;
+	bool initialized;
 #ifdef CONFIG_DEBUG_FS
 	struct dentry *debugfs_dentry;
 	struct dentry *debugfs_vp_dentry;

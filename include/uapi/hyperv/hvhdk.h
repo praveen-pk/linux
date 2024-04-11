@@ -871,7 +871,6 @@ union hv_partition_synthetic_processor_features {
 	__u64 as_uint64[HV_PARTITION_SYNTHETIC_PROCESSOR_FEATURES_BANKS];
 
 	struct {
-#if defined(__x86_64__)
 		/* Report a hypervisor is present. CPUID leaves
 		 * 0x40000000 and 0x40000001 are supported.
 		 */
@@ -883,10 +882,6 @@ union hv_partition_synthetic_processor_features {
 
 		/* Report support for Hv1 (CPUID leaves 0x40000000 - 0x40000006). */
 		__u64 hv1:1;
-#else
-		__u64 reserved_z0:1;
-		__u64 reserved_z1:1;
-#endif
 
 		/* Access to HV_X64_MSR_VP_RUNTIME.
 		 * Corresponds to access_vp_run_time_reg privilege.
@@ -1001,18 +996,18 @@ union hv_partition_synthetic_processor_features {
 		/* HvCallRetargetDeviceInterrupt is supported. */
 		__u64 retarget_device_interrupt:1;
 
+#if defined(__x86_64__)
 		/* HvCallRestorePartitionTime is supported. */
 		__u64 restore_time:1;
-
-#if defined(__x86_64__)
 
 		/* EnlightenedVmcs nested enlightenment is supported. */
 		__u64 enlightened_vmcs:1;
 #else
+		__u64 reserved_z31:1;
 		__u64 reserved_z32:1;
 #endif
 
-		__u64 reserved:31;
+		__u64 reserved:30;
 	} __packed;
 };
 

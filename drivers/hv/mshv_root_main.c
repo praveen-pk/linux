@@ -2167,6 +2167,33 @@ out:
 #endif /* HV_SUPPORTS_SEV_SNP_GUESTS */
 
 static long
+mshv_partition_ioctl_initialize(struct mshv_partition *partition)
+{
+	long ret;
+
+	if (partition->initialized)
+		return 0;
+
+	ret = hv_call_initialize_partition(partition->id);
+	if (ret)
+		return ret;
+
+	ret = mshv_debugfs_partition_create(partition);
+	if (ret)
+		goto finalize_partition;
+
+	partition->initialized = true;
+
+	return 0;
+
+finalize_partition:
+	hv_call_finalize_partition(partition->id);
+	hv_call_withdraw_memory(U64_MAX, NUMA_NO_NODE, partition->id);
+
+	return ret;
+}
+
+static long
 mshv_partition_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 {
 	struct mshv_partition *partition = filp->private_data;
@@ -2176,6 +2203,9 @@ mshv_partition_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 		return -EINTR;
 
 	switch (ioctl) {
+	case MSHV_INITIALIZE_PARTITION:
+		ret = mshv_partition_ioctl_initialize(partition);
+		break;
 	case MSHV_MAP_GUEST_MEMORY:
 		ret = mshv_partition_ioctl_map_memory(partition,
 							(void __user *)arg);
@@ -2460,6 +2490,11 @@ out:
 }
 #endif /* HV_SUPPORTS_SEV_SNP_GUESTS */
 
+
+/*
+ * Tear down a partition and remove it from the list.
+ * Partition's refcount must be 0
+ */
 static void destroy_partition(struct mshv_partition *partition)
 {
 	struct mshv_vp *vp;
@@ -2467,72 +2502,80 @@ static void destroy_partition(struct mshv_partition *partition)
 	int i, ret;
 	struct hlist_node *n;
 
+	if (refcount_read(&partition->ref_count)) {
+		pt_err(partition,
+		       "Attempt to destroy partition but refcount > 0\n");
+		return;
+	}
+
 	trace_mshv_destroy_partition(partition->id);
 
+	if (partition->initialized) {
 #ifdef HV_SUPPORTS_SEV_SNP_GUESTS
-	if (mshv_partition_encrypted(partition)) {
-		ret = destroy_snp_partition_state(partition);
-		if (ret) {
-			pt_err(partition,
-			       "Failed to destroy SNP state, error: %d\n", ret);
-			return;
+		if (mshv_partition_encrypted(partition)) {
+			ret = destroy_snp_partition_state(partition);
+			if (ret) {
+				pt_err(partition,
+				       "Failed to destroy SNP state, error: %d\n", ret);
+				return;
+			}
 		}
-	}
 #endif /* HV_SUPPORTS_SEV_SNP_GUESTS */
 
-	/*
-	 * We only need to drain signals for root scheduler. This should be
-	 * done before removing the partition from the partition list.
-	 */
-	if (hv_scheduler_type == HV_SCHEDULER_TYPE_ROOT)
-		drain_all_vps(partition);
+		/*
+		 * We only need to drain signals for root scheduler. This should be
+		 * done before removing the partition from the partition list.
+		 */
+		if (hv_scheduler_type == HV_SCHEDULER_TYPE_ROOT)
+			drain_all_vps(partition);
 
-	/*
-	 * Remove from list of partitions; after this point nothing else holds
-	 * a reference to the partition
-	 */
-	remove_partition(partition);
+		/* Remove vps */
+		for (i = 0; i < MSHV_MAX_VPS; ++i) {
+			union hv_stats_object_identity identity;
 
-	/* Remove vps */
-	for (i = 0; i < MSHV_MAX_VPS; ++i) {
-		union hv_stats_object_identity identity;
+			vp = partition->vps.array[i];
+			if (!vp)
+				continue;
 
-		vp = partition->vps.array[i];
-		if (!vp)
-			continue;
+			mshv_debugfs_vp_remove(vp);
 
-		mshv_debugfs_vp_remove(vp);
+			if (vp->stats_page) {
+				memset(&identity, 0, sizeof(identity));
+				identity.vp.partition_id = partition->id;
+				identity.vp.vp_index = vp->index;
+				identity.vp.flags = 0;
 
-		if (vp->stats_page) {
-			memset(&identity, 0, sizeof(identity));
-			identity.vp.partition_id = partition->id;
-			identity.vp.vp_index = vp->index;
-			identity.vp.flags = 0;
+				(void)hv_call_unmap_stat_page(HV_STATS_OBJECT_VP,
+							&identity);
 
-			(void)hv_call_unmap_stat_page(HV_STATS_OBJECT_VP,
-						&identity);
+				vp->stats_page = NULL;
+			}
 
-			vp->stats_page = NULL;
-		}
+			if (vp->register_page) {
+				(void)hv_call_unmap_vp_state_page(partition->id, vp->index,
+								  HV_VP_STATE_PAGE_REGISTERS);
+				vp->register_page = NULL;
+			}
 
-		if (vp->register_page) {
 			(void)hv_call_unmap_vp_state_page(partition->id, vp->index,
-							  HV_VP_STATE_PAGE_REGISTERS);
-			vp->register_page = NULL;
+							  HV_VP_STATE_PAGE_INTERCEPT_MESSAGE);
+			vp->intercept_message_page = NULL;
+
+			kfree(vp->registers);
+			kfree(vp);
+
+			partition->vps.array[i] = NULL;
 		}
 
-		(void)hv_call_unmap_vp_state_page(partition->id, vp->index,
-						  HV_VP_STATE_PAGE_INTERCEPT_MESSAGE);
-		vp->intercept_message_page = NULL;
+		mshv_debugfs_partition_remove(partition);
 
-		kfree(vp->registers);
-		kfree(vp);
+		/* Deallocates and unmaps everything including vcpus, GPA mappings etc */
+		hv_call_finalize_partition(partition->id);
+
+		partition->initialized = false;
 	}
 
-	mshv_debugfs_partition_remove(partition);
-
-	/* Deallocates and unmaps everything including vcpus, GPA mappings etc */
-	hv_call_finalize_partition(partition->id);
+	remove_partition(partition);
 
 	/* Remove regions, regain access to the memory and unpin the pages */
 	hlist_for_each_entry_safe(region, n, &partition->mem_regions, hnode) {
@@ -2622,6 +2665,9 @@ static long
 mshv_ioctl_create_partition(void __user *user_arg, struct device *module_dev)
 {
 	struct mshv_create_partition args;
+	u64 creation_flags;
+	struct hv_partition_creation_properties creation_properties = {};
+	union hv_partition_isolation_properties isolation_properties = {};
 	struct mshv_partition *partition;
 	struct file *file;
 	int fd;
@@ -2630,19 +2676,38 @@ mshv_ioctl_create_partition(void __user *user_arg, struct device *module_dev)
 	if (copy_from_user(&args, user_arg, sizeof(args)))
 		return -EFAULT;
 
+	if ((args.pt_flags & ~MSHV_PT_FLAGS_MASK) ||
+	    args.pt_isolation >= MSHV_PT_ISOLATION_COUNT)
+		return -EINVAL;
+
 	/* Only support EXO partitions */
-	args.flags |= HV_PARTITION_CREATION_FLAG_EXO_PARTITION;
-	/* Enable intercept message page */
-	args.flags |= HV_PARTITION_CREATION_FLAG_INTERCEPT_MESSAGE_PAGE_ENABLED;
-	/* Consolidate 2MB pages into 1GB pages whenever possible */
-	args.flags |= HV_PARTITION_CREATION_FLAG_GPA_SUPER_PAGES_ENABLED;
+	creation_flags = HV_PARTITION_CREATION_FLAG_EXO_PARTITION |
+			 HV_PARTITION_CREATION_FLAG_INTERCEPT_MESSAGE_PAGE_ENABLED;
+
+	if (args.pt_flags & BIT(MSHV_PT_BIT_LAPIC))
+		creation_flags |= HV_PARTITION_CREATION_FLAG_LAPIC_ENABLED;
+	if (args.pt_flags & BIT(MSHV_PT_BIT_X2APIC))
+		creation_flags |= HV_PARTITION_CREATION_FLAG_X2APIC_CAPABLE;
+	if (args.pt_flags & BIT(MSHV_PT_BIT_GPA_SUPER_PAGES))
+		creation_flags |= HV_PARTITION_CREATION_FLAG_GPA_SUPER_PAGES_ENABLED;
+
+	switch (args.pt_isolation) {
+	case MSHV_PT_ISOLATION_NONE:
+		isolation_properties.isolation_type =
+			HV_PARTITION_ISOLATION_TYPE_NONE;
+		break;
+	case MSHV_PT_ISOLATION_SNP:
+		isolation_properties.isolation_type =
+			HV_PARTITION_ISOLATION_TYPE_SNP;
+		break;
+	}
 
 	partition = kzalloc(sizeof(*partition), GFP_KERNEL);
 	if (!partition)
 		return -ENOMEM;
 
 	partition->module_dev = module_dev;
-	partition->isolation_type = args.isolation_properties.isolation_type;
+	partition->isolation_type = isolation_properties.isolation_type;
 
 	refcount_set(&partition->ref_count, 1);
 
@@ -2664,9 +2729,9 @@ mshv_ioctl_create_partition(void __user *user_arg, struct device *module_dev)
 	if (ret)
 		goto free_partition;
 
-	ret = hv_call_create_partition(args.flags,
-				       args.partition_creation_properties,
-				       args.isolation_properties,
+	ret = hv_call_create_partition(creation_flags,
+				       creation_properties,
+				       isolation_properties,
 				       &partition->id);
 	if (ret)
 		goto cleanup_irq_srcu;
@@ -2679,24 +2744,10 @@ mshv_ioctl_create_partition(void __user *user_arg, struct device *module_dev)
 	if (ret)
 		goto remove_partition;
 
-	ret = hv_call_set_partition_property(
-				partition->id,
-				HV_PARTITION_PROPERTY_SYNTHETIC_PROC_FEATURES,
-				args.synthetic_processor_features.as_uint64[0],
-				mshv_async_hvcall_handler,
-				partition);
-
-	if (ret)
-		goto remove_partition;
-
-	ret = hv_call_initialize_partition(partition->id);
-	if (ret)
-		goto remove_partition;
-
 	fd = get_unused_fd_flags(O_CLOEXEC);
 	if (fd < 0) {
 		ret = fd;
-		goto finalize_partition;
+		goto remove_partition;
 	}
 
 	file = anon_inode_getfile("mshv_partition", &mshv_partition_fops,
@@ -2706,26 +2757,17 @@ mshv_ioctl_create_partition(void __user *user_arg, struct device *module_dev)
 		goto put_fd;
 	}
 
-	ret = mshv_debugfs_partition_create(partition);
-	if (ret)
-		goto put_file;
-
 	fd_install(fd, file);
 
 	trace_mshv_create_partition(ret, partition->id, fd);
 
 	return fd;
 
-put_file:
-	fput(file);
 put_fd:
 	put_unused_fd(fd);
-finalize_partition:
-	hv_call_finalize_partition(partition->id);
 remove_partition:
 	remove_partition(partition);
 delete_partition:
-	hv_call_withdraw_memory(U64_MAX, NUMA_NO_NODE, partition->id);
 	hv_call_delete_partition(partition->id);
 cleanup_irq_srcu:
 	cleanup_srcu_struct(&partition->irq_srcu);

@@ -46,13 +46,6 @@
 
 #define MSHV_VP_MMAP_REGISTERS_OFFSET  (HV_VP_STATE_PAGE_REGISTERS * 0x1000)
 
-struct mshv_create_partition {
-	__u64 flags;
-	struct hv_partition_creation_properties partition_creation_properties;
-	union hv_partition_synthetic_processor_features synthetic_processor_features;
-	union hv_partition_isolation_properties isolation_properties;
-};
-
 /*
  * Mappings can't overlap in GPA space or userspace
  * To unmap, these fields must match an existing mapping
@@ -189,8 +182,38 @@ struct mshv_vtl_capabilities {
 	__u64 bits;
 };
 
+enum {
+	MSHV_PT_BIT_LAPIC,
+	MSHV_PT_BIT_X2APIC,
+	MSHV_PT_BIT_GPA_SUPER_PAGES,
+	MSHV_PT_BIT_COUNT,
+};
+#define MSHV_PT_FLAGS_MASK ((1 << MSHV_PT_BIT_COUNT) - 1)
+
+enum {
+	MSHV_PT_ISOLATION_NONE,
+	MSHV_PT_ISOLATION_SNP,
+	MSHV_PT_ISOLATION_COUNT,
+};
+
+/**
+ * struct mshv_create_partition - arguments for MSHV_CREATE_PARTITION
+ * @pt_flags: Bitmask of 1 << MSHV_PT_BIT_*
+ * @pt_isolation: MSHV_PT_ISOLATION_*
+ *
+ * Returns a file descriptor to act as a handle to a guest partition.
+ * At this point the partition is not yet initialized in the hypervisor.
+ * Some operations must be done with the partition in this state, e.g. setting
+ * so-called "early" partition properties. The partition can then be
+ * initialized with MSHV_INITIALIZE_PARTITION.
+ */
+struct mshv_create_partition {
+	__u64 pt_flags;
+	__u64 pt_isolation;
+};
+
 /* /dev/mshv */
-#define MSHV_CREATE_PARTITION	_IOW(MSHV_IOCTL, 0x01, struct mshv_create_partition)
+#define MSHV_CREATE_PARTITION	_IOW(MSHV_IOCTL, 0x00, struct mshv_create_partition)
 /* Start nr again from 0x00 - mshv_vtl ioctls won't collide with mshv_root */
 #define MSHV_CREATE_VTL		_IO(MSHV_IOCTL, 0x00)
 #define MSHV_GET_VTL_CAPS	_IOR(MSHV_IOCTL, 0x01, struct mshv_vtl_capabilities)
@@ -294,6 +317,7 @@ struct mshv_root_hvcall {
 
 /* Partition fds created with MSHV_CREATE_PARTITION */
 /* TODO: renumber from 0x00*/
+#define MSHV_INITIALIZE_PARTITION	_IO(MSHV_IOCTL, 0x00)
 #define MSHV_CREATE_VP			_IOW(MSHV_IOCTL, 0x04, struct mshv_create_vp)
 #define MSHV_CREATE_DEVICE		_IOWR(MSHV_IOCTL, 0x13, struct mshv_create_device)
 #define MSHV_MAP_GUEST_MEMORY		_IOW(MSHV_IOCTL, 0x02, struct mshv_user_mem_region)
