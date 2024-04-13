@@ -1488,7 +1488,7 @@ union hv_arm64_pending_synthetic_exception_event {
 
 		__u32 exception_type;
 		__u64 context;
-	};
+	} __packed;
 };
 
 union hv_arm64_interrupt_state_register {
@@ -1496,7 +1496,7 @@ union hv_arm64_interrupt_state_register {
 	struct {
 		__u64 interrupt_shadow : 1;
 		__u64 reserved : 63;
-	};
+	} __packed;
 };
 
 enum hv_arm64_pending_interruption_type {
@@ -1511,7 +1511,7 @@ union hv_arm64_pending_interruption_register {
 		__u64 interruption_type : 1;
 		__u64 reserved : 30;
 		__u64 error_code : 32;
-	};
+	} __packed;
 };
 
 #else /* defined(__aarch64__) */
