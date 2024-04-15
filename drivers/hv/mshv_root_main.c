@@ -1221,7 +1221,7 @@ free_vp:
 unmap_stats_page:
 	hv_call_unmap_stat_page(HV_STATS_OBJECT_VP, &identity);
 unmap_register_page:
-	if (mshv_partition_isolation_type_snp(partition))
+	if (!mshv_partition_isolation_type_snp(partition))
 		hv_call_unmap_vp_state_page(partition->id, args.vp_index,
 					    HV_VP_STATE_PAGE_REGISTERS);
 unmap_intercept_message_page:
