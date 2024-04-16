@@ -1,6 +1,6 @@
 Name                                               SHA1
 ----                                               ----
-feature/dxgkrnl/5.15                               b12445891c254e843cd1cc01265ea047bf7ee300
+feature/dxgkrnl/5.15                               9548ff8b541a35d4a97cb220b52ba0c1f5bea675
 feature/vpci/5.15                                  92c970cf37ef2b7d159905ca9df9e25f86618248
 feature/fs-idmapped-overlayfs/5.15                 26ffdf9a0e8cdd7d72146bf38f4bc4e4416fa2d0
 feature/vmbus/5.15                                 81a4bd4e3bfc5c62d1f6c272185390b39b9d11ad
