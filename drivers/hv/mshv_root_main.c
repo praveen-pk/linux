@@ -585,7 +585,7 @@ mshv_partition_region_share(struct mshv_mem_region *region)
 		flags |= HV_MODIFY_SPA_PAGE_HOST_ACCESS_LARGE_PAGE;
 
 	return hv_call_modify_spa_host_access(region->partition->id,
-			region->pages, HVPFN_DOWN(region->size),
+			region->pages, region->nr_pages,
 			HV_MAP_GPA_READABLE | HV_MAP_GPA_WRITABLE,
 			flags, true);
 }
@@ -599,7 +599,7 @@ mshv_partition_region_unshare(struct mshv_mem_region *region)
 		flags |= HV_MODIFY_SPA_PAGE_HOST_ACCESS_LARGE_PAGE;
 
 	return hv_call_modify_spa_host_access(region->partition->id,
-			region->pages, HVPFN_DOWN(region->size),
+			region->pages, region->nr_pages,
 			0,
 			flags, false);
 }
@@ -608,7 +608,7 @@ static int
 mshv_region_remap_pages(struct mshv_mem_region *region, u32 map_flags,
 			u64 page_offset, u64 page_count)
 {
-	if (page_offset + page_count > HVPFN_DOWN(region->size))
+	if (page_offset + page_count > region->nr_pages)
 		return -EINVAL;
 
 	if (region->flags.large_pages)
@@ -627,7 +627,7 @@ mshv_region_map(struct mshv_mem_region *region)
 	u32 map_flags = region->hv_map_flags;
 
 	return mshv_region_remap_pages(region, map_flags,
-				       0, HVPFN_DOWN(region->size));
+				       0, region->nr_pages);
 }
 
 static void
@@ -644,7 +644,7 @@ mshv_region_evict_pages(struct mshv_mem_region *region,
 static void
 mshv_region_evict(struct mshv_mem_region *region)
 {
-	mshv_region_evict_pages(region, 0, HVPFN_DOWN(region->size));
+	mshv_region_evict_pages(region, 0, region->nr_pages);
 }
 
 static int
@@ -656,7 +656,7 @@ mshv_region_populate_pages(struct mshv_mem_region *region,
 	__u64 userspace_addr;
 	int ret;
 
-	if (page_offset + page_count > HVPFN_DOWN(region->size))
+	if (page_offset + page_count > region->nr_pages)
 		return -EINVAL;
 
 	for (done_count = 0; done_count < page_count; done_count += ret) {
@@ -700,8 +700,7 @@ release_pages:
 static int
 mshv_region_populate(struct mshv_mem_region *region)
 {
-	return mshv_region_populate_pages(region,
-					  0, HVPFN_DOWN(region->size));
+	return mshv_region_populate_pages(region, 0, region->nr_pages);
 }
 
 static long
@@ -1451,9 +1450,9 @@ static int mshv_partition_create_region(struct mshv_partition *partition,
 	gpfn_end = mem->guest_pfn + page_count;
 
 	hlist_for_each_entry(region, &partition->mem_regions, hnode) {
-		u64 region_page_count = HVPFN_DOWN(region->size);
+		u64 region_page_count = region->nr_pages;
 		u64 region_user_start = region->uaddr;
-		u64 region_user_end = region->uaddr + region->size;
+		u64 region_user_end = region->uaddr + (region->nr_pages << HV_HYP_PAGE_SHIFT);
 		u64 region_gpfn_start = region->gfn;
 		u64 region_gpfn_end = region->gfn + region_page_count;
 
@@ -1471,7 +1470,7 @@ static int mshv_partition_create_region(struct mshv_partition *partition,
 	if (region == NULL)
 		return -ENOMEM;
 
-	region->size = mem->size;
+	region->nr_pages = HVPFN_DOWN(mem->size);
 	region->gfn = mem->guest_pfn;
 	region->uaddr = mem->userspace_addr;
 	region->hv_map_flags = mem->flags;
@@ -1632,7 +1631,7 @@ mshv_partition_ioctl_unmap_memory(struct mshv_partition *partition,
 	/* Find matching region */
 	hlist_for_each_entry(region, &partition->mem_regions, hnode) {
 		if (region->uaddr == mem.userspace_addr &&
-		    region->size == mem.size &&
+		    region->nr_pages == HVPFN_DOWN(mem.size) &&
 		    region->gfn == mem.guest_pfn)
 			break;
 	}
@@ -1641,7 +1640,7 @@ mshv_partition_ioctl_unmap_memory(struct mshv_partition *partition,
 		return -EINVAL;
 
 	hlist_del(&region->hnode);
-	page_count = HVPFN_DOWN(region->size);
+	page_count = region->nr_pages;
 
 	if (region->flags.large_pages)
 		unmap_flags |= HV_UNMAP_GPA_LARGE_PAGE;
@@ -1928,7 +1927,7 @@ static int convert_gpa_list_to_page_list(struct mshv_partition *partition,
 
 		hlist_for_each_entry_safe(region, n, &partition->mem_regions,
 					  hnode) {
-			region_page_count = HVPFN_DOWN(region->size);
+			region_page_count = region->nr_pages;
 			region_user_start = region->gfn;
 			region_user_end = region->gfn + region_page_count;
 
@@ -2385,7 +2384,7 @@ static int destroy_snp_partition_state(struct mshv_partition *partition)
 	};
 
 	hlist_for_each_entry_safe(region, n, &partition->mem_regions, hnode) {
-		page_count = HVPFN_DOWN(region->size);
+		page_count = region->nr_pages;
 		if (region->flags.large_pages)
 			unmap_flags = HV_UNMAP_GPA_LARGE_PAGE;
 		else
@@ -2547,7 +2546,7 @@ static void destroy_partition(struct mshv_partition *partition)
 	/* Remove regions, regain access to the memory and unpin the pages */
 	hlist_for_each_entry_safe(region, n, &partition->mem_regions, hnode) {
 		hlist_del(&region->hnode);
-		page_count = HVPFN_DOWN(region->size);
+		page_count = region->nr_pages;
 
 		if (region->flags.encrypted) {
 			ret = mshv_partition_region_share(region);
@@ -2972,7 +2971,7 @@ static void mshv_panic_unlock_snp(struct mshv_partition *vm)
 	int ret;
 
 	hlist_for_each_entry(memreg, &vm->mem_regions, hnode) {
-		numpgs = HVPFN_DOWN(memreg->size);
+		numpgs = memreg->nr_pages;
 		hv_call_unmap_gpa_pages(vm->id, memreg->gfn, numpgs, 0);
 		ret = mshv_partition_region_share(memreg);
 		if (ret)
