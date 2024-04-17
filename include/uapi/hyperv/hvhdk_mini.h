@@ -294,6 +294,7 @@ struct hv_output_withdraw_memory {
 #define HV_MAP_GPA_EXECUTABLE		       0xC
 #define HV_MAP_GPA_PERMISSIONS_MASK	       0xF
 #define HV_MAP_GPA_ADJUSTABLE		    0x8000
+#define HV_MAP_GPA_NO_ACCESS		   0x10000
 #define HV_MAP_GPA_NOT_CACHED		  0x200000
 #define HV_MAP_GPA_LARGE_PAGE		0x80000000
 

@@ -261,7 +261,9 @@ static int hv_do_map_gpa_hcall(u64 partition_id, u64 gfn, u64 page_struct_count,
 		pfnlist = input_page->source_gpa_page_list;
 
 		for (i = 0; i < rep_count; i++)
-			if (pages) {
+			if (flags & HV_MAP_GPA_NO_ACCESS) {
+				pfnlist[i] = 0;
+			} else if (pages) {
 				u64 index = (done + i) << large_shift;
 
 				if (index >= page_struct_count) {
