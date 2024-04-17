@@ -616,7 +616,7 @@ mshv_region_remap_pages(struct mshv_mem_region *region, u32 map_flags,
 
 	/* ask the hypervisor to map guest ram */
 	return hv_call_map_gpa_pages(region->partition->id,
-				     region->guest_pfn + page_offset,
+				     region->gfn + page_offset,
 				     page_count, map_flags,
 				     region->pages + page_offset);
 }
@@ -661,7 +661,7 @@ mshv_region_populate_pages(struct mshv_mem_region *region,
 
 	for (done_count = 0; done_count < page_count; done_count += ret) {
 		pages = region->pages + page_offset + done_count;
-		userspace_addr = region->userspace_addr +
+		userspace_addr = region->uaddr +
 				(page_offset + done_count) *
 				HV_HYP_PAGE_SIZE;
 		nr_pages = min(page_count - done_count,
@@ -1452,10 +1452,10 @@ static int mshv_partition_create_region(struct mshv_partition *partition,
 
 	hlist_for_each_entry(region, &partition->mem_regions, hnode) {
 		u64 region_page_count = HVPFN_DOWN(region->size);
-		u64 region_user_start = region->userspace_addr;
-		u64 region_user_end = region->userspace_addr + region->size;
-		u64 region_gpfn_start = region->guest_pfn;
-		u64 region_gpfn_end = region->guest_pfn + region_page_count;
+		u64 region_user_start = region->uaddr;
+		u64 region_user_end = region->uaddr + region->size;
+		u64 region_gpfn_start = region->gfn;
+		u64 region_gpfn_end = region->gfn + region_page_count;
 
 		if (!(user_end <= region_user_start) &&
 		    !(region_user_end <= user_start)) {
@@ -1472,8 +1472,8 @@ static int mshv_partition_create_region(struct mshv_partition *partition,
 		return -ENOMEM;
 
 	region->size = mem->size;
-	region->guest_pfn = mem->guest_pfn;
-	region->userspace_addr = mem->userspace_addr;
+	region->gfn = mem->guest_pfn;
+	region->uaddr = mem->userspace_addr;
 	region->hv_map_flags = mem->flags;
 
 	/* Note: large_pages flag populated when we pin the pages */
@@ -1518,7 +1518,7 @@ mshv_partition_mem_region_map(struct mshv_mem_region *region)
 		if (ret) {
 			pt_err(partition,
 			       "Failed to unshare memory region (guest_pfn: %llu): %d\n",
-			       region->guest_pfn, ret);
+			       region->gfn, ret);
 			goto evict_region;
 		}
 	}
@@ -1533,7 +1533,7 @@ mshv_partition_mem_region_map(struct mshv_mem_region *region)
 
 		pt_err(partition,
 		       "Failed to share memory region (guest_pfn: %llu): %d\n",
-		       region->guest_pfn, shrc);
+		       region->gfn, shrc);
 		/*
 		 * Don't unpin if marking shared failed because pages are no
 		 * longer mapped in the host, ie root, anymore.
@@ -1631,9 +1631,9 @@ mshv_partition_ioctl_unmap_memory(struct mshv_partition *partition,
 
 	/* Find matching region */
 	hlist_for_each_entry(region, &partition->mem_regions, hnode) {
-		if (region->userspace_addr == mem.userspace_addr &&
+		if (region->uaddr == mem.userspace_addr &&
 		    region->size == mem.size &&
-		    region->guest_pfn == mem.guest_pfn)
+		    region->gfn == mem.guest_pfn)
 			break;
 	}
 
@@ -1647,7 +1647,7 @@ mshv_partition_ioctl_unmap_memory(struct mshv_partition *partition,
 		unmap_flags |= HV_UNMAP_GPA_LARGE_PAGE;
 
 	/* ignore unmap failures and continue as process may be exiting */
-	hv_call_unmap_gpa_pages(partition->id, region->guest_pfn,
+	hv_call_unmap_gpa_pages(partition->id, region->gfn,
 				page_count, unmap_flags);
 
 	mshv_region_evict(region);
@@ -1929,8 +1929,8 @@ static int convert_gpa_list_to_page_list(struct mshv_partition *partition,
 		hlist_for_each_entry_safe(region, n, &partition->mem_regions,
 					  hnode) {
 			region_page_count = HVPFN_DOWN(region->size);
-			region_user_start = region->guest_pfn;
-			region_user_end = region->guest_pfn + region_page_count;
+			region_user_start = region->gfn;
+			region_user_end = region->gfn + region_page_count;
 
 			/* Check if the GPA lies in the region */
 			if (gfn >= region_user_start && gfn < region_user_end)
@@ -2390,7 +2390,7 @@ static int destroy_snp_partition_state(struct mshv_partition *partition)
 			unmap_flags = HV_UNMAP_GPA_LARGE_PAGE;
 		else
 			unmap_flags = 0;
-		ret = hv_call_unmap_gpa_pages(partition->id, region->guest_pfn,
+		ret = hv_call_unmap_gpa_pages(partition->id, region->gfn,
 					      page_count, unmap_flags);
 		if (ret) {
 			pt_err(partition, "Failed to unmap guest memory region\n");
@@ -2973,11 +2973,11 @@ static void mshv_panic_unlock_snp(struct mshv_partition *vm)
 
 	hlist_for_each_entry(memreg, &vm->mem_regions, hnode) {
 		numpgs = HVPFN_DOWN(memreg->size);
-		hv_call_unmap_gpa_pages(vm->id, memreg->guest_pfn, numpgs, 0);
+		hv_call_unmap_gpa_pages(vm->id, memreg->gfn, numpgs, 0);
 		ret = mshv_partition_region_share(memreg);
 		if (ret)
 			pt_err(vm, "Unlock snp failed. ret:0x%x gfn:%llx numpgs:%lld\n",
-			       ret, memreg->guest_pfn, numpgs);
+			       ret, memreg->gfn, numpgs);
 	}
 }
 
