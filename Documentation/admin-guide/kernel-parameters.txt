@@ -1690,6 +1690,15 @@
 				      which allow the hypervisor to 'idle' the
 				      guest on lock contention.
 
+	hv_minroot_nodes
+			[KNL] A comma separated list of numa nodes. If specified,
+			root VPs are evenly distributed on these nodes. BSP's
+			node (node 0) is required. "all" can be used as a
+			shorthand for all nodes.
+
+			If not specified, the default behavior is to fill up
+			node 0, followed by node 1, followed by node 2 and so on.
+
 	keep_bootcon	[KNL]
 			Do not unregister boot console at start. This is only
 			useful for debugging when something happens in the window
