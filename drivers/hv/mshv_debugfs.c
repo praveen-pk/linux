@@ -754,7 +754,7 @@ static void mshv_debugfs_root_partition_remove(void)
 {
 	int idx;
 
-	for_each_present_cpu(idx)
+	for_each_online_cpu(idx)
 		vp_debugfs_remove(hv_current_partition_id, idx, NULL);
 
 	partition_debugfs_remove(hv_current_partition_id, NULL);
@@ -778,10 +778,11 @@ static int __init mshv_debugfs_root_partition_create(void)
 		goto remove_debugfs_partition;
 	}
 
-	for_each_present_cpu(idx) {
+	for_each_online_cpu(idx) {
 		struct dentry *d;
 
-		d = vp_debugfs_create(hv_current_partition_id, idx, vp_dir);
+		d = vp_debugfs_create(hv_current_partition_id, hv_vp_index[idx],
+			vp_dir);
 		if (IS_ERR(d)) {
 			err = PTR_ERR(d);
 			goto remove_debugfs_partition_vp;
@@ -791,7 +792,7 @@ static int __init mshv_debugfs_root_partition_create(void)
 	return 0;
 
 remove_debugfs_partition_vp:
-	for_each_present_cpu(i) {
+	for_each_online_cpu(i) {
 		if (i >= idx)
 			break;
 		vp_debugfs_remove(hv_current_partition_id, i, NULL);
