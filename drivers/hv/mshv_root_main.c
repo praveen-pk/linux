@@ -651,7 +651,7 @@ static int
 mshv_region_populate_pages(struct mshv_mem_region *region,
 			   u64 page_offset, u64 page_count)
 {
-	unsigned long offs, remaining, batch_size;
+	u64 done_count, nr_pages;
 	struct page **pages;
 	__u64 userspace_addr;
 	int ret;
@@ -659,12 +659,13 @@ mshv_region_populate_pages(struct mshv_mem_region *region,
 	if (page_offset + page_count > HVPFN_DOWN(region->size))
 		return -EINVAL;
 
-	pages = region->pages + page_offset;
-	userspace_addr = region->userspace_addr + page_offset * HV_HYP_PAGE_SIZE;
-
-	for (remaining = page_count; remaining; remaining -= ret) {
-		batch_size = min(remaining, MSHV_PIN_PAGES_BATCH_SIZE);
-		offs = (page_count - remaining) * HV_HYP_PAGE_SIZE;
+	for (done_count = 0; done_count < page_count; done_count += ret) {
+		pages = region->pages + page_offset + done_count;
+		userspace_addr = region->userspace_addr +
+				(page_offset + done_count) *
+				HV_HYP_PAGE_SIZE;
+		nr_pages = min(page_count - done_count,
+			       MSHV_PIN_PAGES_BATCH_SIZE);
 
 		/*
 		 * Pinning assuming 4k pages works for large pages too.
@@ -675,10 +676,10 @@ mshv_region_populate_pages(struct mshv_mem_region *region,
 		 * allocation of contiguous memory.
 		 */
 		if (region->flags.range_pinned)
-			ret = pin_user_pages_fast(userspace_addr + offs,
-						  batch_size,
+			ret = pin_user_pages_fast(userspace_addr,
+						  nr_pages,
 						  FOLL_WRITE | FOLL_LONGTERM,
-						  &pages[page_count - remaining]);
+						  pages);
 		else
 			ret = -EOPNOTSUPP;
 
@@ -686,13 +687,13 @@ mshv_region_populate_pages(struct mshv_mem_region *region,
 			goto release_pages;
 	}
 
-	if (page_count && PageHeadHuge(pages[0]))
+	if (PageHeadHuge(region->pages[page_offset]))
 		region->flags.large_pages = true;
 
 	return 0;
 
 release_pages:
-	mshv_region_evict_pages(region, page_offset, page_count - remaining);
+	mshv_region_evict_pages(region, page_offset, done_count);
 	return ret;
 }
 
