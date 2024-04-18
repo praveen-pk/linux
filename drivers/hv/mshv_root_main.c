@@ -138,6 +138,7 @@ static int mshv_ioctl_passthru_hvcall(struct mshv_partition *partition,
 		return -EFAULT;
 
 	if (args.status || !args.in_ptr || args.in_sz < sizeof(u64) ||
+	    memchr_inv(args.rsvd, 0, sizeof(args.rsvd)) ||
 	    args.in_sz > HV_HYP_PAGE_SIZE)
 		return -EINVAL;
 
@@ -161,7 +162,6 @@ static int mshv_ioctl_passthru_hvcall(struct mshv_partition *partition,
 			return ret;
 	}
 
-	/* Setup input/output. Set input header */
 	pages_order = args.out_ptr ? 1 : 0;
 	page = alloc_pages(GFP_KERNEL, pages_order);
 	if (!page)
@@ -180,7 +180,6 @@ static int mshv_ioctl_passthru_hvcall(struct mshv_partition *partition,
 	}
 
 	/*
-	 * Set the partition id.
 	 * NOTE: This only works because all the allowed hypercalls' input
 	 * structs begin with a u64 partition_id field.
 	 */
@@ -1069,7 +1068,7 @@ mshv_vp_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 		break;
 	case MSHV_ROOT_HVCALL:
 		r = mshv_ioctl_passthru_hvcall(vp->partition, false,
-						  (void __user *)arg);
+					       (void __user *)arg);
 		break;
 	default:
 		vp_warn(vp, "Invalid ioctl: %#x\n", ioctl);

@@ -266,16 +266,29 @@ struct mshv_complete_isolated_import {
 	union hv_partition_complete_isolated_import_data import_data;
 };
 
-/* Generic hypercall data structure, useable by partition OR VP fds */
+/**
+ * struct mshv_root_hvcall - arguments for MSHV_ROOT_HVCALL
+ * @code: Hypercall code (HVCALL_*)
+ * @reps: in: Rep count ('repcount')
+ *        out: Reps completed ('repcomp'). MBZ unless rep hvcall
+ * @in_sz: Size of input incl rep data. <= HV_HYP_PAGE_SIZE
+ * @out_sz: Size of output buffer. <= HV_HYP_PAGE_SIZE. MBZ if out_ptr is 0
+ * @status: in: MBZ
+ *          out: HV_STATUS_* from hypercall
+ * @rsvd: MBZ
+ * @in_ptr: Input data buffer (struct hv_input_*). If used with partition or
+ *          vp fd, partition id field is added by kernel.
+ * @out_ptr: Output data buffer (optional)
+ */
 struct mshv_root_hvcall {
-	__u16 code;	/* HV_CALL_CODE */
-	__u16 reps;	/* in(repcount)/out(repcomp). MBZ unless rep hvcall */
-	__u16 in_sz;	/* <= HV_HYP_PAGE_SIZE. size of input incl rep data */
-	__u16 out_sz;	/* <= HV_HYP_PAGE_SIZE. MBZ iff out_ptr is 0 */
-	__u16 status;	/* out(HV_STATUS). MBZ */
-	__u16 rsvd[3];	/* MBZ */
-	__u64 in_ptr;	/* HV_INPUT_* struct. Partition id is added by kernel */
-	__u64 out_ptr;	/* Optional buffer for hypercall output */
+	__u16 code;
+	__u16 reps;
+	__u16 in_sz;
+	__u16 out_sz;
+	__u16 status;
+	__u8 rsvd[6];
+	__u64 in_ptr;
+	__u64 out_ptr;
 };
 
 /* Partition fds created with MSHV_CREATE_PARTITION */
