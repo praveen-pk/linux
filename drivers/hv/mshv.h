@@ -51,6 +51,12 @@ int hv_call_get_gpa_access_states(
 		int *written_total,
 		union hv_gpa_page_access_state *states);
 
+int hv_call_set_vp_registers(
+		u32 vp_index,
+		u64 partition_id,
+		u16 count,
+		union hv_input_vtl input_vtl,
+		struct hv_register_assoc *registers);
 int hv_call_install_intercept(u64 partition_id, u32 access_type,
 		enum hv_intercept_type intercept_type,
 		union hv_intercept_parameters intercept_parameter);
@@ -171,10 +177,12 @@ int hv_call_write_gpa(u32 vp_index,
 		u32 bytes_count,
 		union hv_access_gpa_result *result);
 
+#ifdef HV_SUPPORTS_SEV_SNP_GUESTS
 int hv_call_issue_psp_guest_request(
 	u64 partition_id, u64 req_pfn, u64 rsp_pfn,
 	void (*completion_handler)(void * /* data */, u64 * /* status */),
 	void *completion_data);
+#endif /* HV_SUPPORTS_SEV_SNP_GUESTS */
 
 struct mshv_partition *mshv_partition_find(u64 partition_id) __must_hold(RCU);
 

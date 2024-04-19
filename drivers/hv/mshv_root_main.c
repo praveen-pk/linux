@@ -863,7 +863,7 @@ mshv_vp_ioctl_get_set_state(struct mshv_vp *vp,
 	return 0;
 }
 
-#endif
+#endif /* HV_SUPPORTS_VP_STATE */
 
 #ifdef HV_SUPPORTS_REGISTER_INTERCEPT
 
@@ -1929,6 +1929,27 @@ static void mshv_destroy_devices(struct mshv_partition *partition)
 	}
 }
 
+#ifdef HV_SUPPORTS_SEV_SNP_GUESTS
+static int
+set_sev_control_register(u32 vp_index, u64 partition_id,
+			 u64 enable_encrypted_state,
+			 u64 vmsa_gpa_page_number)
+{
+	union hv_input_vtl input_vtl;
+	struct hv_register_assoc sev_control = {
+		.name = HV_X64_REGISTER_SEV_CONTROL,
+	};
+	union hv_x64_register_sev_control *sc;
+
+	sc = &sev_control.value.sev_control;
+	sc->enable_encrypted_state = enable_encrypted_state;
+	sc->vmsa_gpa_page_number = vmsa_gpa_page_number;
+
+	input_vtl.as_uint8 = 0;
+	return hv_call_set_vp_registers(vp_index, partition_id, 1, input_vtl,
+			&sev_control);
+}
+
 static long
 mshv_partition_ioctl_sev_snp_ap_create(struct mshv_partition *partition,
 				       void __user *user_args)
@@ -1959,7 +1980,7 @@ mshv_partition_ioctl_sev_snp_ap_create(struct mshv_partition *partition,
 		goto out;
 	}
 
-	ret = hv_set_sev_control_register(vp->index, vp->partition->id, 1,
+	ret = set_sev_control_register(vp->index, vp->partition->id, 1,
 					  HVPFN_DOWN(req.vmsa_gpa));
 	if (ret) {
 		vp_err(vp, "Failed to set sev control register\n");
@@ -2233,6 +2254,7 @@ static long mshv_partition_snp_ioctl(unsigned int ioctl,
 out:
 	return ret;
 }
+#endif /* HV_SUPPORTS_SEV_SNP_GUESTS */
 
 static long
 mshv_partition_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
@@ -2310,6 +2332,7 @@ mshv_partition_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 		ret = mshv_ioctl_passthru_hvcall(partition, true,
 						 (void __user *)arg);
 		break;
+#ifdef HV_SUPPORTS_SEV_SNP_GUESTS
 	case MSHV_MODIFY_GPA_HOST_ACCESS:
 	case MSHV_IMPORT_ISOLATED_PAGES:
 	case MSHV_COMPLETE_ISOLATED_IMPORT:
@@ -2317,6 +2340,7 @@ mshv_partition_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 	case MSHV_SEV_SNP_AP_CREATE:
 		ret = mshv_partition_snp_ioctl(ioctl, partition, arg);
 		break;
+#endif /* HV_SUPPORTS_SEV_SNP_GUESTS */
 	default:
 		ret = -ENOTTY;
 	}
@@ -2428,6 +2452,7 @@ remove_partition(struct mshv_partition *partition)
 	synchronize_rcu();
 }
 
+#ifdef HV_SUPPORTS_SEV_SNP_GUESTS
 static int destroy_snp_partition_state(struct mshv_partition *partition)
 {
 	int i, ret = 0;
@@ -2474,7 +2499,7 @@ static int destroy_snp_partition_state(struct mshv_partition *partition)
 		 * Clear the sev control register i.e., disable encrypted page and
 		 * VMSA GFN.
 		 */
-		ret = hv_set_sev_control_register(vp->index, vp->partition->id, 0, 0);
+		ret = set_sev_control_register(vp->index, vp->partition->id, 0, 0);
 		if (ret) {
 			vp_err(vp, "Failed to clear sev control register\n");
 			goto out;
@@ -2524,6 +2549,7 @@ static int destroy_snp_partition_state(struct mshv_partition *partition)
 out:
 	return ret;
 }
+#endif /* HV_SUPPORTS_SEV_SNP_GUESTS */
 
 static void destroy_partition(struct mshv_partition *partition)
 {
@@ -2535,6 +2561,7 @@ static void destroy_partition(struct mshv_partition *partition)
 
 	trace_mshv_destroy_partition(partition->id);
 
+#ifdef HV_SUPPORTS_SEV_SNP_GUESTS
 	if (mshv_partition_isolation_type_snp(partition)) {
 		ret = destroy_snp_partition_state(partition);
 		if (ret) {
@@ -2543,6 +2570,7 @@ static void destroy_partition(struct mshv_partition *partition)
 			return;
 		}
 	}
+#endif /* HV_SUPPORTS_SEV_SNP_GUESTS */
 
 	/*
 	 * We only need to drain signals for root scheduler. This should be
