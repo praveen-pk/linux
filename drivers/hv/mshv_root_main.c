@@ -1487,7 +1487,11 @@ static int mshv_partition_create_region(struct mshv_partition *partition,
 	region->nr_pages = nr_pages;
 	region->start_gfn = mem->guest_pfn;
 	region->start_uaddr = mem->userspace_addr;
-	region->hv_map_flags = mem->flags;
+	region->hv_map_flags = HV_MAP_GPA_READABLE | HV_MAP_GPA_ADJUSTABLE;
+	if (mem->flags & BIT(MSHV_SET_MEM_BIT_WRITABLE))
+		region->hv_map_flags |= HV_MAP_GPA_WRITABLE;
+	if (mem->flags & BIT(MSHV_SET_MEM_BIT_EXECUTABLE))
+		region->hv_map_flags |= HV_MAP_GPA_EXECUTABLE;
 
 	/* Note: large_pages flag populated when we pin the pages */
 	if (!is_mmio)
@@ -1574,22 +1578,16 @@ err_out:
  *   and hence is taken care of via vfio_pci_mmap_fault().
  */
 static long
-mshv_partition_ioctl_map_memory(struct mshv_partition *partition,
-				struct mshv_user_mem_region __user *user_mem)
+mshv_map_user_memory(struct mshv_partition *partition,
+		     struct mshv_user_mem_region mem)
 {
-	struct mshv_user_mem_region mem;
 	struct mshv_mem_region *region;
 	struct vm_area_struct *vma;
 	bool is_mmio;
 	ulong mmio_pfn;
 	long ret;
 
-	if (copy_from_user(&mem, user_mem, sizeof(mem)))
-		return -EFAULT;
-
-	if (!mem.size ||
-	    !PAGE_ALIGNED(mem.size) ||
-	    !PAGE_ALIGNED(mem.userspace_addr) ||
+	if (mem.flags & BIT(MSHV_SET_MEM_BIT_UNMAP) ||
 	    !access_ok((const void *)mem.userspace_addr, mem.size))
 		return -EINVAL;
 
@@ -1612,6 +1610,7 @@ mshv_partition_ioctl_map_memory(struct mshv_partition *partition,
 					     mmio_pfn, HVPFN_DOWN(mem.size));
 	else
 		ret = mshv_partition_mem_region_map(region);
+
 	if (ret)
 		goto errout;
 
@@ -1625,20 +1624,19 @@ errout:
 	return ret;
 }
 
-/* called for unmapping both the guest ram and the mmio space */
+/* Called for unmapping both the guest ram and the mmio space */
 static long
-mshv_partition_ioctl_unmap_memory(struct mshv_partition *partition,
-				  struct mshv_user_mem_region __user *user_mem)
+mshv_unmap_user_memory(struct mshv_partition *partition,
+		       struct mshv_user_mem_region mem)
 {
-	struct mshv_user_mem_region mem;
 	struct mshv_mem_region *region;
 	u32 unmap_flags = 0;
 
-	if (hlist_empty(&partition->mem_regions))
+	if (!(mem.flags & BIT(MSHV_SET_MEM_BIT_UNMAP)))
 		return -EINVAL;
 
-	if (copy_from_user(&mem, user_mem, sizeof(mem)))
-		return -EFAULT;
+	if (hlist_empty(&partition->mem_regions))
+		return -EINVAL;
 
 	region = mshv_partition_region_by_gfn(partition, mem.guest_pfn);
 	if (region == NULL)
@@ -1663,6 +1661,28 @@ mshv_partition_ioctl_unmap_memory(struct mshv_partition *partition,
 
 	vfree(region);
 	return 0;
+}
+
+static long
+mshv_partition_ioctl_set_memory(struct mshv_partition *partition,
+				struct mshv_user_mem_region __user *user_mem)
+{
+	struct mshv_user_mem_region mem;
+
+	if (copy_from_user(&mem, user_mem, sizeof(mem)))
+		return -EFAULT;
+
+	if (!mem.size ||
+	    !PAGE_ALIGNED(mem.size) ||
+	    !PAGE_ALIGNED(mem.userspace_addr) ||
+	    (mem.flags & ~MSHV_SET_MEM_FLAGS_MASK) ||
+	    mshv_field_nonzero(mem, rsvd))
+		return -EINVAL;
+
+	if (mem.flags & BIT(MSHV_SET_MEM_BIT_UNMAP))
+		return mshv_unmap_user_memory(partition, mem);
+
+	return mshv_map_user_memory(partition, mem);
 }
 
 static long
@@ -2208,13 +2228,9 @@ mshv_partition_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 	case MSHV_INITIALIZE_PARTITION:
 		ret = mshv_partition_ioctl_initialize(partition);
 		break;
-	case MSHV_MAP_GUEST_MEMORY:
-		ret = mshv_partition_ioctl_map_memory(partition,
-							(void __user *)arg);
-		break;
-	case MSHV_UNMAP_GUEST_MEMORY:
-		ret = mshv_partition_ioctl_unmap_memory(partition,
-							(void __user *)arg);
+	case MSHV_SET_GUEST_MEMORY:
+		ret = mshv_partition_ioctl_set_memory(partition,
+						      (void __user *)arg);
 		break;
 	case MSHV_CREATE_VP:
 		ret = mshv_partition_ioctl_create_vp(partition,
