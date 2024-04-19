@@ -1154,14 +1154,18 @@ mshv_partition_ioctl_create_vp(struct mshv_partition *partition,
 			goto unmap_intercept_message_page;
 	}
 
-	memset(&identity, 0, sizeof(identity));
-	identity.vp.partition_id = partition->id;
-	identity.vp.vp_index = args.vp_index;
-	identity.vp.flags = 0;
+	/* L1VH partitions are not allowed to map the stats page. Yet. */
+	if (hv_root_partition()) {
+		memset(&identity, 0, sizeof(identity));
+		identity.vp.partition_id = partition->id;
+		identity.vp.vp_index = args.vp_index;
+		identity.vp.flags = 0;
 
-	ret = hv_call_map_stat_page(HV_STATS_OBJECT_VP, &identity, &stats_page);
-	if (ret)
-		goto unmap_register_page;
+		ret = hv_call_map_stat_page(HV_STATS_OBJECT_VP, &identity,
+					&stats_page);
+		if (ret)
+			goto unmap_register_page;
+	}
 
 	vp = kzalloc(sizeof(*vp), GFP_KERNEL);
 	if (!vp)
@@ -1219,7 +1223,8 @@ free_registers:
 free_vp:
 	kfree(vp);
 unmap_stats_page:
-	hv_call_unmap_stat_page(HV_STATS_OBJECT_VP, &identity);
+	if (hv_root_partition())
+		hv_call_unmap_stat_page(HV_STATS_OBJECT_VP, &identity);
 unmap_register_page:
 	if (!mshv_partition_isolation_type_snp(partition))
 		hv_call_unmap_vp_state_page(partition->id, args.vp_index,
