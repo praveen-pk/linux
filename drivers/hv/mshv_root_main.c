@@ -1154,6 +1154,7 @@ mshv_partition_ioctl_create_vp(struct mshv_partition *partition,
 			goto unmap_intercept_message_page;
 	}
 
+	memset(&identity, 0, sizeof(identity));
 	identity.vp.partition_id = partition->id;
 	identity.vp.vp_index = args.vp_index;
 	identity.vp.flags = 0;
