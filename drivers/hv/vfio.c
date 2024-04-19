@@ -330,9 +330,8 @@ static long mshv_device_ioctl(struct file *filp, unsigned int ioctl,
 	default:
 		if (dev->ops->ioctl)
 			return dev->ops->ioctl(dev, ioctl, arg);
-
-		return -ENOTTY;
 	}
+	return -ENOTTY;
 }
 
 static int mshv_device_release(struct inode *inode, struct file *filp)
