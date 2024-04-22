@@ -2601,6 +2601,7 @@ static void destroy_partition(struct mshv_partition *partition)
 
 		mshv_debugfs_vp_remove(vp);
 
+		memset(&identity, 0, sizeof(identity));
 		identity.vp.partition_id = partition->id;
 		identity.vp.vp_index = vp->index;
 		identity.vp.flags = 0;
