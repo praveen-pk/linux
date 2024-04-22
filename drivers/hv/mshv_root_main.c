@@ -1792,33 +1792,84 @@ mshv_partition_ioctl_assert_interrupt(struct mshv_partition *partition,
 }
 
 static long
-mshv_partition_ioctl_get_gpa_access_state(struct mshv_partition *partition,
-	void __user *user_args)
+mshv_partition_ioctl_get_gpap_access_bitmap(struct mshv_partition *partition,
+					    void __user *user_args)
 {
-	struct mshv_get_gpa_pages_access_state args;
+	struct mshv_gpap_access_bitmap args;
 	union hv_gpa_page_access_state *states;
-	long ret;
+	long ret, i;
+	union hv_gpa_page_access_state_flags hv_flags = {};
+	u8 hv_type_mask;
+	ulong bitmap_buf_sz, states_buf_sz;
 	int written = 0;
 
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
 
+	if (args.access_type >= MSHV_GPAP_ACCESS_TYPE_COUNT ||
+	    args.access_op >= MSHV_GPAP_ACCESS_OP_COUNT ||
+	    mshv_field_nonzero(args, rsvd) || !args.page_count ||
+	    !args.bitmap_ptr)
+		return -EINVAL;
 
-	states = vzalloc(args.count * sizeof(*states));
+	if (check_mul_overflow(args.page_count, sizeof(*states), &states_buf_sz))
+		return -E2BIG;
+
+	/* Num bytes needed to store bitmap; one bit per page rounded up */
+	bitmap_buf_sz = DIV_ROUND_UP(args.page_count, 8);
+
+	/* Sanity check */
+	if (bitmap_buf_sz > states_buf_sz)
+		return -EBADFD;
+
+	switch (args.access_type) {
+	case MSHV_GPAP_ACCESS_TYPE_ACCESSED:
+		hv_type_mask = 1;
+		if (args.access_op == MSHV_GPAP_ACCESS_OP_CLEAR) {
+			hv_flags.clear_accessed = 1;
+			/* not accessed implies not dirty */
+			hv_flags.clear_dirty = 1;
+		} else { // MSHV_GPAP_ACCESS_OP_SET
+			hv_flags.set_accessed = 1;
+		}
+		break;
+	case MSHV_GPAP_ACCESS_TYPE_DIRTY:
+		hv_type_mask = 2;
+		if (args.access_op == MSHV_GPAP_ACCESS_OP_CLEAR) {
+			hv_flags.clear_dirty = 1;
+		} else { // MSHV_GPAP_ACCESS_OP_SET
+			hv_flags.set_dirty = 1;
+			/* dirty implies accessed */
+			hv_flags.set_accessed = 1;
+		}
+		break;
+	}
+
+	states = vzalloc(states_buf_sz);
 	if (!states)
 		return -ENOMEM;
-	ret = hv_call_get_gpa_access_states(partition->id,
-				args.count, args.hv_gpa_page_number,
-				args.flags, &written, states);
+
+	ret = hv_call_get_gpa_access_states(partition->id, args.page_count,
+					    args.gpap_base, hv_flags, &written,
+					    states);
 	if (ret)
 		goto free_return;
 
-	args.count = written;
+	/*
+	 * Overwrite states buffer with bitmap - the bits in hv_type_mask
+	 * correspond to bitfields in hv_gpa_page_access_state
+	 */
+	for (i = 0; i < written; ++i)
+		assign_bit(i, (ulong *)states,
+			   states[i].as_uint8 & hv_type_mask);
+
+	args.page_count = written;
+
 	if (copy_to_user(user_args, &args, sizeof(args))) {
 		ret = -EFAULT;
 		goto free_return;
 	}
-	if (copy_to_user(args.states, states, sizeof(*states) * args.count))
+	if (copy_to_user((void __user *)args.bitmap_ptr, states, bitmap_buf_sz))
 		ret = -EFAULT;
 
 free_return:
@@ -2264,9 +2315,9 @@ mshv_partition_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 		ret = mshv_partition_ioctl_set_msi_routing(partition,
 							   (void __user *)arg);
 		break;
-	case MSHV_GET_GPA_ACCESS_STATES:
-		ret = mshv_partition_ioctl_get_gpa_access_state(partition,
-							   (void __user *)arg);
+	case MSHV_GET_GPAP_ACCESS_BITMAP:
+		ret = mshv_partition_ioctl_get_gpap_access_bitmap(partition,
+								  (void __user *)arg);
 		break;
 #ifdef CONFIG_MSHV_VFIO
 	case MSHV_CREATE_DEVICE:

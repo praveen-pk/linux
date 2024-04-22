@@ -51,7 +51,7 @@ int hv_call_get_gpa_access_states(
 		u64 partition_id,
 		u32 count,
 		u64 gpa_base_pfn,
-		u64 state_flags,
+		union hv_gpa_page_access_state_flags state_flags,
 		int *written_total,
 		union hv_gpa_page_access_state *states);
 

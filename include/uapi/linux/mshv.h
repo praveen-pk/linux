@@ -120,13 +120,6 @@ struct mshv_get_vp_cpuid_values {
 	__u32 edx;
 };
 
-struct mshv_get_gpa_pages_access_state {
-	__u32 count;
-	__u64 flags;
-	__u64 hv_gpa_page_number;
-	union hv_gpa_page_access_state *states;
-} __packed;
-
 struct mshv_read_write_gpa {
 	__u64 base_gpa;
 	__u32 byte_count;
@@ -293,6 +286,44 @@ struct mshv_user_irq_table {
 	struct mshv_user_irq_entry entries[0];
 };
 
+enum {
+	MSHV_GPAP_ACCESS_TYPE_ACCESSED = 0,
+	MSHV_GPAP_ACCESS_TYPE_DIRTY,
+	MSHV_GPAP_ACCESS_TYPE_COUNT		/* Count of enum members */
+};
+
+enum {
+	MSHV_GPAP_ACCESS_OP_NOOP = 0,
+	MSHV_GPAP_ACCESS_OP_CLEAR,
+	MSHV_GPAP_ACCESS_OP_SET,
+	MSHV_GPAP_ACCESS_OP_COUNT		/* Count of enum members */
+};
+
+/**
+ * struct mshv_gpap_access_bitmap - arguments for MSHV_GET_GPAP_ACCESS_BITMAP
+ * @access_type: MSHV_GPAP_ACCESS_TYPE_* - The type of access to record in the
+ *               bitmap
+ * @access_op: MSHV_GPAP_ACCESS_OP_* - Allows an optional clear or set of all
+ *             the access states in the range, after retrieving the current
+ *             states.
+ * @rsvd: MBZ
+ * @page_count: in: number of pages
+ *              out: on error, number of states successfully written to bitmap
+ * @gpap_base: Base gpa page number
+ * @bitmap_ptr: Output buffer for bitmap, at least (page_count + 7) / 8 bytes
+ *
+ * Retrieve a bitmap of either ACCESSED or DIRTY bits for a given range of guest
+ * memory, and optionally clear or set the bits.
+ */
+struct mshv_gpap_access_bitmap {
+	__u8 access_type;
+	__u8 access_op;
+	__u8 rsvd[6];
+	__u64 page_count;
+	__u64 gpap_base;
+	__u64 bitmap_ptr;
+};
+
 /* Subsection - SEV/SNP data structures */
 struct mshv_modify_gpa_host_access {
 	__u32 host_access;
@@ -339,12 +370,11 @@ struct mshv_root_hvcall {
 #define MSHV_INITIALIZE_PARTITION	_IO(MSHV_IOCTL, 0x00)
 #define MSHV_CREATE_VP			_IOW(MSHV_IOCTL, 0x01, struct mshv_create_vp)
 #define MSHV_SET_GUEST_MEMORY		_IOW(MSHV_IOCTL, 0x02, struct mshv_user_mem_region)
-#define MSHV_CREATE_DEVICE		_IOWR(MSHV_IOCTL, 0x13, struct mshv_create_device)
 #define MSHV_IRQFD			_IOW(MSHV_IOCTL, 0xE, struct mshv_user_irqfd)
 #define MSHV_IOEVENTFD			_IOW(MSHV_IOCTL, 0xF, struct mshv_user_ioeventfd)
 #define MSHV_SET_MSI_ROUTING		_IOW(MSHV_IOCTL, 0x11, struct mshv_user_irq_table)
-#define MSHV_GET_GPA_ACCESS_STATES	_IOWR(MSHV_IOCTL, 0x12, \
-					      struct mshv_get_gpa_pages_access_state)
+#define MSHV_GET_GPAP_ACCESS_BITMAP	_IOWR(MSHV_IOCTL, 0x06, struct mshv_gpap_access_bitmap)
+#define MSHV_CREATE_DEVICE		_IOWR(MSHV_IOCTL, 0x13, struct mshv_create_device)
 /* SEV/SNP-related partition IOCTLs */
 #define MSHV_MODIFY_GPA_HOST_ACCESS	_IOW(MSHV_IOCTL, 0x28, struct mshv_modify_gpa_host_access)
 #define MSHV_IMPORT_ISOLATED_PAGES	_IOW(MSHV_IOCTL, 0x29, struct mshv_import_isolated_pages)
