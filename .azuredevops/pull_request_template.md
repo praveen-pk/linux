@@ -2,7 +2,7 @@
 
 Describe what issue this PR solves. Why it is needed.
 
-# How the issue is solved?
+# How is the issue solved?
 
 Describe how the issue is solved.
 
