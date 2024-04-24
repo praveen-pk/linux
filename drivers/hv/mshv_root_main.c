@@ -829,6 +829,8 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 	return 0;
 }
 
+static_assert(sizeof(struct hv_message) <= MSHV_RUN_VP_BUF_SZ,
+	      "sizeof(struct hv_message) must not exceed MSHV_RUN_VP_BUF_SZ");
 static long
 mshv_vp_ioctl_run_vp(struct mshv_vp *vp, void __user *ret_message)
 {

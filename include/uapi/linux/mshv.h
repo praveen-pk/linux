@@ -318,7 +318,7 @@ struct mshv_root_hvcall {
 /* Partition fds created with MSHV_CREATE_PARTITION */
 /* TODO: renumber from 0x00*/
 #define MSHV_INITIALIZE_PARTITION	_IO(MSHV_IOCTL, 0x00)
-#define MSHV_CREATE_VP			_IOW(MSHV_IOCTL, 0x04, struct mshv_create_vp)
+#define MSHV_CREATE_VP			_IOW(MSHV_IOCTL, 0x01, struct mshv_create_vp)
 #define MSHV_CREATE_DEVICE		_IOWR(MSHV_IOCTL, 0x13, struct mshv_create_device)
 #define MSHV_MAP_GUEST_MEMORY		_IOW(MSHV_IOCTL, 0x02, struct mshv_user_mem_region)
 #define MSHV_UNMAP_GUEST_MEMORY		_IOW(MSHV_IOCTL, 0x03, struct mshv_user_mem_region)
@@ -347,6 +347,12 @@ struct mshv_root_hvcall {
  ********************************
  */
 
+#define MSHV_RUN_VP_BUF_SZ 256
+
+struct mshv_run_vp {
+	__u8 msg_buf[MSHV_RUN_VP_BUF_SZ];
+};
+
 #ifdef HV_SUPPORTS_VP_STATE
 
 enum {
@@ -372,7 +378,7 @@ struct mshv_get_set_vp_state {
 
 /* VP fds created with MSHV_CREATE_VP */
 /* TODO: renumber from 0x00*/
-#define MSHV_RUN_VP			_IOR(MSHV_IOCTL, 0x07, struct hv_message)
+#define MSHV_RUN_VP			_IOR(MSHV_IOCTL, 0x00, struct mshv_run_vp)
 #ifdef HV_SUPPORTS_VP_STATE
 #define MSHV_GET_VP_STATE		_IOWR(MSHV_IOCTL, 0x0A, struct mshv_get_set_vp_state)
 #define MSHV_SET_VP_STATE		_IOWR(MSHV_IOCTL, 0x0B, struct mshv_get_set_vp_state)
