@@ -2601,13 +2601,17 @@ static void destroy_partition(struct mshv_partition *partition)
 
 		mshv_debugfs_vp_remove(vp);
 
-		identity.vp.partition_id = partition->id;
-		identity.vp.vp_index = vp->index;
-		identity.vp.flags = 0;
+		if (vp->stats_page) {
+			memset(&identity, 0, sizeof(identity));
+			identity.vp.partition_id = partition->id;
+			identity.vp.vp_index = vp->index;
+			identity.vp.flags = 0;
 
-		(void)hv_call_unmap_stat_page(HV_STATS_OBJECT_VP, &identity);
+			(void)hv_call_unmap_stat_page(HV_STATS_OBJECT_VP,
+						&identity);
 
-		vp->stats_page = NULL;
+			vp->stats_page = NULL;
+		}
 
 		if (vp->register_page) {
 			(void)hv_call_unmap_vp_state_page(partition->id, vp->index,
