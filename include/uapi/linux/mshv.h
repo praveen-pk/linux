@@ -325,12 +325,28 @@ struct mshv_gpap_access_bitmap {
 };
 
 /* Subsection - SEV/SNP data structures */
+enum {
+	MSHV_GPA_HOST_ACCESS_BIT_ACQUIRE = 0,
+	MSHV_GPA_HOST_ACCESS_BIT_READABLE,
+	MSHV_GPA_HOST_ACCESS_BIT_WRITABLE,
+	MSHV_GPA_HOST_ACCESS_BIT_LARGE_PAGE,
+	MSHV_GPA_HOST_ACCESS_BIT_COUNT		/* Count of enum members */
+};
+#define MSHV_GPA_HOST_ACCESS_FLAGS_MASK \
+	((1 << MSHV_GPA_HOST_ACCESS_BIT_COUNT) - 1)
+
+/**
+ * struct mshv_modify_gpa_host_access - args for MSHV_MODIFY_GPA_HOST_ACCESS
+ * @flags: Bitmask of 1 << MSHV_GPA_HOST_ACCESS_BIT_*
+ * @rsvd: MBZ
+ * @page_count: Number of pages in guest_pfns
+ * @guest_pfns: Variable length array of guest page numbers
+ */
 struct mshv_modify_gpa_host_access {
-	__u32 host_access;
-	__u32 flags;
-	__u8 acquire;
-	__u64 gpa_list_size;
-	__u64 gpa_list[];
+	__u8 flags;
+	__u8 rsvd[7];
+	__u64 page_count;
+	__u64 guest_pfns[];
 };
 
 struct mshv_import_isolated_pages {

@@ -2024,48 +2024,55 @@ static long mshv_partition_ioctl_modify_gpa_host_access(
 {
 	long ret = 0;
 	struct mshv_modify_gpa_host_access args;
-	u64 *gpa_list;
+	u64 *gpfn_list;
 	struct page **page_list;
+	u32 flags, host_access;
+	u8 acquire;
 
-	if (copy_from_user(&args, user_args, sizeof(args))) {
-		ret = -EFAULT;
-		goto out;
-	}
+	if (copy_from_user(&args, user_args, sizeof(args)))
+		return -EFAULT;
 
-	if (args.gpa_list_size == 0) {
-		ret = -EINVAL;
-		pt_err(partition, "Empty list of GPAs is not supported!\n");
-		goto out;
-	}
+	if ((args.flags & ~MSHV_GPA_HOST_ACCESS_FLAGS_MASK) ||
+	    mshv_field_nonzero(args, rsvd) || !args.page_count)
+		return -EINVAL;
 
-	gpa_list = vmemdup_user(user_args->gpa_list,
-				size_mul(sizeof(*gpa_list), args.gpa_list_size));
-	if (IS_ERR(gpa_list)) {
-		ret = PTR_ERR(gpa_list);
-		goto out;
-	}
+	gpfn_list = vmemdup_user(user_args->guest_pfns,
+				 size_mul(sizeof(*gpfn_list), args.page_count));
+	if (IS_ERR(gpfn_list))
+		return PTR_ERR(gpfn_list);
 
-	page_list = kcalloc(args.gpa_list_size, sizeof(struct page *), GFP_KERNEL);
+	page_list = kcalloc(args.page_count, sizeof(struct page *), GFP_KERNEL);
 	if (!page_list) {
 		ret = -ENOMEM;
-		goto clear_gpa_list;
+		goto free_gpfn_list;
 	}
 
-	ret = convert_gpa_list_to_page_list(partition, gpa_list,
-					    args.gpa_list_size, page_list);
+	ret = convert_gpa_list_to_page_list(partition, gpfn_list,
+					    args.page_count, page_list);
 	if (ret < 0)
-		goto clear_page_list;
+		goto free_page_list;
+
+	host_access = 0;
+	if (args.flags & BIT(MSHV_GPA_HOST_ACCESS_BIT_READABLE))
+		host_access |= HV_MAP_GPA_READABLE;
+	if (args.flags & MSHV_GPA_HOST_ACCESS_BIT_WRITABLE)
+		host_access |= HV_MAP_GPA_WRITABLE;
+
+	flags = 0;
+	if (args.flags & BIT(MSHV_GPA_HOST_ACCESS_BIT_LARGE_PAGE))
+		flags |= HV_MODIFY_SPA_PAGE_HOST_ACCESS_LARGE_PAGE;
+
+	acquire = !!(args.flags & BIT(MSHV_GPA_HOST_ACCESS_BIT_ACQUIRE));
 
 	ret = hv_call_modify_spa_host_access(partition->id, page_list,
-					     args.gpa_list_size,
-					     args.host_access, args.flags,
-					     args.acquire);
+					     args.page_count, host_access,
+					     flags, acquire);
 
-clear_page_list:
+free_page_list:
 	kfree(page_list);
-clear_gpa_list:
-	kvfree(gpa_list);
-out:
+free_gpfn_list:
+	kvfree(gpfn_list);
+
 	return ret;
 }
 
