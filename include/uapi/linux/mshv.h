@@ -162,6 +162,10 @@ struct mshv_issue_psp_guest_request {
 	__u64 rsp_gpa;
 };
 
+struct mshv_complete_isolated_import {
+	union hv_partition_complete_isolated_import_data import_data;
+};
+
 /*
  *******************************************
  * Entry point to main VMM APIs: /dev/mshv *
@@ -260,10 +264,6 @@ struct mshv_import_isolated_pages {
 	enum hv_isolated_page_size page_size;
 	__u64 num_pages;
 	__u64 page_number[];
-};
-
-struct mshv_complete_isolated_import {
-	union hv_partition_complete_isolated_import_data import_data;
 };
 
 /**
