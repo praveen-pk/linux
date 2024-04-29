@@ -494,14 +494,11 @@ static void hns3_get_coal_info(struct hns3_enet_tqp_vector *tqp_vector,
 	}
 
 	sprintf(result[j++], "%d", i);
-	sprintf(result[j++], "%s", dim->state < ARRAY_SIZE(dim_state_str) ?
-		dim_state_str[dim->state] : "unknown");
+	sprintf(result[j++], "%s", dim_state_str[dim->state]);
 	sprintf(result[j++], "%u", dim->profile_ix);
-	sprintf(result[j++], "%s", dim->mode < ARRAY_SIZE(dim_cqe_mode_str) ?
-		dim_cqe_mode_str[dim->mode] : "unknown");
+	sprintf(result[j++], "%s", dim_cqe_mode_str[dim->mode]);
 	sprintf(result[j++], "%s",
-		dim->tune_state < ARRAY_SIZE(dim_tune_stat_str) ?
-		dim_tune_stat_str[dim->tune_state] : "unknown");
+		dim_tune_stat_str[dim->tune_state]);
 	sprintf(result[j++], "%u", dim->steps_left);
 	sprintf(result[j++], "%u", dim->steps_right);
 	sprintf(result[j++], "%u", dim->tired);

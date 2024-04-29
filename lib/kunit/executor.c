@@ -102,10 +102,8 @@ static void kunit_free_suite_set(struct suite_set suite_set)
 {
 	struct kunit_suite * const *suites;
 
-	for (suites = suite_set.start; suites < suite_set.end; suites++) {
-		kfree((*suites)->test_cases);
+	for (suites = suite_set.start; suites < suite_set.end; suites++)
 		kfree(*suites);
-	}
 	kfree(suite_set.start);
 }
 

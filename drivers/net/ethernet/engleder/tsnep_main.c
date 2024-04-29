@@ -973,14 +973,14 @@ static int tsnep_request_irq(struct tsnep_queue *queue, bool first)
 		dev = queue->adapter;
 	} else {
 		if (queue->tx && queue->rx)
-			snprintf(queue->name, sizeof(queue->name), "%s-txrx-%d",
-				 name, queue->rx->queue_index);
+			sprintf(queue->name, "%s-txrx-%d", name,
+				queue->rx->queue_index);
 		else if (queue->tx)
-			snprintf(queue->name, sizeof(queue->name), "%s-tx-%d",
-				 name, queue->tx->queue_index);
+			sprintf(queue->name, "%s-tx-%d", name,
+				queue->tx->queue_index);
 		else
-			snprintf(queue->name, sizeof(queue->name), "%s-rx-%d",
-				 name, queue->rx->queue_index);
+			sprintf(queue->name, "%s-rx-%d", name,
+				queue->rx->queue_index);
 		handler = tsnep_irq_txrx;
 		dev = queue;
 	}

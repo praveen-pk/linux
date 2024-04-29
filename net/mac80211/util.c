@@ -2234,8 +2234,8 @@ static void ieee80211_flush_completed_scan(struct ieee80211_local *local,
 		 */
 		if (aborted)
 			set_bit(SCAN_ABORTED, &local->scanning);
-		wiphy_delayed_work_queue(local->hw.wiphy, &local->scan_work, 0);
-		wiphy_delayed_work_flush(local->hw.wiphy, &local->scan_work);
+		ieee80211_queue_delayed_work(&local->hw, &local->scan_work, 0);
+		flush_delayed_work(&local->scan_work);
 	}
 }
 
@@ -4069,8 +4069,7 @@ void ieee80211_dfs_cac_cancel(struct ieee80211_local *local)
 	mutex_unlock(&local->mtx);
 }
 
-void ieee80211_dfs_radar_detected_work(struct wiphy *wiphy,
-				       struct wiphy_work *work)
+void ieee80211_dfs_radar_detected_work(struct work_struct *work)
 {
 	struct ieee80211_local *local =
 		container_of(work, struct ieee80211_local, radar_detected_work);
@@ -4088,7 +4087,9 @@ void ieee80211_dfs_radar_detected_work(struct wiphy *wiphy,
 	}
 	mutex_unlock(&local->chanctx_mtx);
 
+	wiphy_lock(local->hw.wiphy);
 	ieee80211_dfs_cac_cancel(local);
+	wiphy_unlock(local->hw.wiphy);
 
 	if (num_chanctx > 1)
 		/* XXX: multi-channel is not supported yet */
@@ -4103,7 +4104,7 @@ void ieee80211_radar_detected(struct ieee80211_hw *hw)
 
 	trace_api_radar_detected(local);
 
-	wiphy_work_queue(hw->wiphy, &local->radar_detected_work);
+	schedule_work(&local->radar_detected_work);
 }
 EXPORT_SYMBOL(ieee80211_radar_detected);
 

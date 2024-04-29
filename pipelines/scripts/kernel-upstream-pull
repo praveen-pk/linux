@@ -73,7 +73,7 @@ def version_mshv_old():
     version = int(re.findall(r"VERSION = (\d+)\n", mfc)[0])
     patchlevel = int(re.findall(r"PATCHLEVEL = (\d+)\n", mfc)[0])
     sublevel = int(re.findall(r"SUBLEVEL = (\d+)\n", mfc)[0])
-    extraver = re.findall(r"EXTRAVERSION =\s*\.(mshv\d+)\n", mfc)[0]
+    extraver = re.findall(r"EXTRAVERSION =\.(mshv\d+)\n", mfc)[0]
 
     return "{}.{}.{}.{}".format(version, patchlevel, sublevel, extraver)
 
@@ -103,7 +103,7 @@ def version_mshv_from_upstream(version_upstream):
     return ".".join(segs)
 
 
-upstream_tag = tag_get_latest("rolling-lts/mariner-3/6.1*")
+upstream_tag = tag_get_latest("rolling-lts/mariner-3/*")
 log.msg("Latest tag is '{}'".format(upstream_tag))
 
 # Check if the upstream tag is already merged into the target branch

@@ -1619,13 +1619,12 @@ int scsi_rescan_device(struct scsi_device *sdev)
 	device_lock(dev);
 
 	/*
-	 * Bail out if the device or its queue are not running. Otherwise,
-	 * the rescan may block waiting for commands to be executed, with us
-	 * holding the device lock. This can result in a potential deadlock
-	 * in the power management core code when system resume is on-going.
+	 * Bail out if the device is not running. Otherwise, the rescan may
+	 * block waiting for commands to be executed, with us holding the
+	 * device lock. This can result in a potential deadlock in the power
+	 * management core code when system resume is on-going.
 	 */
-	if (sdev->sdev_state != SDEV_RUNNING ||
-	    blk_queue_pm_only(sdev->request_queue)) {
+	if (sdev->sdev_state != SDEV_RUNNING) {
 		ret = -EWOULDBLOCK;
 		goto unlock;
 	}

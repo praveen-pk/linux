@@ -121,6 +121,7 @@
 					GENMASK_ULL(42, 25))
 #define SEC_AEAD_BITMAP			(GENMASK_ULL(7, 6) | GENMASK_ULL(18, 17) | \
 					GENMASK_ULL(45, 43))
+#define SEC_DEV_ALG_MAX_LEN		256
 
 struct sec_hw_error {
 	u32 int_msk;
@@ -130,6 +131,11 @@ struct sec_hw_error {
 struct sec_dfx_item {
 	const char *name;
 	u32 offset;
+};
+
+struct sec_dev_alg {
+	u64 alg_msk;
+	const char *algs;
 };
 
 static const char sec_name[] = "hisi_sec2";
@@ -168,22 +174,15 @@ static const struct hisi_qm_cap_info sec_basic_info[] = {
 	{SEC_CORE4_ALG_BITMAP_HIGH, 0x3170, 0, GENMASK(31, 0), 0x3FFF, 0x3FFF, 0x3FFF},
 };
 
-static const u32 sec_pre_store_caps[] = {
-	SEC_DRV_ALG_BITMAP_LOW,
-	SEC_DRV_ALG_BITMAP_HIGH,
-	SEC_DEV_ALG_BITMAP_LOW,
-	SEC_DEV_ALG_BITMAP_HIGH,
-};
-
-static const struct qm_dev_alg sec_dev_algs[] = { {
+static const struct sec_dev_alg sec_dev_algs[] = { {
 		.alg_msk = SEC_CIPHER_BITMAP,
-		.alg = "cipher\n",
+		.algs = "cipher\n",
 	}, {
 		.alg_msk = SEC_DIGEST_BITMAP,
-		.alg = "digest\n",
+		.algs = "digest\n",
 	}, {
 		.alg_msk = SEC_AEAD_BITMAP,
-		.alg = "aead\n",
+		.algs = "aead\n",
 	},
 };
 
@@ -313,11 +312,8 @@ static int sec_diff_regs_show(struct seq_file *s, void *unused)
 }
 DEFINE_SHOW_ATTRIBUTE(sec_diff_regs);
 
-static bool pf_q_num_flag;
 static int sec_pf_q_num_set(const char *val, const struct kernel_param *kp)
 {
-	pf_q_num_flag = true;
-
 	return q_num_set(val, kp, PCI_DEVICE_ID_HUAWEI_SEC_PF);
 }
 
@@ -396,8 +392,8 @@ u64 sec_get_alg_bitmap(struct hisi_qm *qm, u32 high, u32 low)
 {
 	u32 cap_val_h, cap_val_l;
 
-	cap_val_h = qm->cap_tables.dev_cap_table[high].cap_val;
-	cap_val_l = qm->cap_tables.dev_cap_table[low].cap_val;
+	cap_val_h = hisi_qm_get_hw_info(qm, sec_basic_info, high, qm->cap_ver);
+	cap_val_l = hisi_qm_get_hw_info(qm, sec_basic_info, low, qm->cap_ver);
 
 	return ((u64)cap_val_h << SEC_ALG_BITMAP_SHIFT) | (u64)cap_val_l;
 }
@@ -903,7 +899,8 @@ static int sec_debugfs_init(struct hisi_qm *qm)
 	qm->debug.sqe_mask_offset = SEC_SQE_MASK_OFFSET;
 	qm->debug.sqe_mask_len = SEC_SQE_MASK_LEN;
 
-	ret = hisi_qm_regs_debugfs_init(qm, sec_diff_regs, ARRAY_SIZE(sec_diff_regs));
+	ret = hisi_qm_diff_regs_init(qm, sec_diff_regs,
+				ARRAY_SIZE(sec_diff_regs));
 	if (ret) {
 		dev_warn(dev, "Failed to init SEC diff regs!\n");
 		goto debugfs_remove;
@@ -918,7 +915,7 @@ static int sec_debugfs_init(struct hisi_qm *qm)
 	return 0;
 
 failed_to_create:
-	hisi_qm_regs_debugfs_uninit(qm, ARRAY_SIZE(sec_diff_regs));
+	hisi_qm_diff_regs_uninit(qm, ARRAY_SIZE(sec_diff_regs));
 debugfs_remove:
 	debugfs_remove_recursive(sec_debugfs_root);
 	return ret;
@@ -926,7 +923,7 @@ debugfs_remove:
 
 static void sec_debugfs_exit(struct hisi_qm *qm)
 {
-	hisi_qm_regs_debugfs_uninit(qm, ARRAY_SIZE(sec_diff_regs));
+	hisi_qm_diff_regs_uninit(qm, ARRAY_SIZE(sec_diff_regs));
 
 	debugfs_remove_recursive(qm->debug.debug_root);
 }
@@ -1080,31 +1077,37 @@ static int sec_pf_probe_init(struct sec_dev *sec)
 	return ret;
 }
 
-static int sec_pre_store_cap_reg(struct hisi_qm *qm)
+static int sec_set_qm_algs(struct hisi_qm *qm)
 {
-	struct hisi_qm_cap_record *sec_cap;
-	struct pci_dev *pdev = qm->pdev;
-	size_t i, size;
+	struct device *dev = &qm->pdev->dev;
+	char *algs, *ptr;
+	u64 alg_mask;
+	int i;
 
-	size = ARRAY_SIZE(sec_pre_store_caps);
-	sec_cap = devm_kzalloc(&pdev->dev, sizeof(*sec_cap) * size, GFP_KERNEL);
-	if (!sec_cap)
+	if (!qm->use_sva)
+		return 0;
+
+	algs = devm_kzalloc(dev, SEC_DEV_ALG_MAX_LEN * sizeof(char), GFP_KERNEL);
+	if (!algs)
 		return -ENOMEM;
 
-	for (i = 0; i < size; i++) {
-		sec_cap[i].type = sec_pre_store_caps[i];
-		sec_cap[i].cap_val = hisi_qm_get_hw_info(qm, sec_basic_info,
-				     sec_pre_store_caps[i], qm->cap_ver);
-	}
+	alg_mask = sec_get_alg_bitmap(qm, SEC_DEV_ALG_BITMAP_HIGH, SEC_DEV_ALG_BITMAP_LOW);
 
-	qm->cap_tables.dev_cap_table = sec_cap;
+	for (i = 0; i < ARRAY_SIZE(sec_dev_algs); i++)
+		if (alg_mask & sec_dev_algs[i].alg_msk)
+			strcat(algs, sec_dev_algs[i].algs);
+
+	ptr = strrchr(algs, '\n');
+	if (ptr)
+		*ptr = '\0';
+
+	qm->uacce->algs = algs;
 
 	return 0;
 }
 
 static int sec_qm_init(struct hisi_qm *qm, struct pci_dev *pdev)
 {
-	u64 alg_msk;
 	int ret;
 
 	qm->pdev = pdev;
@@ -1120,8 +1123,6 @@ static int sec_qm_init(struct hisi_qm *qm, struct pci_dev *pdev)
 		qm->qp_num = pf_q_num;
 		qm->debug.curr_qm_qp_num = pf_q_num;
 		qm->qm_list = &sec_devices;
-		if (pf_q_num_flag)
-			set_bit(QM_MODULE_PARAM, &qm->misc_ctl);
 	} else if (qm->fun_type == QM_HW_VF && qm->ver == QM_HW_V1) {
 		/*
 		 * have no way to get qm configure in VM in v1 hardware,
@@ -1139,16 +1140,7 @@ static int sec_qm_init(struct hisi_qm *qm, struct pci_dev *pdev)
 		return ret;
 	}
 
-	/* Fetch and save the value of capability registers */
-	ret = sec_pre_store_cap_reg(qm);
-	if (ret) {
-		pci_err(qm->pdev, "Failed to pre-store capability registers!\n");
-		hisi_qm_uninit(qm);
-		return ret;
-	}
-
-	alg_msk = sec_get_alg_bitmap(qm, SEC_DEV_ALG_BITMAP_HIGH_IDX, SEC_DEV_ALG_BITMAP_LOW_IDX);
-	ret = hisi_qm_set_algs(qm, alg_msk, sec_dev_algs, ARRAY_SIZE(sec_dev_algs));
+	ret = sec_set_qm_algs(qm);
 	if (ret) {
 		pci_err(qm->pdev, "Failed to set sec algs!\n");
 		hisi_qm_uninit(qm);

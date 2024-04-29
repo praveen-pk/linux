@@ -2253,7 +2253,7 @@ int register_kretprobe(struct kretprobe *rp)
 	if (!rp->rph)
 		return -ENOMEM;
 
-	rcu_assign_pointer(rp->rph->rp, rp);
+	rp->rph->rp = rp;
 	for (i = 0; i < rp->maxactive; i++) {
 		inst = kzalloc(sizeof(struct kretprobe_instance) +
 			       rp->data_size, GFP_KERNEL);
@@ -2314,7 +2314,7 @@ void unregister_kretprobes(struct kretprobe **rps, int num)
 #ifdef CONFIG_KRETPROBE_ON_RETHOOK
 		rethook_free(rps[i]->rh);
 #else
-		rcu_assign_pointer(rps[i]->rph->rp, NULL);
+		rps[i]->rph->rp = NULL;
 #endif
 	}
 	mutex_unlock(&kprobe_mutex);

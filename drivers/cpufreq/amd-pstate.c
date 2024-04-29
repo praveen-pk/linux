@@ -296,9 +296,7 @@ static int amd_pstate_target(struct cpufreq_policy *policy,
 static unsigned int amd_pstate_fast_switch(struct cpufreq_policy *policy,
 				  unsigned int target_freq)
 {
-	if (!amd_pstate_update_freq(policy, target_freq, true))
-		return target_freq;
-	return policy->cur;
+	return amd_pstate_update_freq(policy, target_freq, true);
 }
 
 static void amd_pstate_adjust_perf(unsigned int cpu,

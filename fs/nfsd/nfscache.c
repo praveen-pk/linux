@@ -311,53 +311,33 @@ nfsd_reply_cache_scan(struct shrinker *shrink, struct shrink_control *sc)
 
 	return prune_cache_entries(nn);
 }
-
-/**
- * nfsd_cache_csum - Checksum incoming NFS Call arguments
- * @buf: buffer containing a whole RPC Call message
- * @start: starting byte of the NFS Call header
- * @remaining: size of the NFS Call header, in bytes
- *
- * Compute a weak checksum of the leading bytes of an NFS procedure
- * call header to help verify that a retransmitted Call matches an
- * entry in the duplicate reply cache.
- *
- * To avoid assumptions about how the RPC message is laid out in
- * @buf and what else it might contain (eg, a GSS MIC suffix), the
- * caller passes us the exact location and length of the NFS Call
- * header.
- *
- * Returns a 32-bit checksum value, as defined in RFC 793.
+/*
+ * Walk an xdr_buf and get a CRC for at most the first RC_CSUMLEN bytes
  */
-static __wsum nfsd_cache_csum(struct xdr_buf *buf, unsigned int start,
-			      unsigned int remaining)
+static __wsum
+nfsd_cache_csum(struct svc_rqst *rqstp)
 {
-	unsigned int base, len;
-	struct xdr_buf subbuf;
-	__wsum csum = 0;
-	void *p;
 	int idx;
-
-	if (remaining > RC_CSUMLEN)
-		remaining = RC_CSUMLEN;
-	if (xdr_buf_subsegment(buf, &subbuf, start, remaining))
-		return csum;
+	unsigned int base;
+	__wsum csum;
+	struct xdr_buf *buf = &rqstp->rq_arg;
+	const unsigned char *p = buf->head[0].iov_base;
+	size_t csum_len = min_t(size_t, buf->head[0].iov_len + buf->page_len,
+				RC_CSUMLEN);
+	size_t len = min(buf->head[0].iov_len, csum_len);
 
 	/* rq_arg.head first */
-	if (subbuf.head[0].iov_len) {
-		len = min_t(unsigned int, subbuf.head[0].iov_len, remaining);
-		csum = csum_partial(subbuf.head[0].iov_base, len, csum);
-		remaining -= len;
-	}
+	csum = csum_partial(p, len, 0);
+	csum_len -= len;
 
 	/* Continue into page array */
-	idx = subbuf.page_base / PAGE_SIZE;
-	base = subbuf.page_base & ~PAGE_MASK;
-	while (remaining) {
-		p = page_address(subbuf.pages[idx]) + base;
-		len = min_t(unsigned int, PAGE_SIZE - base, remaining);
+	idx = buf->page_base / PAGE_SIZE;
+	base = buf->page_base & ~PAGE_MASK;
+	while (csum_len) {
+		p = page_address(buf->pages[idx]) + base;
+		len = min_t(size_t, PAGE_SIZE - base, csum_len);
 		csum = csum_partial(p, len, csum);
-		remaining -= len;
+		csum_len -= len;
 		base = 0;
 		++idx;
 	}
@@ -428,8 +408,6 @@ out:
 /**
  * nfsd_cache_lookup - Find an entry in the duplicate reply cache
  * @rqstp: Incoming Call to find
- * @start: starting byte in @rqstp->rq_arg of the NFS Call header
- * @len: size of the NFS Call header, in bytes
  *
  * Try to find an entry matching the current call in the cache. When none
  * is found, we try to grab the oldest expired entry off the LRU list. If
@@ -442,8 +420,7 @@ out:
  *   %RC_REPLY: Reply from cache
  *   %RC_DROPIT: Do not process the request further
  */
-int nfsd_cache_lookup(struct svc_rqst *rqstp, unsigned int start,
-		      unsigned int len)
+int nfsd_cache_lookup(struct svc_rqst *rqstp)
 {
 	struct nfsd_net		*nn;
 	struct svc_cacherep	*rp, *found;
@@ -458,7 +435,7 @@ int nfsd_cache_lookup(struct svc_rqst *rqstp, unsigned int start,
 		goto out;
 	}
 
-	csum = nfsd_cache_csum(&rqstp->rq_arg, start, len);
+	csum = nfsd_cache_csum(rqstp);
 
 	/*
 	 * Since the common case is a cache miss followed by an insert,
