@@ -2084,37 +2084,31 @@ static long mshv_partition_ioctl_import_isolated_pages(
 	struct mshv_import_isolated_pages args;
 	u64 *pages = NULL;
 
-	if (copy_from_user(&args, user_args, sizeof(args))) {
-		ret = -EFAULT;
-		goto out;
-	}
+	if (copy_from_user(&args, user_args, sizeof(args)))
+		return -EFAULT;
 
-	if (args.num_pages == 0) {
-		ret = -EINVAL;
-		pt_err(partition, "Empty list of isolated pages is not supported!\n");
-		goto out;
-	}
+	if (args.page_type >= MSHV_ISOLATED_PAGE_COUNT ||
+	    mshv_field_nonzero(args, rsvd) || args.page_count == 0)
+		return -EINVAL;
 
-	pages = vmemdup_user(user_args->page_number,
-			     size_mul(sizeof(*pages), args.num_pages));
+	pages = vmemdup_user(user_args->guest_pfns,
+			     size_mul(sizeof(*pages), args.page_count));
 
-	if (IS_ERR(pages)) {
-		ret = PTR_ERR(pages);
-		goto out;
-	}
+	if (IS_ERR(pages))
+		return PTR_ERR(pages);
 
 	ret = mshv_init_async_handler(partition);
 	if (ret)
 		goto out;
 
 	ret = hv_call_import_isolated_pages(partition->id, pages,
-					    args.num_pages, args.page_type,
-					    args.page_size,
+					    args.page_count, args.page_type,
+					    HV_ISOLATED_PAGE_SIZE_4KB,
 					    mshv_async_hvcall_handler,
 					    partition);
 
-	kvfree(pages);
 out:
+	kvfree(pages);
 	return ret;
 }
 

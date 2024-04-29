@@ -349,11 +349,30 @@ struct mshv_modify_gpa_host_access {
 	__u64 guest_pfns[];
 };
 
+enum {
+	MSHV_ISOLATED_PAGE_NORMAL = 0,
+	MSHV_ISOLATED_PAGE_VMSA,
+	MSHV_ISOLATED_PAGE_ZERO,
+	MSHV_ISOLATED_PAGE_UNMEASURED,
+	MSHV_ISOLATED_PAGE_SECRETS,
+	MSHV_ISOLATED_PAGE_CPUID,
+	MSHV_ISOLATED_PAGE_COUNT		/* Count of enum members */
+};
+
+/**
+ * struct mshv_import_isolated_pages - args for MSHV_IMPORT_ISOLATED_PAGES
+ * @page_type: MSHV_ISOLATED_PAGE_*
+ * @rsvd: MBZ
+ * @page_count: Number of pages in guest_pfns
+ * @guest_pfns: Variable length array of guest page numbers
+ *
+ * Must use 4KiB pages
+ */
 struct mshv_import_isolated_pages {
-	enum hv_isolated_page_type page_type;
-	enum hv_isolated_page_size page_size;
-	__u64 num_pages;
-	__u64 page_number[];
+	__u8 page_type;
+	__u8 rsvd[7];
+	__u64 page_count;
+	__u64 guest_pfns[];
 };
 
 /**
