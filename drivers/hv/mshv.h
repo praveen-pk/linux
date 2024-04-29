@@ -14,6 +14,10 @@
 #include <linux/wait.h>
 #include <uapi/linux/mshv.h>
 
+#define mshv_field_nonzero(STRUCT, MEMBER) \
+	memchr_inv(&((STRUCT).MEMBER), \
+		   0, sizeof_field(typeof(STRUCT), MEMBER))
+
 /*
  * Hyper-V hypercalls
  */

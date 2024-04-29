@@ -135,8 +135,7 @@ static int mshv_ioctl_passthru_hvcall(struct mshv_partition *partition,
 		return -EFAULT;
 
 	if (args.status || !args.in_ptr || args.in_sz < sizeof(u64) ||
-	    memchr_inv(args.rsvd, 0, sizeof(args.rsvd)) ||
-	    args.in_sz > HV_HYP_PAGE_SIZE)
+	    mshv_field_nonzero(args, rsvd) || args.in_sz > HV_HYP_PAGE_SIZE)
 		return -EINVAL;
 
 	if (args.out_ptr && (!args.out_sz || args.out_sz > HV_HYP_PAGE_SIZE))
@@ -920,8 +919,7 @@ mshv_vp_ioctl_get_set_state(struct mshv_vp *vp,
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
 
-	if (args.type >= MSHV_VP_STATE_COUNT ||
-	    memchr_inv(args.rsvd, 0, sizeof(args.rsvd)) ||
+	if (args.type >= MSHV_VP_STATE_COUNT || mshv_field_nonzero(args, rsvd) ||
 	    !args.buf_sz || !PAGE_ALIGNED(args.buf_sz) ||
 	    !PAGE_ALIGNED(args.buf_ptr))
 		return -EINVAL;
