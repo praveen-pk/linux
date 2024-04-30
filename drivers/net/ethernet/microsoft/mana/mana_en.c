@@ -1003,21 +1003,17 @@ static void mana_poll_tx_cq(struct mana_cq *cq)
 		case CQE_TX_VPORT_IDX_OUT_OF_RANGE:
 		case CQE_TX_VPORT_DISABLED:
 		case CQE_TX_VLAN_TAGGING_VIOLATION:
-			if (net_ratelimit())
-				netdev_err(ndev, "TX: CQE error %d\n",
-					   cqe_oob->cqe_hdr.cqe_type);
-
+			WARN_ONCE(1, "TX: CQE error %d: ignored.\n",
+				  cqe_oob->cqe_hdr.cqe_type);
 			break;
 
 		default:
-			/* If the CQE type is unknown, log an error,
-			 * and still free the SKB, update tail, etc.
+			/* If the CQE type is unexpected, log an error, assert,
+			 * and go through the error path.
 			 */
-			if (net_ratelimit())
-				netdev_err(ndev, "TX: unknown CQE type %d\n",
-					   cqe_oob->cqe_hdr.cqe_type);
-
-			break;
+			WARN_ONCE(1, "TX: Unexpected CQE type %d: HW BUG?\n",
+				  cqe_oob->cqe_hdr.cqe_type);
+			return;
 		}
 
 		if (WARN_ON_ONCE(txq->gdma_txq_id != completions[i].wq_num))

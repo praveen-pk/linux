@@ -14,7 +14,6 @@
  */
 
 #include <asm/unaligned.h>
-#include <kunit/visibility.h>
 #include <linux/ctype.h>
 #include <linux/errno.h>
 #include <linux/zlib.h>
@@ -37,6 +36,43 @@
 #define v6	6	/* per entry policydb mediation check */
 #define v7	7
 #define v8	8	/* full network masking */
+
+/*
+ * The AppArmor interface treats data as a type byte followed by the
+ * actual data.  The interface has the notion of a named entry
+ * which has a name (AA_NAME typecode followed by name string) followed by
+ * the entries typecode and data.  Named types allow for optional
+ * elements and extensions to be added and tested for without breaking
+ * backwards compatibility.
+ */
+
+enum aa_code {
+	AA_U8,
+	AA_U16,
+	AA_U32,
+	AA_U64,
+	AA_NAME,		/* same as string except it is items name */
+	AA_STRING,
+	AA_BLOB,
+	AA_STRUCT,
+	AA_STRUCTEND,
+	AA_LIST,
+	AA_LISTEND,
+	AA_ARRAY,
+	AA_ARRAYEND,
+};
+
+/*
+ * aa_ext is the read of the buffer containing the serialized profile.  The
+ * data is copied into a kernel buffer in apparmorfs and then handed off to
+ * the unpack routines.
+ */
+struct aa_ext {
+	void *start;
+	void *end;
+	void *pos;		/* pointer to current position in the buffer */
+	u32 version;
+};
 
 /* audit callback for unpack fields */
 static void audit_cb(struct audit_buffer *ab, void *va)
@@ -163,11 +199,10 @@ struct aa_loaddata *aa_loaddata_alloc(size_t size)
 }
 
 /* test if read will be in packed data bounds */
-VISIBLE_IF_KUNIT bool aa_inbounds(struct aa_ext *e, size_t size)
+static bool inbounds(struct aa_ext *e, size_t size)
 {
 	return (size <= e->end - e->pos);
 }
-EXPORT_SYMBOL_IF_KUNIT(aa_inbounds);
 
 static void *kvmemdup(const void *src, size_t len)
 {
@@ -179,22 +214,22 @@ static void *kvmemdup(const void *src, size_t len)
 }
 
 /**
- * aa_unpack_u16_chunk - test and do bounds checking for a u16 size based chunk
+ * unpack_u16_chunk - test and do bounds checking for a u16 size based chunk
  * @e: serialized data read head (NOT NULL)
  * @chunk: start address for chunk of data (NOT NULL)
  *
  * Returns: the size of chunk found with the read head at the end of the chunk.
  */
-VISIBLE_IF_KUNIT size_t aa_unpack_u16_chunk(struct aa_ext *e, char **chunk)
+static size_t unpack_u16_chunk(struct aa_ext *e, char **chunk)
 {
 	size_t size = 0;
 	void *pos = e->pos;
 
-	if (!aa_inbounds(e, sizeof(u16)))
+	if (!inbounds(e, sizeof(u16)))
 		goto fail;
 	size = le16_to_cpu(get_unaligned((__le16 *) e->pos));
 	e->pos += sizeof(__le16);
-	if (!aa_inbounds(e, size))
+	if (!inbounds(e, size))
 		goto fail;
 	*chunk = e->pos;
 	e->pos += size;
@@ -204,22 +239,20 @@ fail:
 	e->pos = pos;
 	return 0;
 }
-EXPORT_SYMBOL_IF_KUNIT(aa_unpack_u16_chunk);
 
 /* unpack control byte */
-VISIBLE_IF_KUNIT bool aa_unpack_X(struct aa_ext *e, enum aa_code code)
+static bool unpack_X(struct aa_ext *e, enum aa_code code)
 {
-	if (!aa_inbounds(e, 1))
+	if (!inbounds(e, 1))
 		return false;
 	if (*(u8 *) e->pos != code)
 		return false;
 	e->pos++;
 	return true;
 }
-EXPORT_SYMBOL_IF_KUNIT(aa_unpack_X);
 
 /**
- * aa_unpack_nameX - check is the next element is of type X with a name of @name
+ * unpack_nameX - check is the next element is of type X with a name of @name
  * @e: serialized data extent information  (NOT NULL)
  * @code: type code
  * @name: name to match to the serialized element.  (MAYBE NULL)
@@ -234,7 +267,7 @@ EXPORT_SYMBOL_IF_KUNIT(aa_unpack_X);
  *
  * Returns: false if either match fails, the read head does not move
  */
-VISIBLE_IF_KUNIT bool aa_unpack_nameX(struct aa_ext *e, enum aa_code code, const char *name)
+static bool unpack_nameX(struct aa_ext *e, enum aa_code code, const char *name)
 {
 	/*
 	 * May need to reset pos if name or type doesn't match
@@ -244,9 +277,9 @@ VISIBLE_IF_KUNIT bool aa_unpack_nameX(struct aa_ext *e, enum aa_code code, const
 	 * Check for presence of a tagname, and if present name size
 	 * AA_NAME tag value is a u16.
 	 */
-	if (aa_unpack_X(e, AA_NAME)) {
+	if (unpack_X(e, AA_NAME)) {
 		char *tag = NULL;
-		size_t size = aa_unpack_u16_chunk(e, &tag);
+		size_t size = unpack_u16_chunk(e, &tag);
 		/* if a name is specified it must match. otherwise skip tag */
 		if (name && (!size || tag[size-1] != '\0' || strcmp(name, tag)))
 			goto fail;
@@ -256,21 +289,20 @@ VISIBLE_IF_KUNIT bool aa_unpack_nameX(struct aa_ext *e, enum aa_code code, const
 	}
 
 	/* now check if type code matches */
-	if (aa_unpack_X(e, code))
+	if (unpack_X(e, code))
 		return true;
 
 fail:
 	e->pos = pos;
 	return false;
 }
-EXPORT_SYMBOL_IF_KUNIT(aa_unpack_nameX);
 
 static bool unpack_u8(struct aa_ext *e, u8 *data, const char *name)
 {
 	void *pos = e->pos;
 
-	if (aa_unpack_nameX(e, AA_U8, name)) {
-		if (!aa_inbounds(e, sizeof(u8)))
+	if (unpack_nameX(e, AA_U8, name)) {
+		if (!inbounds(e, sizeof(u8)))
 			goto fail;
 		if (data)
 			*data = *((u8 *)e->pos);
@@ -283,12 +315,12 @@ fail:
 	return false;
 }
 
-VISIBLE_IF_KUNIT bool aa_unpack_u32(struct aa_ext *e, u32 *data, const char *name)
+static bool unpack_u32(struct aa_ext *e, u32 *data, const char *name)
 {
 	void *pos = e->pos;
 
-	if (aa_unpack_nameX(e, AA_U32, name)) {
-		if (!aa_inbounds(e, sizeof(u32)))
+	if (unpack_nameX(e, AA_U32, name)) {
+		if (!inbounds(e, sizeof(u32)))
 			goto fail;
 		if (data)
 			*data = le32_to_cpu(get_unaligned((__le32 *) e->pos));
@@ -300,14 +332,13 @@ fail:
 	e->pos = pos;
 	return false;
 }
-EXPORT_SYMBOL_IF_KUNIT(aa_unpack_u32);
 
-VISIBLE_IF_KUNIT bool aa_unpack_u64(struct aa_ext *e, u64 *data, const char *name)
+static bool unpack_u64(struct aa_ext *e, u64 *data, const char *name)
 {
 	void *pos = e->pos;
 
-	if (aa_unpack_nameX(e, AA_U64, name)) {
-		if (!aa_inbounds(e, sizeof(u64)))
+	if (unpack_nameX(e, AA_U64, name)) {
+		if (!inbounds(e, sizeof(u64)))
 			goto fail;
 		if (data)
 			*data = le64_to_cpu(get_unaligned((__le64 *) e->pos));
@@ -319,15 +350,14 @@ fail:
 	e->pos = pos;
 	return false;
 }
-EXPORT_SYMBOL_IF_KUNIT(aa_unpack_u64);
 
-VISIBLE_IF_KUNIT size_t aa_unpack_array(struct aa_ext *e, const char *name)
+static size_t unpack_array(struct aa_ext *e, const char *name)
 {
 	void *pos = e->pos;
 
-	if (aa_unpack_nameX(e, AA_ARRAY, name)) {
+	if (unpack_nameX(e, AA_ARRAY, name)) {
 		int size;
-		if (!aa_inbounds(e, sizeof(u16)))
+		if (!inbounds(e, sizeof(u16)))
 			goto fail;
 		size = (int)le16_to_cpu(get_unaligned((__le16 *) e->pos));
 		e->pos += sizeof(u16);
@@ -338,19 +368,18 @@ fail:
 	e->pos = pos;
 	return 0;
 }
-EXPORT_SYMBOL_IF_KUNIT(aa_unpack_array);
 
-VISIBLE_IF_KUNIT size_t aa_unpack_blob(struct aa_ext *e, char **blob, const char *name)
+static size_t unpack_blob(struct aa_ext *e, char **blob, const char *name)
 {
 	void *pos = e->pos;
 
-	if (aa_unpack_nameX(e, AA_BLOB, name)) {
+	if (unpack_nameX(e, AA_BLOB, name)) {
 		u32 size;
-		if (!aa_inbounds(e, sizeof(u32)))
+		if (!inbounds(e, sizeof(u32)))
 			goto fail;
 		size = le32_to_cpu(get_unaligned((__le32 *) e->pos));
 		e->pos += sizeof(u32);
-		if (aa_inbounds(e, (size_t) size)) {
+		if (inbounds(e, (size_t) size)) {
 			*blob = e->pos;
 			e->pos += size;
 			return size;
@@ -361,16 +390,15 @@ fail:
 	e->pos = pos;
 	return 0;
 }
-EXPORT_SYMBOL_IF_KUNIT(aa_unpack_blob);
 
-VISIBLE_IF_KUNIT int aa_unpack_str(struct aa_ext *e, const char **string, const char *name)
+static int unpack_str(struct aa_ext *e, const char **string, const char *name)
 {
 	char *src_str;
 	size_t size = 0;
 	void *pos = e->pos;
 	*string = NULL;
-	if (aa_unpack_nameX(e, AA_STRING, name)) {
-		size = aa_unpack_u16_chunk(e, &src_str);
+	if (unpack_nameX(e, AA_STRING, name)) {
+		size = unpack_u16_chunk(e, &src_str);
 		if (size) {
 			/* strings are null terminated, length is size - 1 */
 			if (src_str[size - 1] != 0)
@@ -385,13 +413,12 @@ fail:
 	e->pos = pos;
 	return 0;
 }
-EXPORT_SYMBOL_IF_KUNIT(aa_unpack_str);
 
-VISIBLE_IF_KUNIT int aa_unpack_strdup(struct aa_ext *e, char **string, const char *name)
+static int unpack_strdup(struct aa_ext *e, char **string, const char *name)
 {
 	const char *tmp;
 	void *pos = e->pos;
-	int res = aa_unpack_str(e, &tmp, name);
+	int res = unpack_str(e, &tmp, name);
 	*string = NULL;
 
 	if (!res)
@@ -405,7 +432,6 @@ VISIBLE_IF_KUNIT int aa_unpack_strdup(struct aa_ext *e, char **string, const cha
 
 	return res;
 }
-EXPORT_SYMBOL_IF_KUNIT(aa_unpack_strdup);
 
 
 /**
@@ -420,7 +446,7 @@ static struct aa_dfa *unpack_dfa(struct aa_ext *e)
 	size_t size;
 	struct aa_dfa *dfa = NULL;
 
-	size = aa_unpack_blob(e, &blob, "aadfa");
+	size = unpack_blob(e, &blob, "aadfa");
 	if (size) {
 		/*
 		 * The dfa is aligned with in the blob to 8 bytes
@@ -456,10 +482,10 @@ static bool unpack_trans_table(struct aa_ext *e, struct aa_profile *profile)
 	void *saved_pos = e->pos;
 
 	/* exec table is optional */
-	if (aa_unpack_nameX(e, AA_STRUCT, "xtable")) {
+	if (unpack_nameX(e, AA_STRUCT, "xtable")) {
 		int i, size;
 
-		size = aa_unpack_array(e, NULL);
+		size = unpack_array(e, NULL);
 		/* currently 4 exec bits and entries 0-3 are reserved iupcx */
 		if (size > 16 - 4)
 			goto fail;
@@ -471,8 +497,8 @@ static bool unpack_trans_table(struct aa_ext *e, struct aa_profile *profile)
 		profile->file.trans.size = size;
 		for (i = 0; i < size; i++) {
 			char *str;
-			int c, j, pos, size2 = aa_unpack_strdup(e, &str, NULL);
-			/* aa_unpack_strdup verifies that the last character is
+			int c, j, pos, size2 = unpack_strdup(e, &str, NULL);
+			/* unpack_strdup verifies that the last character is
 			 * null termination byte.
 			 */
 			if (!size2)
@@ -495,7 +521,7 @@ static bool unpack_trans_table(struct aa_ext *e, struct aa_profile *profile)
 					goto fail;
 				/* beginning with : requires an embedded \0,
 				 * verify that exactly 1 internal \0 exists
-				 * trailing \0 already verified by aa_unpack_strdup
+				 * trailing \0 already verified by unpack_strdup
 				 *
 				 * convert \0 back to : for label_parse
 				 */
@@ -507,9 +533,9 @@ static bool unpack_trans_table(struct aa_ext *e, struct aa_profile *profile)
 				/* fail - all other cases with embedded \0 */
 				goto fail;
 		}
-		if (!aa_unpack_nameX(e, AA_ARRAYEND, NULL))
+		if (!unpack_nameX(e, AA_ARRAYEND, NULL))
 			goto fail;
-		if (!aa_unpack_nameX(e, AA_STRUCTEND, NULL))
+		if (!unpack_nameX(e, AA_STRUCTEND, NULL))
 			goto fail;
 	}
 	return true;
@@ -524,21 +550,21 @@ static bool unpack_xattrs(struct aa_ext *e, struct aa_profile *profile)
 {
 	void *pos = e->pos;
 
-	if (aa_unpack_nameX(e, AA_STRUCT, "xattrs")) {
+	if (unpack_nameX(e, AA_STRUCT, "xattrs")) {
 		int i, size;
 
-		size = aa_unpack_array(e, NULL);
+		size = unpack_array(e, NULL);
 		profile->xattr_count = size;
 		profile->xattrs = kcalloc(size, sizeof(char *), GFP_KERNEL);
 		if (!profile->xattrs)
 			goto fail;
 		for (i = 0; i < size; i++) {
-			if (!aa_unpack_strdup(e, &profile->xattrs[i], NULL))
+			if (!unpack_strdup(e, &profile->xattrs[i], NULL))
 				goto fail;
 		}
-		if (!aa_unpack_nameX(e, AA_ARRAYEND, NULL))
+		if (!unpack_nameX(e, AA_ARRAYEND, NULL))
 			goto fail;
-		if (!aa_unpack_nameX(e, AA_STRUCTEND, NULL))
+		if (!unpack_nameX(e, AA_STRUCTEND, NULL))
 			goto fail;
 	}
 
@@ -554,8 +580,8 @@ static bool unpack_secmark(struct aa_ext *e, struct aa_profile *profile)
 	void *pos = e->pos;
 	int i, size;
 
-	if (aa_unpack_nameX(e, AA_STRUCT, "secmark")) {
-		size = aa_unpack_array(e, NULL);
+	if (unpack_nameX(e, AA_STRUCT, "secmark")) {
+		size = unpack_array(e, NULL);
 
 		profile->secmark = kcalloc(size, sizeof(struct aa_secmark),
 					   GFP_KERNEL);
@@ -569,12 +595,12 @@ static bool unpack_secmark(struct aa_ext *e, struct aa_profile *profile)
 				goto fail;
 			if (!unpack_u8(e, &profile->secmark[i].deny, NULL))
 				goto fail;
-			if (!aa_unpack_strdup(e, &profile->secmark[i].label, NULL))
+			if (!unpack_strdup(e, &profile->secmark[i].label, NULL))
 				goto fail;
 		}
-		if (!aa_unpack_nameX(e, AA_ARRAYEND, NULL))
+		if (!unpack_nameX(e, AA_ARRAYEND, NULL))
 			goto fail;
-		if (!aa_unpack_nameX(e, AA_STRUCTEND, NULL))
+		if (!unpack_nameX(e, AA_STRUCTEND, NULL))
 			goto fail;
 	}
 
@@ -598,26 +624,26 @@ static bool unpack_rlimits(struct aa_ext *e, struct aa_profile *profile)
 	void *pos = e->pos;
 
 	/* rlimits are optional */
-	if (aa_unpack_nameX(e, AA_STRUCT, "rlimits")) {
+	if (unpack_nameX(e, AA_STRUCT, "rlimits")) {
 		int i, size;
 		u32 tmp = 0;
-		if (!aa_unpack_u32(e, &tmp, NULL))
+		if (!unpack_u32(e, &tmp, NULL))
 			goto fail;
 		profile->rlimits.mask = tmp;
 
-		size = aa_unpack_array(e, NULL);
+		size = unpack_array(e, NULL);
 		if (size > RLIM_NLIMITS)
 			goto fail;
 		for (i = 0; i < size; i++) {
 			u64 tmp2 = 0;
 			int a = aa_map_resource(i);
-			if (!aa_unpack_u64(e, &tmp2, NULL))
+			if (!unpack_u64(e, &tmp2, NULL))
 				goto fail;
 			profile->rlimits.limits[a].rlim_max = tmp2;
 		}
-		if (!aa_unpack_nameX(e, AA_ARRAYEND, NULL))
+		if (!unpack_nameX(e, AA_ARRAYEND, NULL))
 			goto fail;
-		if (!aa_unpack_nameX(e, AA_STRUCTEND, NULL))
+		if (!unpack_nameX(e, AA_STRUCTEND, NULL))
 			goto fail;
 	}
 	return true;
@@ -656,7 +682,7 @@ static struct aa_profile *unpack_profile(struct aa_ext *e, char **ns_name)
 	const char *info = "failed to unpack profile";
 	size_t ns_len;
 	struct rhashtable_params params = { 0 };
-	char *key = NULL, *disconnected = NULL;
+	char *key = NULL;
 	struct aa_data *data;
 	int i, error = -EPROTO;
 	kernel_cap_t tmpcap;
@@ -665,19 +691,15 @@ static struct aa_profile *unpack_profile(struct aa_ext *e, char **ns_name)
 	*ns_name = NULL;
 
 	/* check that we have the right struct being passed */
-	if (!aa_unpack_nameX(e, AA_STRUCT, "profile"))
+	if (!unpack_nameX(e, AA_STRUCT, "profile"))
 		goto fail;
-	if (!aa_unpack_str(e, &name, NULL))
+	if (!unpack_str(e, &name, NULL))
 		goto fail;
 	if (*name == '\0')
 		goto fail;
 
 	tmpname = aa_splitn_fqname(name, strlen(name), &tmpns, &ns_len);
 	if (tmpns) {
-		if (!tmpname) {
-			info = "empty profile name";
-			goto fail;
-		}
 		*ns_name = kstrndup(tmpns, ns_len, GFP_KERNEL);
 		if (!*ns_name) {
 			info = "out of memory";
@@ -691,10 +713,10 @@ static struct aa_profile *unpack_profile(struct aa_ext *e, char **ns_name)
 		return ERR_PTR(-ENOMEM);
 
 	/* profile renaming is optional */
-	(void) aa_unpack_str(e, &profile->rename, "rename");
+	(void) unpack_str(e, &profile->rename, "rename");
 
 	/* attachment string is optional */
-	(void) aa_unpack_str(e, &profile->attach, "attach");
+	(void) unpack_str(e, &profile->attach, "attach");
 
 	/* xmatch is optional and may be NULL */
 	profile->xmatch = unpack_dfa(e);
@@ -706,7 +728,7 @@ static struct aa_profile *unpack_profile(struct aa_ext *e, char **ns_name)
 	}
 	/* xmatch_len is not optional if xmatch is set */
 	if (profile->xmatch) {
-		if (!aa_unpack_u32(e, &tmp, NULL)) {
+		if (!unpack_u32(e, &tmp, NULL)) {
 			info = "missing xmatch len";
 			goto fail;
 		}
@@ -714,16 +736,15 @@ static struct aa_profile *unpack_profile(struct aa_ext *e, char **ns_name)
 	}
 
 	/* disconnected attachment string is optional */
-	(void) aa_unpack_strdup(e, &disconnected, "disconnected");
-	profile->disconnected = disconnected;
+	(void) unpack_str(e, &profile->disconnected, "disconnected");
 
 	/* per profile debug flags (complain, audit) */
-	if (!aa_unpack_nameX(e, AA_STRUCT, "flags")) {
+	if (!unpack_nameX(e, AA_STRUCT, "flags")) {
 		info = "profile missing flags";
 		goto fail;
 	}
 	info = "failed to unpack profile flags";
-	if (!aa_unpack_u32(e, &tmp, NULL))
+	if (!unpack_u32(e, &tmp, NULL))
 		goto fail;
 	if (tmp & PACKED_FLAG_HAT)
 		profile->label.flags |= FLAG_HAT;
@@ -731,7 +752,7 @@ static struct aa_profile *unpack_profile(struct aa_ext *e, char **ns_name)
 		profile->label.flags |= FLAG_DEBUG1;
 	if (tmp & PACKED_FLAG_DEBUG2)
 		profile->label.flags |= FLAG_DEBUG2;
-	if (!aa_unpack_u32(e, &tmp, NULL))
+	if (!unpack_u32(e, &tmp, NULL))
 		goto fail;
 	if (tmp == PACKED_MODE_COMPLAIN || (e->version & FORCE_COMPLAIN_FLAG)) {
 		profile->mode = APPARMOR_COMPLAIN;
@@ -745,16 +766,16 @@ static struct aa_profile *unpack_profile(struct aa_ext *e, char **ns_name)
 	} else {
 		goto fail;
 	}
-	if (!aa_unpack_u32(e, &tmp, NULL))
+	if (!unpack_u32(e, &tmp, NULL))
 		goto fail;
 	if (tmp)
 		profile->audit = AUDIT_ALL;
 
-	if (!aa_unpack_nameX(e, AA_STRUCTEND, NULL))
+	if (!unpack_nameX(e, AA_STRUCTEND, NULL))
 		goto fail;
 
 	/* path_flags is optional */
-	if (aa_unpack_u32(e, &profile->path_flags, "path_flags"))
+	if (unpack_u32(e, &profile->path_flags, "path_flags"))
 		profile->path_flags |= profile->label.flags &
 			PATH_MEDIATE_DELETED;
 	else
@@ -762,38 +783,38 @@ static struct aa_profile *unpack_profile(struct aa_ext *e, char **ns_name)
 		profile->path_flags = PATH_MEDIATE_DELETED;
 
 	info = "failed to unpack profile capabilities";
-	if (!aa_unpack_u32(e, &(profile->caps.allow.cap[0]), NULL))
+	if (!unpack_u32(e, &(profile->caps.allow.cap[0]), NULL))
 		goto fail;
-	if (!aa_unpack_u32(e, &(profile->caps.audit.cap[0]), NULL))
+	if (!unpack_u32(e, &(profile->caps.audit.cap[0]), NULL))
 		goto fail;
-	if (!aa_unpack_u32(e, &(profile->caps.quiet.cap[0]), NULL))
+	if (!unpack_u32(e, &(profile->caps.quiet.cap[0]), NULL))
 		goto fail;
-	if (!aa_unpack_u32(e, &tmpcap.cap[0], NULL))
+	if (!unpack_u32(e, &tmpcap.cap[0], NULL))
 		goto fail;
 
 	info = "failed to unpack upper profile capabilities";
-	if (aa_unpack_nameX(e, AA_STRUCT, "caps64")) {
+	if (unpack_nameX(e, AA_STRUCT, "caps64")) {
 		/* optional upper half of 64 bit caps */
-		if (!aa_unpack_u32(e, &(profile->caps.allow.cap[1]), NULL))
+		if (!unpack_u32(e, &(profile->caps.allow.cap[1]), NULL))
 			goto fail;
-		if (!aa_unpack_u32(e, &(profile->caps.audit.cap[1]), NULL))
+		if (!unpack_u32(e, &(profile->caps.audit.cap[1]), NULL))
 			goto fail;
-		if (!aa_unpack_u32(e, &(profile->caps.quiet.cap[1]), NULL))
+		if (!unpack_u32(e, &(profile->caps.quiet.cap[1]), NULL))
 			goto fail;
-		if (!aa_unpack_u32(e, &(tmpcap.cap[1]), NULL))
+		if (!unpack_u32(e, &(tmpcap.cap[1]), NULL))
 			goto fail;
-		if (!aa_unpack_nameX(e, AA_STRUCTEND, NULL))
+		if (!unpack_nameX(e, AA_STRUCTEND, NULL))
 			goto fail;
 	}
 
 	info = "failed to unpack extended profile capabilities";
-	if (aa_unpack_nameX(e, AA_STRUCT, "capsx")) {
+	if (unpack_nameX(e, AA_STRUCT, "capsx")) {
 		/* optional extended caps mediation mask */
-		if (!aa_unpack_u32(e, &(profile->caps.extended.cap[0]), NULL))
+		if (!unpack_u32(e, &(profile->caps.extended.cap[0]), NULL))
 			goto fail;
-		if (!aa_unpack_u32(e, &(profile->caps.extended.cap[1]), NULL))
+		if (!unpack_u32(e, &(profile->caps.extended.cap[1]), NULL))
 			goto fail;
-		if (!aa_unpack_nameX(e, AA_STRUCTEND, NULL))
+		if (!unpack_nameX(e, AA_STRUCTEND, NULL))
 			goto fail;
 	}
 
@@ -812,7 +833,7 @@ static struct aa_profile *unpack_profile(struct aa_ext *e, char **ns_name)
 		goto fail;
 	}
 
-	if (aa_unpack_nameX(e, AA_STRUCT, "policydb")) {
+	if (unpack_nameX(e, AA_STRUCT, "policydb")) {
 		/* generic policy dfa - optional and may be NULL */
 		info = "failed to unpack policydb";
 		profile->policy.dfa = unpack_dfa(e);
@@ -824,7 +845,7 @@ static struct aa_profile *unpack_profile(struct aa_ext *e, char **ns_name)
 			error = -EPROTO;
 			goto fail;
 		}
-		if (!aa_unpack_u32(e, &profile->policy.start[0], "start"))
+		if (!unpack_u32(e, &profile->policy.start[0], "start"))
 			/* default start state */
 			profile->policy.start[0] = DFA_START;
 		/* setup class index */
@@ -834,7 +855,7 @@ static struct aa_profile *unpack_profile(struct aa_ext *e, char **ns_name)
 					    profile->policy.start[0],
 					    i);
 		}
-		if (!aa_unpack_nameX(e, AA_STRUCTEND, NULL))
+		if (!unpack_nameX(e, AA_STRUCTEND, NULL))
 			goto fail;
 	} else
 		profile->policy.dfa = aa_get_dfa(nulldfa);
@@ -847,7 +868,7 @@ static struct aa_profile *unpack_profile(struct aa_ext *e, char **ns_name)
 		info = "failed to unpack profile file rules";
 		goto fail;
 	} else if (profile->file.dfa) {
-		if (!aa_unpack_u32(e, &profile->file.start, "dfa_start"))
+		if (!unpack_u32(e, &profile->file.start, "dfa_start"))
 			/* default start state */
 			profile->file.start = DFA_START;
 	} else if (profile->policy.dfa &&
@@ -862,7 +883,7 @@ static struct aa_profile *unpack_profile(struct aa_ext *e, char **ns_name)
 		goto fail;
 	}
 
-	if (aa_unpack_nameX(e, AA_STRUCT, "data")) {
+	if (unpack_nameX(e, AA_STRUCT, "data")) {
 		info = "out of memory";
 		profile->data = kzalloc(sizeof(*profile->data), GFP_KERNEL);
 		if (!profile->data)
@@ -880,7 +901,7 @@ static struct aa_profile *unpack_profile(struct aa_ext *e, char **ns_name)
 			goto fail;
 		}
 
-		while (aa_unpack_strdup(e, &key, NULL)) {
+		while (unpack_strdup(e, &key, NULL)) {
 			data = kzalloc(sizeof(*data), GFP_KERNEL);
 			if (!data) {
 				kfree_sensitive(key);
@@ -888,7 +909,7 @@ static struct aa_profile *unpack_profile(struct aa_ext *e, char **ns_name)
 			}
 
 			data->key = key;
-			data->size = aa_unpack_blob(e, &data->data, NULL);
+			data->size = unpack_blob(e, &data->data, NULL);
 			data->data = kvmemdup(data->data, data->size);
 			if (data->size && !data->data) {
 				kfree_sensitive(data->key);
@@ -905,13 +926,13 @@ static struct aa_profile *unpack_profile(struct aa_ext *e, char **ns_name)
 			}
 		}
 
-		if (!aa_unpack_nameX(e, AA_STRUCTEND, NULL)) {
+		if (!unpack_nameX(e, AA_STRUCTEND, NULL)) {
 			info = "failed to unpack end of key, value data table";
 			goto fail;
 		}
 	}
 
-	if (!aa_unpack_nameX(e, AA_STRUCTEND, NULL)) {
+	if (!unpack_nameX(e, AA_STRUCTEND, NULL)) {
 		info = "failed to unpack end of profile";
 		goto fail;
 	}
@@ -944,7 +965,7 @@ static int verify_header(struct aa_ext *e, int required, const char **ns)
 	*ns = NULL;
 
 	/* get the interface version */
-	if (!aa_unpack_u32(e, &e->version, "version")) {
+	if (!unpack_u32(e, &e->version, "version")) {
 		if (required) {
 			audit_iface(NULL, NULL, NULL, "invalid profile format",
 				    e, error);
@@ -963,7 +984,7 @@ static int verify_header(struct aa_ext *e, int required, const char **ns)
 	}
 
 	/* read the namespace if present */
-	if (aa_unpack_str(e, &name, "namespace")) {
+	if (unpack_str(e, &name, "namespace")) {
 		if (*name == '\0') {
 			audit_iface(NULL, NULL, NULL, "invalid namespace name",
 				    e, error);
@@ -1235,3 +1256,7 @@ fail:
 
 	return error;
 }
+
+#ifdef CONFIG_SECURITY_APPARMOR_KUNIT_TEST
+#include "policy_unpack_test.c"
+#endif /* CONFIG_SECURITY_APPARMOR_KUNIT_TEST */

@@ -18,7 +18,6 @@
 #include <time.h>
 
 #include <sys/ioctl.h>
-#include <sys/random.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -520,11 +519,15 @@ static int client(int unixfd)
 
 static void init_rng(void)
 {
+	int fd = open("/dev/urandom", O_RDONLY);
 	unsigned int foo;
 
-	if (getrandom(&foo, sizeof(foo), 0) == -1) {
-		perror("getrandom");
-		exit(1);
+	if (fd > 0) {
+		int ret = read(fd, &foo, sizeof(foo));
+
+		if (ret < 0)
+			srand(fd + foo);
+		close(fd);
 	}
 
 	srand(foo);

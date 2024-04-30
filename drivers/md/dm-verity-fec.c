@@ -24,8 +24,7 @@ bool verity_fec_is_enabled(struct dm_verity *v)
  */
 static inline struct dm_verity_fec_io *fec_io(struct dm_verity_io *io)
 {
-	return (struct dm_verity_fec_io *)
-		((char *)io + io->v->ti->per_io_data_size - sizeof(struct dm_verity_fec_io));
+	return (struct dm_verity_fec_io *) verity_io_digest_end(io->v, io);
 }
 
 /*
@@ -186,7 +185,7 @@ static int fec_is_erasure(struct dm_verity *v, struct dm_verity_io *io,
 {
 	if (unlikely(verity_hash(v, verity_io_hash_req(v, io),
 				 data, 1 << v->data_dev_block_bits,
-				 verity_io_real_digest(v, io), true)))
+				 verity_io_real_digest(v, io))))
 		return 0;
 
 	return memcmp(verity_io_real_digest(v, io), want_digest,
@@ -387,7 +386,7 @@ static int fec_decode_rsb(struct dm_verity *v, struct dm_verity_io *io,
 	/* Always re-validate the corrected block against the expected hash */
 	r = verity_hash(v, verity_io_hash_req(v, io), fio->output,
 			1 << v->data_dev_block_bits,
-			verity_io_real_digest(v, io), true);
+			verity_io_real_digest(v, io));
 	if (unlikely(r < 0))
 		return r;
 

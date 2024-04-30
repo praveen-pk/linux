@@ -1163,11 +1163,11 @@ void kvmppc_save_user_regs(void)
 
 	usermsr = current->thread.regs->msr;
 
-	/* Caller has enabled FP/VEC/VSX/TM in MSR */
 	if (usermsr & MSR_FP)
-		__giveup_fpu(current);
+		save_fpu(current);
+
 	if (usermsr & MSR_VEC)
-		__giveup_altivec(current);
+		save_altivec(current);
 
 #ifdef CONFIG_PPC_TRANSACTIONAL_MEM
 	if (usermsr & MSR_TM) {

@@ -733,7 +733,7 @@ int __udp4_lib_err(struct sk_buff *skb, u32 info, struct udp_table *udptable)
 			       iph->saddr, uh->source, skb->dev->ifindex,
 			       inet_sdif(skb), udptable, NULL);
 
-	if (!sk || READ_ONCE(udp_sk(sk)->encap_type)) {
+	if (!sk || udp_sk(sk)->encap_type) {
 		/* No socket for error: try tunnels before discarding */
 		if (static_branch_unlikely(&udp_encap_needed_key)) {
 			sk = __udp4_lib_err_encap(net, iph, uh, udptable, sk, skb,
@@ -823,7 +823,7 @@ void udp_flush_pending_frames(struct sock *sk)
 
 	if (up->pending) {
 		up->len = 0;
-		WRITE_ONCE(up->pending, 0);
+		up->pending = 0;
 		ip_flush_pending_frames(sk);
 	}
 }
@@ -1010,7 +1010,7 @@ int udp_push_pending_frames(struct sock *sk)
 
 out:
 	up->len = 0;
-	WRITE_ONCE(up->pending, 0);
+	up->pending = 0;
 	return err;
 }
 EXPORT_SYMBOL(udp_push_pending_frames);
@@ -1068,7 +1068,7 @@ int udp_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 	__be16 dport;
 	u8  tos;
 	int err, is_udplite = IS_UDPLITE(sk);
-	int corkreq = udp_test_bit(CORK, sk) || msg->msg_flags & MSG_MORE;
+	int corkreq = READ_ONCE(up->corkflag) || msg->msg_flags&MSG_MORE;
 	int (*getfrag)(void *, char *, int, int, int, struct sk_buff *);
 	struct sk_buff *skb;
 	struct ip_options_data opt_copy;
@@ -1086,7 +1086,7 @@ int udp_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 	getfrag = is_udplite ? udplite_getfrag : ip_generic_getfrag;
 
 	fl4 = &inet->cork.fl.u.ip4;
-	if (READ_ONCE(up->pending)) {
+	if (up->pending) {
 		/*
 		 * There are pending frames.
 		 * The socket lock must be held while it's corked.
@@ -1287,7 +1287,7 @@ back_from_confirm:
 	fl4->saddr = saddr;
 	fl4->fl4_dport = dport;
 	fl4->fl4_sport = inet->inet_sport;
-	WRITE_ONCE(up->pending, AF_INET);
+	up->pending = AF_INET;
 
 do_append_data:
 	up->len += ulen;
@@ -1299,7 +1299,7 @@ do_append_data:
 	else if (!corkreq)
 		err = udp_push_pending_frames(sk);
 	else if (unlikely(skb_queue_empty(&sk->sk_write_queue)))
-		WRITE_ONCE(up->pending, 0);
+		up->pending = 0;
 	release_sock(sk);
 
 out:
@@ -1332,33 +1332,57 @@ do_confirm:
 }
 EXPORT_SYMBOL(udp_sendmsg);
 
-void udp_splice_eof(struct socket *sock)
-{
-	struct sock *sk = sock->sk;
-	struct udp_sock *up = udp_sk(sk);
-
-	if (!READ_ONCE(up->pending) || udp_test_bit(CORK, sk))
-		return;
-
-	lock_sock(sk);
-	if (up->pending && !udp_test_bit(CORK, sk))
-		udp_push_pending_frames(sk);
-	release_sock(sk);
-}
-EXPORT_SYMBOL_GPL(udp_splice_eof);
-
 int udp_sendpage(struct sock *sk, struct page *page, int offset,
 		 size_t size, int flags)
 {
-	struct bio_vec bvec;
-	struct msghdr msg = { .msg_flags = flags | MSG_SPLICE_PAGES };
+	struct inet_sock *inet = inet_sk(sk);
+	struct udp_sock *up = udp_sk(sk);
+	int ret;
 
 	if (flags & MSG_SENDPAGE_NOTLAST)
-		msg.msg_flags |= MSG_MORE;
+		flags |= MSG_MORE;
 
-	bvec_set_page(&bvec, page, size, offset);
-	iov_iter_bvec(&msg.msg_iter, ITER_SOURCE, &bvec, 1, size);
-	return udp_sendmsg(sk, &msg, size);
+	if (!up->pending) {
+		struct msghdr msg = {	.msg_flags = flags|MSG_MORE };
+
+		/* Call udp_sendmsg to specify destination address which
+		 * sendpage interface can't pass.
+		 * This will succeed only when the socket is connected.
+		 */
+		ret = udp_sendmsg(sk, &msg, 0);
+		if (ret < 0)
+			return ret;
+	}
+
+	lock_sock(sk);
+
+	if (unlikely(!up->pending)) {
+		release_sock(sk);
+
+		net_dbg_ratelimited("cork failed\n");
+		return -EINVAL;
+	}
+
+	ret = ip_append_page(sk, &inet->cork.fl.u.ip4,
+			     page, offset, size, flags);
+	if (ret == -EOPNOTSUPP) {
+		release_sock(sk);
+		return sock_no_sendpage(sk->sk_socket, page, offset,
+					size, flags);
+	}
+	if (ret < 0) {
+		udp_flush_pending_frames(sk);
+		goto out;
+	}
+
+	up->len += size;
+	if (!(READ_ONCE(up->corkflag) || (flags&MSG_MORE)))
+		ret = udp_push_pending_frames(sk);
+	if (!ret)
+		ret = size;
+out:
+	release_sock(sk);
+	return ret;
 }
 
 #define UDP_SKB_IS_STATELESS 0x80000000
@@ -1901,7 +1925,7 @@ try_again:
 						      (struct sockaddr *)sin);
 	}
 
-	if (udp_test_bit(GRO_ENABLED, sk))
+	if (udp_sk(sk)->gro_enabled)
 		udp_cmsg_recv(msg, sk, skb);
 
 	if (inet->cmsg_flags)
@@ -2114,8 +2138,7 @@ static int udp_queue_rcv_one_skb(struct sock *sk, struct sk_buff *skb)
 	}
 	nf_reset_ct(skb);
 
-	if (static_branch_unlikely(&udp_encap_needed_key) &&
-	    READ_ONCE(up->encap_type)) {
+	if (static_branch_unlikely(&udp_encap_needed_key) && up->encap_type) {
 		int (*encap_rcv)(struct sock *sk, struct sk_buff *skb);
 
 		/*
@@ -2646,7 +2669,7 @@ void udp_destroy_sock(struct sock *sk)
 			if (encap_destroy)
 				encap_destroy(sk);
 		}
-		if (udp_test_bit(ENCAP_ENABLED, sk))
+		if (up->encap_enabled)
 			static_branch_dec(&udp_encap_needed_key);
 	}
 }
@@ -2674,9 +2697,9 @@ int udp_lib_setsockopt(struct sock *sk, int level, int optname,
 	switch (optname) {
 	case UDP_CORK:
 		if (val != 0) {
-			udp_set_bit(CORK, sk);
+			WRITE_ONCE(up->corkflag, 1);
 		} else {
-			udp_clear_bit(CORK, sk);
+			WRITE_ONCE(up->corkflag, 0);
 			lock_sock(sk);
 			push_pending_frames(sk);
 			release_sock(sk);
@@ -2691,17 +2714,17 @@ int udp_lib_setsockopt(struct sock *sk, int level, int optname,
 		case UDP_ENCAP_ESPINUDP_NON_IKE:
 #if IS_ENABLED(CONFIG_IPV6)
 			if (sk->sk_family == AF_INET6)
-				WRITE_ONCE(up->encap_rcv,
-					   ipv6_stub->xfrm6_udp_encap_rcv);
+				up->encap_rcv = ipv6_stub->xfrm6_udp_encap_rcv;
 			else
 #endif
-				WRITE_ONCE(up->encap_rcv,
-					   xfrm4_udp_encap_rcv);
+				up->encap_rcv = xfrm4_udp_encap_rcv;
 #endif
 			fallthrough;
 		case UDP_ENCAP_L2TPINUDP:
-			WRITE_ONCE(up->encap_type, val);
-			udp_tunnel_encap_enable(sk);
+			up->encap_type = val;
+			lock_sock(sk);
+			udp_tunnel_encap_enable(sk->sk_socket);
+			release_sock(sk);
 			break;
 		default:
 			err = -ENOPROTOOPT;
@@ -2710,11 +2733,11 @@ int udp_lib_setsockopt(struct sock *sk, int level, int optname,
 		break;
 
 	case UDP_NO_CHECK6_TX:
-		udp_set_no_check6_tx(sk, valbool);
+		up->no_check6_tx = valbool;
 		break;
 
 	case UDP_NO_CHECK6_RX:
-		udp_set_no_check6_rx(sk, valbool);
+		up->no_check6_rx = valbool;
 		break;
 
 	case UDP_SEGMENT:
@@ -2724,12 +2747,14 @@ int udp_lib_setsockopt(struct sock *sk, int level, int optname,
 		break;
 
 	case UDP_GRO:
+		lock_sock(sk);
 
 		/* when enabling GRO, accept the related GSO packet type */
 		if (valbool)
-			udp_tunnel_encap_enable(sk);
-		udp_assign_bit(GRO_ENABLED, sk, valbool);
-		udp_assign_bit(ACCEPT_L4, sk, valbool);
+			udp_tunnel_encap_enable(sk->sk_socket);
+		up->gro_enabled = valbool;
+		up->accept_udp_l4 = valbool;
+		release_sock(sk);
 		break;
 
 	/*
@@ -2797,19 +2822,19 @@ int udp_lib_getsockopt(struct sock *sk, int level, int optname,
 
 	switch (optname) {
 	case UDP_CORK:
-		val = udp_test_bit(CORK, sk);
+		val = READ_ONCE(up->corkflag);
 		break;
 
 	case UDP_ENCAP:
-		val = READ_ONCE(up->encap_type);
+		val = up->encap_type;
 		break;
 
 	case UDP_NO_CHECK6_TX:
-		val = udp_get_no_check6_tx(sk);
+		val = up->no_check6_tx;
 		break;
 
 	case UDP_NO_CHECK6_RX:
-		val = udp_get_no_check6_rx(sk);
+		val = up->no_check6_rx;
 		break;
 
 	case UDP_SEGMENT:
@@ -2817,7 +2842,7 @@ int udp_lib_getsockopt(struct sock *sk, int level, int optname,
 		break;
 
 	case UDP_GRO:
-		val = udp_test_bit(GRO_ENABLED, sk);
+		val = up->gro_enabled;
 		break;
 
 	/* The following two cannot be changed on UDP sockets, the return is
@@ -2919,7 +2944,6 @@ struct proto udp_prot = {
 	.getsockopt		= udp_getsockopt,
 	.sendmsg		= udp_sendmsg,
 	.recvmsg		= udp_recvmsg,
-	.splice_eof		= udp_splice_eof,
 	.sendpage		= udp_sendpage,
 	.release_cb		= ip4_datagram_release_cb,
 	.hash			= udp_lib_hash,

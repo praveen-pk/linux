@@ -850,7 +850,7 @@ static void xfrm_policy_inexact_list_reinsert(struct net *net,
 		struct hlist_node *newpos = NULL;
 		bool matches_s, matches_d;
 
-		if (policy->walk.dead || !policy->bydst_reinsert)
+		if (!policy->bydst_reinsert)
 			continue;
 
 		WARN_ON_ONCE(policy->family != family);
@@ -1255,11 +1255,8 @@ static void xfrm_hash_rebuild(struct work_struct *work)
 		struct xfrm_pol_inexact_bin *bin;
 		u8 dbits, sbits;
 
-		if (policy->walk.dead)
-			continue;
-
 		dir = xfrm_policy_id2dir(policy->index);
-		if (dir >= XFRM_POLICY_MAX)
+		if (policy->walk.dead || dir >= XFRM_POLICY_MAX)
 			continue;
 
 		if ((dir & XFRM_POLICY_MASK) == XFRM_POLICY_OUT) {
@@ -1374,6 +1371,8 @@ EXPORT_SYMBOL(xfrm_policy_hash_rebuild);
  * of an absolute inpredictability of ordering of rules. This will not pass. */
 static u32 xfrm_gen_index(struct net *net, int dir, u32 index)
 {
+	static u32 idx_generator;
+
 	for (;;) {
 		struct hlist_head *list;
 		struct xfrm_policy *p;
@@ -1381,8 +1380,8 @@ static u32 xfrm_gen_index(struct net *net, int dir, u32 index)
 		int found;
 
 		if (!index) {
-			idx = (net->xfrm.idx_generator | dir);
-			net->xfrm.idx_generator += 8;
+			idx = (idx_generator | dir);
+			idx_generator += 8;
 		} else {
 			idx = index;
 			index = 0;
@@ -1791,11 +1790,9 @@ int xfrm_policy_flush(struct net *net, u8 type, bool task_valid)
 
 again:
 	list_for_each_entry(pol, &net->xfrm.policy_all, walk.all) {
-		if (pol->walk.dead)
-			continue;
-
 		dir = xfrm_policy_id2dir(pol->index);
-		if (dir >= XFRM_POLICY_MAX ||
+		if (pol->walk.dead ||
+		    dir >= XFRM_POLICY_MAX ||
 		    pol->type != type)
 			continue;
 
@@ -3141,7 +3138,7 @@ no_transform:
 	}
 
 	for (i = 0; i < num_pols; i++)
-		WRITE_ONCE(pols[i]->curlft.use_time, ktime_get_real_seconds());
+		pols[i]->curlft.use_time = ktime_get_real_seconds();
 
 	if (num_xfrms < 0) {
 		/* Prohibit the flow */

@@ -492,7 +492,7 @@ static int hidinput_get_battery_property(struct power_supply *psy,
 		if (dev->battery_status == HID_BATTERY_UNKNOWN)
 			val->intval = POWER_SUPPLY_STATUS_UNKNOWN;
 		else
-			val->intval = dev->battery_charge_status;
+			val->intval = POWER_SUPPLY_STATUS_DISCHARGING;
 		break;
 
 	case POWER_SUPPLY_PROP_SCOPE:
@@ -560,7 +560,6 @@ static int hidinput_setup_battery(struct hid_device *dev, unsigned report_type,
 	dev->battery_max = max;
 	dev->battery_report_type = report_type;
 	dev->battery_report_id = field->report->id;
-	dev->battery_charge_status = POWER_SUPPLY_STATUS_DISCHARGING;
 
 	/*
 	 * Stylus is normally not connected to the device and thus we
@@ -627,20 +626,6 @@ static void hidinput_update_battery(struct hid_device *dev, int value)
 		power_supply_changed(dev->battery);
 	}
 }
-
-static bool hidinput_set_battery_charge_status(struct hid_device *dev,
-					       unsigned int usage, int value)
-{
-	switch (usage) {
-	case HID_BAT_CHARGING:
-		dev->battery_charge_status = value ?
-					     POWER_SUPPLY_STATUS_CHARGING :
-					     POWER_SUPPLY_STATUS_DISCHARGING;
-		return true;
-	}
-
-	return false;
-}
 #else  /* !CONFIG_HID_BATTERY_STRENGTH */
 static int hidinput_setup_battery(struct hid_device *dev, unsigned report_type,
 				  struct hid_field *field, bool is_percentage)
@@ -654,12 +639,6 @@ static void hidinput_cleanup_battery(struct hid_device *dev)
 
 static void hidinput_update_battery(struct hid_device *dev, int value)
 {
-}
-
-static bool hidinput_set_battery_charge_status(struct hid_device *dev,
-					       unsigned int usage, int value)
-{
-	return false;
 }
 #endif	/* CONFIG_HID_BATTERY_STRENGTH */
 
@@ -1260,9 +1239,6 @@ static void hidinput_configure_usage(struct hid_input *hidinput, struct hid_fiel
 			hidinput_setup_battery(device, HID_INPUT_REPORT, field, true);
 			usage->type = EV_PWR;
 			return;
-		case HID_BAT_CHARGING:
-			usage->type = EV_PWR;
-			return;
 		}
 		goto unknown;
 
@@ -1505,11 +1481,7 @@ void hidinput_hid_event(struct hid_device *hid, struct hid_field *field, struct 
 		return;
 
 	if (usage->type == EV_PWR) {
-		bool handled = hidinput_set_battery_charge_status(hid, usage->hid, value);
-
-		if (!handled)
-			hidinput_update_battery(hid, value);
-
+		hidinput_update_battery(hid, value);
 		return;
 	}
 
@@ -2374,7 +2346,3 @@ void hidinput_disconnect(struct hid_device *hid)
 	cancel_work_sync(&hid->led_work);
 }
 EXPORT_SYMBOL_GPL(hidinput_disconnect);
-
-#ifdef CONFIG_HID_KUNIT_TEST
-#include "hid-input-test.c"
-#endif

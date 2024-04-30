@@ -195,7 +195,9 @@ static int damon_lru_sort_apply_parameters(void)
 	if (err)
 		return err;
 
-	hot_thres = damon_max_nr_accesses(&damon_lru_sort_mon_attrs) *
+	/* aggr_interval / sample_interval is the maximum nr_accesses */
+	hot_thres = damon_lru_sort_mon_attrs.aggr_interval /
+		damon_lru_sort_mon_attrs.sample_interval *
 		hot_thres_access_freq / 1000;
 	scheme = damon_lru_sort_new_hot_scheme(hot_thres);
 	if (!scheme)

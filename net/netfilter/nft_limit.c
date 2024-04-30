@@ -58,19 +58,16 @@ static inline bool nft_limit_eval(struct nft_limit_priv *priv, u64 cost)
 static int nft_limit_init(struct nft_limit_priv *priv,
 			  const struct nlattr * const tb[], bool pkts)
 {
-	u64 unit, tokens, rate_with_burst;
-	bool invert = false;
+	u64 unit, tokens;
 
 	if (tb[NFTA_LIMIT_RATE] == NULL ||
 	    tb[NFTA_LIMIT_UNIT] == NULL)
 		return -EINVAL;
 
 	priv->rate = be64_to_cpu(nla_get_be64(tb[NFTA_LIMIT_RATE]));
-	if (priv->rate == 0)
-		return -EINVAL;
-
 	unit = be64_to_cpu(nla_get_be64(tb[NFTA_LIMIT_UNIT]));
-	if (check_mul_overflow(unit, NSEC_PER_SEC, &priv->nsecs))
+	priv->nsecs = unit * NSEC_PER_SEC;
+	if (priv->rate == 0 || priv->nsecs < unit)
 		return -EOVERFLOW;
 
 	if (tb[NFTA_LIMIT_BURST])
@@ -79,35 +76,18 @@ static int nft_limit_init(struct nft_limit_priv *priv,
 	if (pkts && priv->burst == 0)
 		priv->burst = NFT_LIMIT_PKT_BURST_DEFAULT;
 
-	if (check_add_overflow(priv->rate, priv->burst, &rate_with_burst))
+	if (priv->rate + priv->burst < priv->rate)
 		return -EOVERFLOW;
 
 	if (pkts) {
-		u64 tmp = div64_u64(priv->nsecs, priv->rate);
-
-		if (check_mul_overflow(tmp, priv->burst, &tokens))
-			return -EOVERFLOW;
+		tokens = div64_u64(priv->nsecs, priv->rate) * priv->burst;
 	} else {
-		u64 tmp;
-
 		/* The token bucket size limits the number of tokens can be
 		 * accumulated. tokens_max specifies the bucket size.
 		 * tokens_max = unit * (rate + burst) / rate.
 		 */
-		if (check_mul_overflow(priv->nsecs, rate_with_burst, &tmp))
-			return -EOVERFLOW;
-
-		tokens = div64_u64(tmp, priv->rate);
-	}
-
-	if (tb[NFTA_LIMIT_FLAGS]) {
-		u32 flags = ntohl(nla_get_be32(tb[NFTA_LIMIT_FLAGS]));
-
-		if (flags & ~NFT_LIMIT_F_INV)
-			return -EOPNOTSUPP;
-
-		if (flags & NFT_LIMIT_F_INV)
-			invert = true;
+		tokens = div64_u64(priv->nsecs * (priv->rate + priv->burst),
+				 priv->rate);
 	}
 
 	priv->limit = kmalloc(sizeof(*priv->limit), GFP_KERNEL_ACCOUNT);
@@ -116,7 +96,13 @@ static int nft_limit_init(struct nft_limit_priv *priv,
 
 	priv->limit->tokens = tokens;
 	priv->tokens_max = priv->limit->tokens;
-	priv->invert = invert;
+
+	if (tb[NFTA_LIMIT_FLAGS]) {
+		u32 flags = ntohl(nla_get_be32(tb[NFTA_LIMIT_FLAGS]));
+
+		if (flags & NFT_LIMIT_F_INV)
+			priv->invert = true;
+	}
 	priv->limit->last = ktime_get_ns();
 	spin_lock_init(&priv->limit->lock);
 

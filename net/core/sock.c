@@ -107,7 +107,6 @@
 #include <linux/interrupt.h>
 #include <linux/poll.h>
 #include <linux/tcp.h>
-#include <linux/udp.h>
 #include <linux/init.h>
 #include <linux/highmem.h>
 #include <linux/user_namespace.h>
@@ -597,7 +596,7 @@ struct dst_entry *__sk_dst_check(struct sock *sk, u32 cookie)
 	    INDIRECT_CALL_INET(dst->ops->check, ip6_dst_check, ipv4_dst_check,
 			       dst, cookie) == NULL) {
 		sk_tx_queue_clear(sk);
-		WRITE_ONCE(sk->sk_dst_pending_confirm, 0);
+		sk->sk_dst_pending_confirm = 0;
 		RCU_INIT_POINTER(sk->sk_dst_cache, NULL);
 		dst_release(dst);
 		return NULL;
@@ -891,7 +890,7 @@ static int sock_timestamping_bind_phc(struct sock *sk, int phc_index)
 	if (!match)
 		return -EINVAL;
 
-	WRITE_ONCE(sk->sk_bind_phc, phc_index);
+	sk->sk_bind_phc = phc_index;
 
 	return 0;
 }
@@ -927,7 +926,7 @@ int sock_set_timestamping(struct sock *sk, int optname,
 			return ret;
 	}
 
-	WRITE_ONCE(sk->sk_tsflags, val);
+	sk->sk_tsflags = val;
 	sock_valbool_flag(sk, SOCK_TSTAMP_NEW, optname == SO_TIMESTAMPING_NEW);
 
 	if (val & SOF_TIMESTAMPING_RX_SOFTWARE)
@@ -1705,16 +1704,9 @@ int sk_getsockopt(struct sock *sk, int level, int optname,
 		break;
 
 	case SO_TIMESTAMPING_OLD:
-	case SO_TIMESTAMPING_NEW:
 		lv = sizeof(v.timestamping);
-		/* For the later-added case SO_TIMESTAMPING_NEW: Be strict about only
-		 * returning the flags when they were set through the same option.
-		 * Don't change the beviour for the old case SO_TIMESTAMPING_OLD.
-		 */
-		if (optname == SO_TIMESTAMPING_OLD || sock_flag(sk, SOCK_TSTAMP_NEW)) {
-			v.timestamping.flags = READ_ONCE(sk->sk_tsflags);
-			v.timestamping.bind_phc = READ_ONCE(sk->sk_bind_phc);
-		}
+		v.timestamping.flags = sk->sk_tsflags;
+		v.timestamping.bind_phc = sk->sk_bind_phc;
 		break;
 
 	case SO_RCVTIMEO_OLD:
@@ -2772,7 +2764,6 @@ int __sock_cmsg_send(struct sock *sk, struct msghdr *msg, struct cmsghdr *cmsg,
 		sockc->mark = *(u32 *)CMSG_DATA(cmsg);
 		break;
 	case SO_TIMESTAMPING_OLD:
-	case SO_TIMESTAMPING_NEW:
 		if (cmsg->cmsg_len != CMSG_LEN(sizeof(u32)))
 			return -EINVAL;
 
@@ -4110,14 +4101,8 @@ bool sk_busy_loop_end(void *p, unsigned long start_time)
 {
 	struct sock *sk = p;
 
-	if (!skb_queue_empty_lockless(&sk->sk_receive_queue))
-		return true;
-
-	if (sk_is_udp(sk) &&
-	    !skb_queue_empty_lockless(&udp_sk(sk)->reader_queue))
-		return true;
-
-	return sk_busy_loop_timeout(sk, start_time);
+	return !skb_queue_empty_lockless(&sk->sk_receive_queue) ||
+	       sk_busy_loop_timeout(sk, start_time);
 }
 EXPORT_SYMBOL(sk_busy_loop_end);
 #endif /* CONFIG_NET_RX_BUSY_POLL */

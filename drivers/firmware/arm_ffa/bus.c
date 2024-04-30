@@ -193,7 +193,6 @@ struct ffa_device *ffa_device_register(const uuid_t *uuid, int vm_id,
 	dev->release = ffa_release_device;
 	dev_set_name(&ffa_dev->dev, "arm-ffa-%d", id);
 
-	ffa_dev->id = id;
 	ffa_dev->vm_id = vm_id;
 	ffa_dev->ops = ops;
 	uuid_copy(&ffa_dev->uuid, uuid);

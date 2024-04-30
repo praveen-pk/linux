@@ -106,7 +106,6 @@ struct sk_psock {
 	struct mutex			work_mutex;
 	struct sk_psock_work_state	work_state;
 	struct delayed_work		work;
-	struct sock			*sk_pair;
 	struct rcu_work			rwork;
 };
 
@@ -498,6 +497,12 @@ static inline bool sk_psock_strp_enabled(struct sk_psock *psock)
 	if (!psock)
 		return false;
 	return !!psock->saved_data_ready;
+}
+
+static inline bool sk_is_udp(const struct sock *sk)
+{
+	return sk->sk_type == SOCK_DGRAM &&
+	       sk->sk_protocol == IPPROTO_UDP;
 }
 
 #if IS_ENABLED(CONFIG_NET_SOCK_MSG)

@@ -48,8 +48,7 @@ static void show_backtrace(void)
 	stack_trace_print(stacks, len, 24);
 }
 
-static void sample_entry_handler(struct fprobe *fp, unsigned long ip,
-				 struct pt_regs *regs, void *data)
+static void sample_entry_handler(struct fprobe *fp, unsigned long ip, struct pt_regs *regs)
 {
 	if (use_trace)
 		/*
@@ -64,8 +63,7 @@ static void sample_entry_handler(struct fprobe *fp, unsigned long ip,
 		show_backtrace();
 }
 
-static void sample_exit_handler(struct fprobe *fp, unsigned long ip, struct pt_regs *regs,
-				void *data)
+static void sample_exit_handler(struct fprobe *fp, unsigned long ip, struct pt_regs *regs)
 {
 	unsigned long rip = instruction_pointer(regs);
 

@@ -527,7 +527,6 @@ static ssize_t ti_sn_aux_transfer(struct drm_dp_aux *aux,
 	u32 request_val = AUX_CMD_REQ(msg->request);
 	u8 *buf = msg->buffer;
 	unsigned int len = msg->size;
-	unsigned int short_len;
 	unsigned int val;
 	int ret;
 	u8 addr_len[SN_AUX_LENGTH_REG + 1 - SN_AUX_ADDR_19_16_REG];
@@ -601,8 +600,7 @@ static ssize_t ti_sn_aux_transfer(struct drm_dp_aux *aux,
 	}
 
 	if (val & AUX_IRQ_STATUS_AUX_SHORT) {
-		ret = regmap_read(pdata->regmap, SN_AUX_LENGTH_REG, &short_len);
-		len = min(len, short_len);
+		ret = regmap_read(pdata->regmap, SN_AUX_LENGTH_REG, &len);
 		if (ret)
 			goto exit;
 	} else if (val & AUX_IRQ_STATUS_NAT_I2C_FAIL) {
@@ -675,7 +673,7 @@ static struct ti_sn65dsi86 *bridge_to_ti_sn65dsi86(struct drm_bridge *bridge)
 	return container_of(bridge, struct ti_sn65dsi86, bridge);
 }
 
-static int ti_sn_attach_host(struct auxiliary_device *adev, struct ti_sn65dsi86 *pdata)
+static int ti_sn_attach_host(struct ti_sn65dsi86 *pdata)
 {
 	int val;
 	struct mipi_dsi_host *host;
@@ -690,7 +688,7 @@ static int ti_sn_attach_host(struct auxiliary_device *adev, struct ti_sn65dsi86 
 	if (!host)
 		return -EPROBE_DEFER;
 
-	dsi = devm_mipi_dsi_device_register_full(&adev->dev, host, &info);
+	dsi = devm_mipi_dsi_device_register_full(dev, host, &info);
 	if (IS_ERR(dsi))
 		return PTR_ERR(dsi);
 
@@ -708,7 +706,7 @@ static int ti_sn_attach_host(struct auxiliary_device *adev, struct ti_sn65dsi86 
 
 	pdata->dsi = dsi;
 
-	return devm_mipi_dsi_attach(&adev->dev, dsi);
+	return devm_mipi_dsi_attach(dev, dsi);
 }
 
 static int ti_sn_bridge_attach(struct drm_bridge *bridge,
@@ -1281,9 +1279,9 @@ static int ti_sn_bridge_probe(struct auxiliary_device *adev,
 	struct device_node *np = pdata->dev->of_node;
 	int ret;
 
-	pdata->next_bridge = devm_drm_of_get_bridge(&adev->dev, np, 1, 0);
+	pdata->next_bridge = devm_drm_of_get_bridge(pdata->dev, np, 1, 0);
 	if (IS_ERR(pdata->next_bridge))
-		return dev_err_probe(&adev->dev, PTR_ERR(pdata->next_bridge),
+		return dev_err_probe(pdata->dev, PTR_ERR(pdata->next_bridge),
 				     "failed to create panel bridge\n");
 
 	ti_sn_bridge_parse_lanes(pdata, np);
@@ -1302,9 +1300,9 @@ static int ti_sn_bridge_probe(struct auxiliary_device *adev,
 
 	drm_bridge_add(&pdata->bridge);
 
-	ret = ti_sn_attach_host(adev, pdata);
+	ret = ti_sn_attach_host(pdata);
 	if (ret) {
-		dev_err_probe(&adev->dev, ret, "failed to attach dsi host\n");
+		dev_err_probe(pdata->dev, ret, "failed to attach dsi host\n");
 		goto err_remove_bridge;
 	}
 

@@ -58,6 +58,7 @@ int riscv_hartid_to_cpuid(unsigned long hartid)
 		if (cpuid_to_hartid_map(i) == hartid)
 			return i;
 
+	pr_err("Couldn't find cpu id for hartid [%lu]\n", hartid);
 	return -ENOENT;
 }
 

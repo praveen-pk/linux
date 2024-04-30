@@ -135,9 +135,8 @@ ret_from_syscall:
 	lis	r4,icache_44x_need_flush@ha
 	lwz	r5,icache_44x_need_flush@l(r4)
 	cmplwi	cr0,r5,0
-	bne-	.L44x_icache_flush
+	bne-	2f
 #endif /* CONFIG_PPC_47x */
-.L44x_icache_flush_return:
 	kuep_unlock
 	lwz	r4,_LINK(r1)
 	lwz	r5,_CCR(r1)
@@ -171,11 +170,10 @@ syscall_exit_finish:
 	b	1b
 
 #ifdef CONFIG_44x
-.L44x_icache_flush:
-	li	r7,0
+2:	li	r7,0
 	iccci	r0,r0
 	stw	r7,icache_44x_need_flush@l(r4)
-	b	.L44x_icache_flush_return
+	b	1b
 #endif  /* CONFIG_44x */
 
 	.globl	ret_from_fork

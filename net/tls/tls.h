@@ -70,8 +70,6 @@ struct tls_rec {
 	char content_type;
 	struct scatterlist sg_content_type;
 
-	struct sock *sk;
-
 	char aad_space[TLS_AAD_SPACE_SIZE];
 	u8 iv_data[MAX_IV_SIZE];
 	struct aead_request aead_req;

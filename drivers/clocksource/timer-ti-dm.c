@@ -141,8 +141,6 @@ struct dmtimer {
 	struct platform_device *pdev;
 	struct list_head node;
 	struct notifier_block nb;
-	struct notifier_block fclk_nb;
-	unsigned long fclk_rate;
 };
 
 static u32 omap_reserved_systimers;
@@ -184,7 +182,7 @@ static inline u32 dmtimer_read(struct dmtimer *timer, u32 reg)
  * dmtimer_write - write timer registers in posted and non-posted mode
  * @timer:      timer pointer over which write operation is to perform
  * @reg:        lowest byte holds the register offset
- * @val:        data to write into the register
+ * @value:      data to write into the register
  *
  * The posted mode bit is encoded in reg. Note that in posted mode, the write
  * pending bit must be checked. Otherwise a write on a register which has a
@@ -256,7 +254,8 @@ static inline void __omap_dm_timer_enable_posted(struct dmtimer *timer)
 	timer->posted = OMAP_TIMER_POSTED;
 }
 
-static inline void __omap_dm_timer_stop(struct dmtimer *timer)
+static inline void __omap_dm_timer_stop(struct dmtimer *timer,
+					unsigned long rate)
 {
 	u32 l;
 
@@ -271,7 +270,7 @@ static inline void __omap_dm_timer_stop(struct dmtimer *timer)
 		 * Wait for functional clock period x 3.5 to make sure that
 		 * timer is stopped
 		 */
-		udelay(3500000 / timer->fclk_rate + 1);
+		udelay(3500000 / rate + 1);
 #endif
 	}
 
@@ -348,21 +347,6 @@ static int omap_timer_context_notifier(struct notifier_block *nb,
 	}
 
 	return NOTIFY_OK;
-}
-
-static int omap_timer_fclk_notifier(struct notifier_block *nb,
-				    unsigned long event, void *data)
-{
-	struct clk_notifier_data *clk_data = data;
-	struct dmtimer *timer = container_of(nb, struct dmtimer, fclk_nb);
-
-	switch (event) {
-	case POST_RATE_CHANGE:
-		timer->fclk_rate = clk_data->new_rate;
-		return NOTIFY_OK;
-	default:
-		return NOTIFY_DONE;
-	}
 }
 
 static int omap_dm_timer_reset(struct dmtimer *timer)
@@ -758,6 +742,7 @@ static int omap_dm_timer_stop(struct omap_dm_timer *cookie)
 {
 	struct dmtimer *timer;
 	struct device *dev;
+	unsigned long rate = 0;
 
 	timer = to_dmtimer(cookie);
 	if (unlikely(!timer))
@@ -765,7 +750,10 @@ static int omap_dm_timer_stop(struct omap_dm_timer *cookie)
 
 	dev = &timer->pdev->dev;
 
-	__omap_dm_timer_stop(timer);
+	if (!timer->omap1)
+		rate = clk_get_rate(timer->fclk);
+
+	__omap_dm_timer_stop(timer, rate);
 
 	pm_runtime_put_sync(dev);
 
@@ -937,7 +925,7 @@ static int omap_dm_timer_set_int_enable(struct omap_dm_timer *cookie,
 
 /**
  * omap_dm_timer_set_int_disable - disable timer interrupts
- * @cookie:	pointer to timer cookie
+ * @timer:	pointer to timer handle
  * @mask:	bit mask of interrupts to be disabled
  *
  * Disables the specified timer interrupts for a timer.
@@ -1124,14 +1112,6 @@ static int omap_dm_timer_probe(struct platform_device *pdev)
 		timer->fclk = devm_clk_get(dev, "fck");
 		if (IS_ERR(timer->fclk))
 			return PTR_ERR(timer->fclk);
-
-		timer->fclk_nb.notifier_call = omap_timer_fclk_notifier;
-		ret = devm_clk_notifier_register(dev, timer->fclk,
-						 &timer->fclk_nb);
-		if (ret)
-			return ret;
-
-		timer->fclk_rate = clk_get_rate(timer->fclk);
 	} else {
 		timer->fclk = ERR_PTR(-ENODEV);
 	}
