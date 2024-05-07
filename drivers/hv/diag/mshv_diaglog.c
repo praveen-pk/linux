@@ -31,6 +31,8 @@ struct fd_ctx {
 	struct hv_eventlog_buffer_header *cur_buf;
 	u64 saved_ts;	/* saved timestamp */
 	uint next_offs; /* offset of next rec that *will* be sent */
+	u64 mshv_ref_time0; /* mshv reference time at T0 */
+	u64 ktime_real0;  /* real ktime at T0 */
 };
 
 static void *vmap_start;
@@ -210,6 +212,7 @@ int mshv_diaglog_get_fd(void)
 {
 	int fd;
 	struct fd_ctx *fd_ctx;
+	unsigned long flags;
 
 	/* make sure initialization was successful */
 	if (vmap_start == NULL)
@@ -218,6 +221,12 @@ int mshv_diaglog_get_fd(void)
 	fd_ctx = kzalloc(sizeof(struct fd_ctx), GFP_KERNEL);
 	if (!fd_ctx)
 		return -ENOMEM;
+
+
+	local_irq_save(flags);
+	fd_ctx->mshv_ref_time0 = hv_read_reference_counter();
+	fd_ctx->ktime_real0 = ktime_get_real_seconds();
+	local_irq_restore(flags);
 
 	fd = anon_inode_getfd("hv_diag_log", &mshv_diaglog_fops, fd_ctx,
 			      O_RDONLY);
