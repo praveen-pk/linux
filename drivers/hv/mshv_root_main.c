@@ -1436,7 +1436,8 @@ mshv_partition_ioctl_set_property(struct mshv_partition *partition,
  */
 static int mshv_partition_create_region(struct mshv_partition *partition,
 					struct mshv_user_mem_region *mem,
-					struct mshv_mem_region **regionpp)
+					struct mshv_mem_region **regionpp,
+					bool is_mmio)
 {
 	struct mshv_mem_region *region;
 	u64 page_count, user_start, user_end, gpfn_start, gpfn_end;
@@ -1476,6 +1477,8 @@ static int mshv_partition_create_region(struct mshv_partition *partition,
 
 	/* Note: large_pages flag populated when we pin the pages */
 	region->flags.encrypted = mshv_partition_isolation_type_snp(partition);
+	if (!is_mmio)
+		region->flags.range_pinned = true;
 
 	region->partition = partition;
 
@@ -1489,10 +1492,18 @@ static int mshv_partition_create_region(struct mshv_partition *partition,
  * Side Effects: In case of failure, pages are unpinned when feasible.
  */
 static int
-mshv_partition_chk_snp_map_ram(struct mshv_mem_region *region)
+mshv_partition_mem_region_map(struct mshv_mem_region *region)
 {
 	struct mshv_partition *partition = region->partition;
 	int ret;
+
+	ret = mshv_region_populate(region);
+	if (ret) {
+		pt_err(partition,
+		       "Failed to populate memory region: %d\n",
+		       ret);
+		goto err_out;
+	}
 
 	/*
 	 * For an SNP partition it is a requirement that for every memory region
@@ -1505,8 +1516,8 @@ mshv_partition_chk_snp_map_ram(struct mshv_mem_region *region)
 		ret = mshv_partition_region_unshare(region);
 		if (ret) {
 			pt_err(partition,
-			       "Failed to mark the region (guest_pfn: %llu) as exclusive.\n",
-			       region->guest_pfn);
+			       "Failed to unshare memory region (guest_pfn: %llu): %d\n",
+			       region->guest_pfn, ret);
 			goto evict_region;
 		}
 	}
@@ -1520,7 +1531,7 @@ mshv_partition_chk_snp_map_ram(struct mshv_mem_region *region)
 			goto evict_region;
 
 		pt_err(partition,
-		       "Failed to mark shared. gfn:%llu rc:%d\n",
+		       "Failed to share memory region (guest_pfn: %llu): %d\n",
 		       region->guest_pfn, shrc);
 		/*
 		 * Don't unpin if marking shared failed because pages are no
@@ -1569,37 +1580,25 @@ mshv_partition_ioctl_map_memory(struct mshv_partition *partition,
 	    !access_ok((const void *)mem.userspace_addr, mem.size))
 		return -EINVAL;
 
-	ret = mshv_partition_create_region(partition, &mem, &region);
-	if (ret)
-		return ret;
-
 	mmap_read_lock(current->mm);
 	vma = vma_lookup(current->mm, mem.userspace_addr);
 	is_mmio = vma ? !!(vma->vm_flags & (VM_IO | VM_PFNMAP)) : 0;
 	mmio_pfn = is_mmio ? vma->vm_pgoff : 0;
 	mmap_read_unlock(current->mm);
 
-	ret = -EINVAL;
 	if (vma == NULL)
-		goto errout;
+		return -EINVAL;
 
-	if (is_mmio) {
+	ret = mshv_partition_create_region(partition, &mem, &region,
+					   is_mmio);
+	if (ret)
+		return ret;
+
+	if (is_mmio)
 		ret = hv_call_map_mmio_pages(partition->id, mem.guest_pfn,
 					     mmio_pfn, HVPFN_DOWN(mem.size));
-	} else {
-		region->flags.range_pinned = true;
-
-		ret = mshv_region_populate(region);
-		if (ret) {
-			pt_err(partition,
-			       "Failed to populate memory region: %li\n",
-			       ret);
-			goto errout;
-		}
-
-		ret = mshv_partition_chk_snp_map_ram(region);
-	}
-
+	else
+		ret = mshv_partition_mem_region_map(region);
 	if (ret)
 		goto errout;
 
