@@ -630,6 +630,79 @@ mshv_region_map(struct mshv_mem_region *region)
 				       0, HVPFN_DOWN(region->size));
 }
 
+static void
+mshv_region_evict_pages(struct mshv_mem_region *region,
+			u64 page_offset, u64 page_count)
+{
+	if (region->flags.range_pinned)
+		unpin_user_pages(region->pages + page_offset, page_count);
+
+	memset(region->pages + page_offset, 0,
+	       page_count * sizeof(struct page *));
+}
+
+static void
+mshv_region_evict(struct mshv_mem_region *region)
+{
+	mshv_region_evict_pages(region, 0, HVPFN_DOWN(region->size));
+}
+
+static int
+mshv_region_populate_pages(struct mshv_mem_region *region,
+			   u64 page_offset, u64 page_count)
+{
+	unsigned long offs, remaining, batch_size;
+	struct page **pages;
+	__u64 userspace_addr;
+	int ret;
+
+	if (page_offset + page_count > HVPFN_DOWN(region->size))
+		return -EINVAL;
+
+	pages = region->pages + page_offset;
+	userspace_addr = region->userspace_addr + page_offset * HV_HYP_PAGE_SIZE;
+
+	for (remaining = page_count; remaining; remaining -= ret) {
+		batch_size = min(remaining, MSHV_PIN_PAGES_BATCH_SIZE);
+		offs = (page_count - remaining) * HV_HYP_PAGE_SIZE;
+
+		/*
+		 * Pinning assuming 4k pages works for large pages too.
+		 * All page structs within the large page are returned.
+		 *
+		 * Pin requests are batched because pin_user_pages_fast
+		 * with the FOLL_LONGTERM flag does a large temporary
+		 * allocation of contiguous memory.
+		 */
+		if (region->flags.range_pinned)
+			ret = pin_user_pages_fast(userspace_addr + offs,
+						  batch_size,
+						  FOLL_WRITE | FOLL_LONGTERM,
+						  &pages[page_count - remaining]);
+		else
+			ret = -EOPNOTSUPP;
+
+		if (ret < 0)
+			goto release_pages;
+	}
+
+	if (page_count && PageHeadHuge(pages[0]))
+		region->flags.large_pages = true;
+
+	return 0;
+
+release_pages:
+	mshv_region_evict_pages(region, page_offset, page_count - remaining);
+	return ret;
+}
+
+static int
+mshv_region_populate(struct mshv_mem_region *region)
+{
+	return mshv_region_populate_pages(region,
+					  0, HVPFN_DOWN(region->size));
+}
+
 static long
 mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 {
@@ -1411,39 +1484,6 @@ static int mshv_partition_create_region(struct mshv_partition *partition,
 	return 0;
 }
 
-static int mshv_region_pin(struct mshv_mem_region *region)
-{
-	unsigned long offs, remaining, batch_size;
-	int ret;
-	u64 page_count = HVPFN_DOWN(region->size);
-	struct page **pages = region->pages;
-
-	/*
-	 * NB: Pinning assuming 4k pages works for large pages too.
-	 *     All page structs within the large page are returned.
-	 *
-	 *     Pin requests are batched because pin_user_pages_fast with the
-	 *     FOLL_LONGTERM flag does a large temporary allocation of
-	 *     contiguous memory
-	 */
-	for (remaining = page_count; remaining; remaining -= ret) {
-		batch_size = min(remaining, MSHV_PIN_PAGES_BATCH_SIZE);
-		offs = (page_count - remaining) * HV_HYP_PAGE_SIZE;
-		ret = pin_user_pages_fast(region->userspace_addr + offs,
-					  batch_size, FOLL_WRITE | FOLL_LONGTERM,
-					  &pages[page_count - remaining]);
-		if (ret < 0) {
-			unpin_user_pages(pages, page_count - remaining);
-			return ret;
-		}
-	}
-
-	if (page_count && PageHeadHuge(pages[0]))
-		region->flags.large_pages = true;
-
-	return 0;
-}
-
 /*
  * Map guest ram. if snp, make sure to release that from the host first
  * Side Effects: In case of failure, pages are unpinned when feasible.
@@ -1452,8 +1492,7 @@ static int
 mshv_partition_chk_snp_map_ram(struct mshv_mem_region *region)
 {
 	struct mshv_partition *partition = region->partition;
-	struct page **pages = region->pages;
-	int ret, numpgs = HVPFN_DOWN(region->size);
+	int ret;
 
 	/*
 	 * For an SNP partition it is a requirement that for every memory region
@@ -1468,7 +1507,7 @@ mshv_partition_chk_snp_map_ram(struct mshv_mem_region *region)
 			pt_err(partition,
 			       "Failed to mark the region (guest_pfn: %llu) as exclusive.\n",
 			       region->guest_pfn);
-			goto unpin_pages;
+			goto evict_region;
 		}
 	}
 
@@ -1478,7 +1517,7 @@ mshv_partition_chk_snp_map_ram(struct mshv_mem_region *region)
 
 		shrc = mshv_partition_region_share(region);
 		if (!shrc)
-			goto unpin_pages;
+			goto evict_region;
 
 		pt_err(partition,
 		       "Failed to mark shared. gfn:%llu rc:%d\n",
@@ -1492,9 +1531,8 @@ mshv_partition_chk_snp_map_ram(struct mshv_mem_region *region)
 
 	return 0;
 
-unpin_pages:
-	if (region->flags.range_pinned)
-		unpin_user_pages(pages, numpgs);
+evict_region:
+	mshv_region_evict(region);
 err_out:
 	return ret;
 }
@@ -1549,15 +1587,15 @@ mshv_partition_ioctl_map_memory(struct mshv_partition *partition,
 		ret = hv_call_map_mmio_pages(partition->id, mem.guest_pfn,
 					     mmio_pfn, HVPFN_DOWN(mem.size));
 	} else {
-		ret = mshv_region_pin(region);
+		region->flags.range_pinned = true;
+
+		ret = mshv_region_populate(region);
 		if (ret) {
 			pt_err(partition,
-			       "Failed to pin user pages error: %li\n",
+			       "Failed to populate memory region: %li\n",
 			       ret);
 			goto errout;
 		}
-
-		region->flags.range_pinned = true;
 
 		ret = mshv_partition_chk_snp_map_ram(region);
 	}
@@ -1612,8 +1650,7 @@ mshv_partition_ioctl_unmap_memory(struct mshv_partition *partition,
 	hv_call_unmap_gpa_pages(partition->id, region->guest_pfn,
 				page_count, unmap_flags);
 
-	if (region->flags.range_pinned)
-		unpin_user_pages(&region->pages[0], page_count);
+	mshv_region_evict(region);
 
 	vfree(region);
 	return 0;
@@ -2522,8 +2559,7 @@ static void destroy_partition(struct mshv_partition *partition)
 			}
 		}
 
-		if (region->flags.range_pinned)
-			unpin_user_pages(&region->pages[0], page_count);
+		mshv_region_evict(region);
 
 		vfree(region);
 	}
