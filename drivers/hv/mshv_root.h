@@ -76,6 +76,7 @@ struct mshv_mem_region {
 	u64 size; /* bytes */
 	u64 guest_pfn;
 	u64 userspace_addr; /* start of the userspace allocated memory */
+	u32 hv_map_flags;
 	struct {
 		u64 large_pages:  1; /* 2MiB */
 		u64 range_pinned: 1;

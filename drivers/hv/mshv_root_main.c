@@ -1373,6 +1373,7 @@ static int mshv_partition_create_region(struct mshv_partition *partition,
 	region->size = mem->size;
 	region->guest_pfn = mem->guest_pfn;
 	region->userspace_addr = mem->userspace_addr;
+	region->hv_map_flags = mem->flags;
 
 	/* Note: large_pages flag populated when we pin the pages */
 	region->flags.encrypted = mshv_partition_isolation_type_snp(partition);
@@ -1421,12 +1422,13 @@ static int mshv_region_pin(struct mshv_mem_region *region)
  * Map guest ram. if snp, make sure to release that from the host first
  * Side Effects: In case of failure, pages are unpinned when feasible.
  */
-static int mshv_partition_chk_snp_map_ram(u32 map_flags,
-					  struct mshv_mem_region *region)
+static int
+mshv_partition_chk_snp_map_ram(struct mshv_mem_region *region)
 {
 	struct mshv_partition *partition = region->partition;
 	struct page **pages = region->pages;
 	int ret, numpgs = HVPFN_DOWN(region->size);
+	u32 map_flags = region->hv_map_flags;
 
 	if (region->flags.large_pages)
 		map_flags |= HV_MAP_GPA_LARGE_PAGE;
@@ -1537,7 +1539,7 @@ mshv_partition_ioctl_map_memory(struct mshv_partition *partition,
 
 		region->flags.range_pinned = true;
 
-		ret = mshv_partition_chk_snp_map_ram(mem.flags, region);
+		ret = mshv_partition_chk_snp_map_ram(region);
 	}
 
 	if (ret)
