@@ -79,7 +79,8 @@ struct mshv_mem_region {
 	struct {
 		u64 large_pages:  1; /* 2MiB */
 		u64 range_pinned: 1;
-		u64 reserved:    62;
+		u64 encrypted:    1;
+		u64 reserved:    61;
 	} flags;
 	struct mshv_partition *partition;
 	struct page *pages[];

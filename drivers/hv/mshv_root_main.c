@@ -576,6 +576,34 @@ mshv_vp_xfer_to_guest_mode(struct mshv_vp *vp)
 	return 0;
 }
 
+static int
+mshv_partition_region_share(struct mshv_mem_region *region)
+{
+	u32 flags = HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_SHARED;
+
+	if (region->flags.large_pages)
+		flags |= HV_MODIFY_SPA_PAGE_HOST_ACCESS_LARGE_PAGE;
+
+	return hv_call_modify_spa_host_access(region->partition->id,
+			region->pages, HVPFN_DOWN(region->size),
+			HV_MAP_GPA_READABLE | HV_MAP_GPA_WRITABLE,
+			flags, true);
+}
+
+static int
+mshv_partition_region_unshare(struct mshv_mem_region *region)
+{
+	u32 flags = HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_EXCLUSIVE;
+
+	if (region->flags.large_pages)
+		flags |= HV_MODIFY_SPA_PAGE_HOST_ACCESS_LARGE_PAGE;
+
+	return hv_call_modify_spa_host_access(region->partition->id,
+			region->pages, HVPFN_DOWN(region->size),
+			0,
+			flags, false);
+}
+
 static long
 mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 {
@@ -1345,7 +1373,9 @@ static int mshv_partition_create_region(struct mshv_partition *partition,
 	region->size = mem->size;
 	region->guest_pfn = mem->guest_pfn;
 	region->userspace_addr = mem->userspace_addr;
+
 	/* Note: large_pages flag populated when we pin the pages */
+	region->flags.encrypted = mshv_partition_isolation_type_snp(partition);
 
 	region->partition = partition;
 
@@ -1396,13 +1426,10 @@ static int mshv_partition_chk_snp_map_ram(u32 map_flags,
 {
 	struct mshv_partition *partition = region->partition;
 	struct page **pages = region->pages;
-	int ret, shrc, numpgs = HVPFN_DOWN(region->size);
-	u32 access_flags = 0;
+	int ret, numpgs = HVPFN_DOWN(region->size);
 
-	if (region->flags.large_pages) {
+	if (region->flags.large_pages)
 		map_flags |= HV_MAP_GPA_LARGE_PAGE;
-		access_flags = HV_MODIFY_SPA_PAGE_HOST_ACCESS_LARGE_PAGE;
-	}
 
 	/*
 	 * For an SNP partition it is a requirement that for every memory region
@@ -1411,48 +1438,42 @@ static int mshv_partition_chk_snp_map_ram(u32 map_flags,
 	 * additional hypercall which will update the SLAT to release host
 	 * access to guest memory regions.
 	 */
-	if (mshv_partition_isolation_type_snp(partition)) {
-		u32 excl_flags = access_flags |
-				  HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_EXCLUSIVE;
-		ret = hv_call_modify_spa_host_access(
-				partition->id, pages, numpgs, 0,
-				excl_flags,
-				false);
+	if (region->flags.encrypted) {
+		ret = mshv_partition_region_unshare(region);
 		if (ret) {
 			pt_err(partition,
 			       "Failed to mark the region (guest_pfn: %llu) as exclusive.\n",
 			       region->guest_pfn);
-			unpin_user_pages(pages, numpgs);
-			return ret;
+			goto unpin_pages;
 		}
 	}
 
 	/* ask the hypervisor to map guest ram */
 	ret = hv_call_map_gpa_pages(partition->id, region->guest_pfn, numpgs,
 				    map_flags, pages);
+	if (ret && region->flags.encrypted) {
+		int shrc;
 
-	if (ret && mshv_partition_isolation_type_snp(partition)) {
-		u32 share_flags = access_flags |
-				     HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_SHARED;
-		shrc = hv_call_modify_spa_host_access(partition->id, pages,
-				     numpgs,
-				     HV_MAP_GPA_READABLE | HV_MAP_GPA_WRITABLE,
-				     share_flags,
-				     true);
-		if (shrc)
-			pt_err(partition,
-			       "Failed to mark shared. gfn:%llu rc:%d\n",
-			       region->guest_pfn, shrc);
+		shrc = mshv_partition_region_share(region);
+		if (!shrc)
+			goto unpin_pages;
+
+		pt_err(partition,
+		       "Failed to mark shared. gfn:%llu rc:%d\n",
+		       region->guest_pfn, shrc);
+		/*
+		 * Don't unpin if marking shared failed because pages are no
+		 * longer mapped in the host, ie root, anymore.
+		 */
+		goto err_out;
 	}
 
-	/*
-	 * Don't unpin if marking shared failed because pages are no longer
-	 * mapped in the host, ie root, anymore.
-	 */
-	if (ret)
-		if (!mshv_partition_isolation_type_snp(partition) || shrc == 0)
-			unpin_user_pages(pages, numpgs);
+	return 0;
 
+unpin_pages:
+	if (region->flags.range_pinned)
+		unpin_user_pages(pages, numpgs);
+err_out:
 	return ret;
 }
 
@@ -2469,12 +2490,8 @@ static void destroy_partition(struct mshv_partition *partition)
 		hlist_del(&region->hnode);
 		page_count = HVPFN_DOWN(region->size);
 
-		if (mshv_partition_isolation_type_snp(partition)) {
-			ret = hv_call_modify_spa_host_access(
-				partition->id, region->pages, page_count,
-				HV_MAP_GPA_READABLE | HV_MAP_GPA_WRITABLE,
-				HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_SHARED,
-				true);
+		if (region->flags.encrypted) {
+			ret = mshv_partition_region_share(region);
 			if (ret) {
 				pt_err(partition,
 				       "Failed to regain access to memory, unpinning user pages will fail and crash the host error: %d\n",
@@ -2895,15 +2912,11 @@ static void mshv_panic_unlock_snp(struct mshv_partition *vm)
 	struct mshv_mem_region *memreg;
 	u64 numpgs;
 	int ret;
-	u32 access = HV_MAP_GPA_READABLE | HV_MAP_GPA_WRITABLE;
-	u32 flags = HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_SHARED;
 
 	hlist_for_each_entry(memreg, &vm->mem_regions, hnode) {
 		numpgs = HVPFN_DOWN(memreg->size);
 		hv_call_unmap_gpa_pages(vm->id, memreg->guest_pfn, numpgs, 0);
-		ret = hv_call_modify_spa_host_access(vm->id, memreg->pages,
-						     numpgs, access, flags,
-						     true);
+		ret = mshv_partition_region_share(memreg);
 		if (ret)
 			pt_err(vm, "Unlock snp failed. ret:0x%x gfn:%llx numpgs:%lld\n",
 			       ret, memreg->guest_pfn, numpgs);
