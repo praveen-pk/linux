@@ -604,6 +604,32 @@ mshv_partition_region_unshare(struct mshv_mem_region *region)
 			flags, false);
 }
 
+static int
+mshv_region_remap_pages(struct mshv_mem_region *region, u32 map_flags,
+			u64 page_offset, u64 page_count)
+{
+	if (page_offset + page_count > HVPFN_DOWN(region->size))
+		return -EINVAL;
+
+	if (region->flags.large_pages)
+		map_flags |= HV_MAP_GPA_LARGE_PAGE;
+
+	/* ask the hypervisor to map guest ram */
+	return hv_call_map_gpa_pages(region->partition->id,
+				     region->guest_pfn + page_offset,
+				     page_count, map_flags,
+				     region->pages + page_offset);
+}
+
+static int
+mshv_region_map(struct mshv_mem_region *region)
+{
+	u32 map_flags = region->hv_map_flags;
+
+	return mshv_region_remap_pages(region, map_flags,
+				       0, HVPFN_DOWN(region->size));
+}
+
 static long
 mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 {
@@ -1428,10 +1454,6 @@ mshv_partition_chk_snp_map_ram(struct mshv_mem_region *region)
 	struct mshv_partition *partition = region->partition;
 	struct page **pages = region->pages;
 	int ret, numpgs = HVPFN_DOWN(region->size);
-	u32 map_flags = region->hv_map_flags;
-
-	if (region->flags.large_pages)
-		map_flags |= HV_MAP_GPA_LARGE_PAGE;
 
 	/*
 	 * For an SNP partition it is a requirement that for every memory region
@@ -1450,9 +1472,7 @@ mshv_partition_chk_snp_map_ram(struct mshv_mem_region *region)
 		}
 	}
 
-	/* ask the hypervisor to map guest ram */
-	ret = hv_call_map_gpa_pages(partition->id, region->guest_pfn, numpgs,
-				    map_flags, pages);
+	ret = mshv_region_map(region);
 	if (ret && region->flags.encrypted) {
 		int shrc;
 
