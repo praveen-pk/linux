@@ -187,7 +187,6 @@ struct mshv_root {
 	struct hv_synic_pages __percpu *synic_pages;
 	struct {
 		spinlock_t lock;
-		u64 count;
 		DECLARE_HASHTABLE(items, MSHV_PARTITIONS_HASH_BITS);
 	} partitions;
 };

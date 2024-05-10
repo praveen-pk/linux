@@ -2358,7 +2358,6 @@ remove_partition(struct mshv_partition *partition)
 {
 	spin_lock(&mshv_root.partitions.lock);
 	hlist_del_rcu(&partition->hnode);
-
 	spin_unlock(&mshv_root.partitions.lock);
 
 	synchronize_rcu();
@@ -2613,8 +2612,6 @@ add_partition(struct mshv_partition *partition)
 	spin_lock(&mshv_root.partitions.lock);
 
 	hash_add_rcu(mshv_root.partitions.items, &partition->hnode, partition->id);
-
-	mshv_root.partitions.count++;
 
 	spin_unlock(&mshv_root.partitions.lock);
 
