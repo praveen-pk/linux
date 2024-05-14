@@ -93,6 +93,8 @@ variables:
     ${{ else }}:
       # Following are VM life cycle tests from ch integration tests
       value: 'common_parallel::test_api_http_create_boot,common_parallel::test_api_http_shutdown,common_parallel::test_api_http_delete,common_parallel::test_macvtap,common_parallel::test_virtio_vsock,common_parallel::test_virtio_vsock_hotplug,common_parallel::test_pty_interaction'
+  - name: mshv_crate_ref
+    value: "v0.2.0"
 
 stages:
 - stage: "Linux_Dom0_Build"
@@ -208,7 +210,7 @@ stages:
         set -x
 
         MSHV_CRATE_HOST_PATH="$(Pipeline.Workspace)/mshv"
-        git clone https://github.com/rust-vmm/mshv.git $MSHV_CRATE_HOST_PATH
+        git clone https://github.com/rust-vmm/mshv.git --depth 1 --branch '$(mshv_crate_ref)' $MSHV_CRATE_HOST_PATH
         echo "##vso[task.setVariable variable=MSHV_CRATE_PATH]${MSHV_CRATE_HOST_PATH}"
       condition: and(eq(variables.FLAVOR, 'dom0-built-in'), eq(variables.ARCH, 'x86_64'))
       displayName: 'Configure MSHV Crate'
@@ -545,6 +547,7 @@ stages:
         run_on_intel: True
         intel_vm_size_perf: "Standard_D96ds_v5"
         ch_subtest_exclude_list: $(ch_tests_exclude_list)
+        mshv_crate_ref: $(mshv_crate_ref)
         ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
           intel_vm_size_func: "Standard_D16ds_v5"
           run_functional_tests: True
@@ -601,6 +604,7 @@ stages:
         amd_vm_size_perf: "Standard_DC96ads_cc_v5"
         ch_subtest_exclude_list: $(ch_tests_exclude_list_cvm)
         clh_guest_vm_type: "CVM"
+        mshv_crate_ref: $(mshv_crate_ref)
         ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
           amd_vm_size_func: "Standard_DC16ads_cc_v5"
           run_ch_integration_tests: True
