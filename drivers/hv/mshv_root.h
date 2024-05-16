@@ -74,8 +74,8 @@ struct mshv_vp {
 struct mshv_mem_region {
 	struct hlist_node hnode;
 	u64 nr_pages;
-	u64 gfn;
-	u64 uaddr; /* start of the userspace allocated memory */
+	u64 start_gfn;
+	u64 start_uaddr;
 	u32 hv_map_flags;
 	struct {
 		u64 large_pages:  1; /* 2MiB */
