@@ -773,7 +773,10 @@ union hv_partition_synthetic_processor_features {
 
 		/* EnlightenedVmcs nested enlightenment is supported. */
 		u64 enlightened_vmcs : 1;
-		u64 reserved : 31;
+		u64 nested_debug_ctl : 1;
+		u64 synthetic_time_unhalted_timer : 1;
+		u64 idle_spec_ctrl : 1;
+		u64 reserved : 28;
 	} __packed;
 };
 
