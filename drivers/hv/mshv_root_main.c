@@ -1299,7 +1299,7 @@ mshv_partition_ioctl_create_vp(struct mshv_partition *partition,
 	if (ret)
 		goto destroy_vp;
 
-	if (!mshv_partition_isolation_type_snp(partition)) {
+	if (!mshv_partition_encrypted(partition)) {
 		ret = hv_call_map_vp_state_page(partition->id, args.vp_index,
 						HV_VP_STATE_PAGE_REGISTERS,
 						&register_page);
@@ -1343,7 +1343,7 @@ mshv_partition_ioctl_create_vp(struct mshv_partition *partition,
 
 	vp->index = args.vp_index;
 	vp->intercept_message_page = page_to_virt(intercept_message_page);
-	if (!mshv_partition_isolation_type_snp(partition))
+	if (!mshv_partition_encrypted(partition))
 		vp->register_page = page_to_virt(register_page);
 	vp->stats_page = stats_page;
 
@@ -1379,7 +1379,7 @@ unmap_stats_page:
 	if (hv_root_partition())
 		hv_call_unmap_stat_page(HV_STATS_OBJECT_VP, &identity);
 unmap_register_page:
-	if (!mshv_partition_isolation_type_snp(partition))
+	if (!mshv_partition_encrypted(partition))
 		hv_call_unmap_vp_state_page(partition->id, args.vp_index,
 					    HV_VP_STATE_PAGE_REGISTERS);
 unmap_intercept_message_page:
@@ -1488,7 +1488,6 @@ static int mshv_partition_create_region(struct mshv_partition *partition,
 	region->hv_map_flags = mem->flags;
 
 	/* Note: large_pages flag populated when we pin the pages */
-	region->flags.encrypted = mshv_partition_isolation_type_snp(partition);
 	if (!is_mmio)
 		region->flags.range_pinned = true;
 
@@ -1524,7 +1523,7 @@ mshv_partition_mem_region_map(struct mshv_mem_region *region)
 	 * additional hypercall which will update the SLAT to release host
 	 * access to guest memory regions.
 	 */
-	if (region->flags.encrypted) {
+	if (mshv_partition_encrypted(partition)) {
 		ret = mshv_partition_region_unshare(region);
 		if (ret) {
 			pt_err(partition,
@@ -1535,7 +1534,7 @@ mshv_partition_mem_region_map(struct mshv_mem_region *region)
 	}
 
 	ret = mshv_region_map(region);
-	if (ret && region->flags.encrypted) {
+	if (ret && mshv_partition_encrypted(partition)) {
 		int shrc;
 
 		shrc = mshv_partition_region_share(region);
@@ -2129,7 +2128,7 @@ static long mshv_partition_snp_ioctl(unsigned int ioctl,
 {
 	long ret;
 
-	if (!mshv_partition_isolation_type_snp(partition)) {
+	if (!mshv_partition_encrypted(partition)) {
 		ret = -EOPNOTSUPP;
 		pt_err(partition,
 		       "Ioctl(%u) not supported for non SEV-SNP partition!\n",
@@ -2472,7 +2471,7 @@ static void destroy_partition(struct mshv_partition *partition)
 	trace_mshv_destroy_partition(partition->id);
 
 #ifdef HV_SUPPORTS_SEV_SNP_GUESTS
-	if (mshv_partition_isolation_type_snp(partition)) {
+	if (mshv_partition_encrypted(partition)) {
 		ret = destroy_snp_partition_state(partition);
 		if (ret) {
 			pt_err(partition,
@@ -2540,7 +2539,7 @@ static void destroy_partition(struct mshv_partition *partition)
 	hlist_for_each_entry_safe(region, n, &partition->mem_regions, hnode) {
 		hlist_del(&region->hnode);
 
-		if (region->flags.encrypted) {
+		if (mshv_partition_encrypted(partition)) {
 			ret = mshv_partition_region_share(region);
 			if (ret) {
 				pt_err(partition,
@@ -2980,7 +2979,7 @@ static int mshv_root_panic_cb(struct notifier_block *this, unsigned long event,
 	struct device *dev = NULL;
 
 	hash_for_each_rcu(mshv_root.partitions.items, i, vm, hnode) {
-		if (!mshv_partition_isolation_type_snp(vm))
+		if (!mshv_partition_encrypted(vm))
 			continue;
 
 		done = 1;
