@@ -26,11 +26,15 @@
 #include <asm/mshyperv.h>
 #include <uapi/hyperv/hvtrapi.h>
 
+static size_t MSHV_TICKS_PER_SEC = NSEC_PER_SEC/100; /* 1 tick is 100 ns long in mshv */
+
 /* Context saved in FDs private_data */
 struct fd_ctx {
 	struct hv_eventlog_buffer_header *cur_buf;
 	u64 saved_ts;	/* saved timestamp */
 	uint next_offs; /* offset of next rec that *will* be sent */
+	u64 mshv_ref_time0; /* mshv reference time at T0 */
+	u64 ktime_real0;  /* real ktime at T0 */
 };
 
 static void *vmap_start;
@@ -128,14 +132,32 @@ static bool validate_buf_and_chk_newdata(struct fd_ctx *fd_ctx)
 static int copy_next_record(struct fd_ctx *fd_ctx, char __user *ubuf,
 			    int ubuf_remain)
 {
+	s64 offset_secs;
 	struct hv_eventlog_entry_header *entry = get_next_entry_ptr(fd_ctx);
+	struct hv_eventlog_entry_header tmp_header;
+	size_t hv_eventlog_entry_header_sz =
+					sizeof(struct hv_eventlog_entry_header);
+
+
+	offset_secs = (s64)(fd_ctx->mshv_ref_time0 - entry->time_stamp)/
+			   (s64)MSHV_TICKS_PER_SEC;
+
+	memcpy(&tmp_header, entry, hv_eventlog_entry_header_sz);
+	tmp_header.time_stamp = fd_ctx->ktime_real0 - offset_secs;
 
 	if (entry == NULL || entry->type == 0)
 		return 0;
 	if (entry->size > ubuf_remain)
 		return 0;
 
-	if (copy_to_user(ubuf, entry, entry->size))
+	/* Copy the modified header first */
+	if (copy_to_user(ubuf, &tmp_header, hv_eventlog_entry_header_sz))
+		return -EFAULT;
+
+	/* Copy rest of the record */
+	if (copy_to_user((char *) ubuf + hv_eventlog_entry_header_sz,
+			 (char *) entry + hv_eventlog_entry_header_sz,
+			 entry->size - hv_eventlog_entry_header_sz))
 		return -EFAULT;
 
 	/* next entry rec is at entry size plus any padding added by hyp */
@@ -210,6 +232,7 @@ int mshv_diaglog_get_fd(void)
 {
 	int fd;
 	struct fd_ctx *fd_ctx;
+	unsigned long flags;
 
 	/* make sure initialization was successful */
 	if (vmap_start == NULL)
@@ -218,6 +241,12 @@ int mshv_diaglog_get_fd(void)
 	fd_ctx = kzalloc(sizeof(struct fd_ctx), GFP_KERNEL);
 	if (!fd_ctx)
 		return -ENOMEM;
+
+
+	local_irq_save(flags);
+	fd_ctx->mshv_ref_time0 = hv_read_reference_counter();
+	fd_ctx->ktime_real0 = ktime_get_real_seconds();
+	local_irq_restore(flags);
 
 	fd = anon_inode_getfd("hv_diag_log", &mshv_diaglog_fops, fd_ctx,
 			      O_RDONLY);
