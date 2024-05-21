@@ -621,7 +621,7 @@ union hv_partition_processor_features {
 		u64 invpcid_support : 1;
 		u64 ibrs_support : 1;
 		u64 stibp_support : 1;
-		u64 ibpb_support: 1;
+		u64 ibpb_support : 1;
 		u64 unrestricted_guest_support : 1;
 		u64 mdd_support : 1;
 		u64 fast_short_rep_mov_support : 1;
@@ -638,14 +638,10 @@ union hv_partition_processor_features {
 		u64 mb_clear_support : 1;
 		u64 taa_no_support : 1;
 		u64 tsx_ctrl_support : 1;
-		/*
-		 * N.B. The final processor feature bit in bank 0 is reserved to
-		 * simplify potential downlevel backports.
-		 */
-		u64 reserved_bank0 : 1;
+		u64 reserved_bank0:1;
 
 		/* N.B. Begin bank 1 processor features. */
-		u64 acount_mcount_support : 1;
+		u64 a_count_m_count_support : 1;
 		u64 tsc_invariant_support : 1;
 		u64 cl_zero_support : 1;
 		u64 rdpru_support : 1;
@@ -664,10 +660,40 @@ union hv_partition_processor_features {
 		u64 serialize_support : 1;
 		u64 tsc_deadline_tmr_support : 1;
 		u64 tsc_adjust_support : 1;
-		u64 fzlrep_movsb : 1;
-		u64 fsrep_stosb : 1;
-		u64 fsrep_cmpsb : 1;
-		u64 reserved_bank1 : 42;
+		u64 fzl_rep_movsb : 1;
+		u64 fs_rep_stosb : 1;
+		u64 fs_rep_cmpsb : 1;
+		u64 tsx_ld_trk_support : 1;
+		u64 vmx_ins_outs_exit_info_support : 1;
+		u64 hlat_support : 1;
+		u64 sbdr_ssdp_no_support : 1;
+		u64 fbsdp_no_support : 1;
+		u64 psdp_no_support : 1;
+		u64 fb_clear_support : 1;
+		u64 btc_no_support : 1; // AMD branch confusion no support
+		u64 ibpb_rsb_flush_support : 1;
+		u64 stibp_always_on_support : 1;
+		u64 perf_global_ctrl_support : 1;
+		u64 npt_execute_only_support : 1;
+		u64 npt_ad_flags_support : 1;
+		u64 npt1_gb_page_support : 1;
+		u64 amd_processor_topology_node_id_support : 1;
+		u64 local_machine_check_support : 1;
+		u64 extended_topology_leaf_fp256_amd_support : 1;
+		u64 gds_no_support : 1; // If machine is vulnerable to GDS.
+		u64 cmpccxadd_support : 1;
+		u64 tsc_aux_virtualization_support : 1;
+		u64 rmp_query_support : 1;
+		u64 bhi_no_support : 1;
+		u64 bhi_dis_support : 1;
+		u64 prefetch_i_support : 1;
+		u64 sha512_support : 1;
+		u64 mitigation_ctrl_support : 1;
+		u64 rfds_no_support : 1; // If machine is vulnerable to RFDS.
+		u64 rfds_clear_support : 1;
+		u64 sm3_support : 1;
+		u64 sm4_support : 1;
+		u64 reserved_bank1 : 12;
 	} __packed;
 };
 
