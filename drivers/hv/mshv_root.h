@@ -26,7 +26,7 @@
 #define MSHV_PARTITIONS_HASH_BITS	9
 #define MSHV_MAX_VPS			256
 
-#define MSHV_PIN_PAGES_BATCH_SIZE	(0x10000000 / HV_HYP_PAGE_SIZE)
+#define MSHV_PIN_PAGES_BATCH_SIZE	(0x10000000ULL / HV_HYP_PAGE_SIZE)
 
 struct mshv_vp {
 	u32 index;
@@ -73,14 +73,16 @@ struct mshv_vp {
 
 struct mshv_mem_region {
 	struct hlist_node hnode;
-	u64 size; /* bytes */
-	u64 guest_pfn;
-	u64 userspace_addr; /* start of the userspace allocated memory */
+	u64 nr_pages;
+	u64 start_gfn;
+	u64 start_uaddr;
+	u32 hv_map_flags;
 	struct {
 		u64 large_pages:  1; /* 2MiB */
 		u64 range_pinned: 1;
 		u64 reserved:    62;
 	} flags;
+	struct mshv_partition *partition;
 	struct page *pages[];
 };
 
@@ -246,7 +248,7 @@ void mshv_isr(void);
 int mshv_synic_init(unsigned int cpu);
 int mshv_synic_cleanup(unsigned int cpu);
 
-static inline bool mshv_partition_isolation_type_snp(struct mshv_partition *partition)
+static inline bool mshv_partition_encrypted(struct mshv_partition *partition)
 {
 	return partition->isolation_type == HV_PARTITION_ISOLATION_TYPE_SNP;
 }
