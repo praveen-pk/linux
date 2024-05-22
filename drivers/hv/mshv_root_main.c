@@ -1345,7 +1345,9 @@ mshv_partition_ioctl_create_vp(struct mshv_partition *partition,
 	vp->intercept_message_page = page_to_virt(intercept_message_page);
 	if (!mshv_partition_encrypted(partition))
 		vp->register_page = page_to_virt(register_page);
-	vp->stats_page = stats_page;
+
+	if (hv_root_partition())
+		vp->stats_page = stats_page;
 
 	ret = mshv_debugfs_vp_create(vp);
 	if (ret)
