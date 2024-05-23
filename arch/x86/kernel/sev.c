@@ -235,8 +235,10 @@ static void do_exc_hv(struct pt_regs *regs)
 			WARN(1, "exception shouldn't happen\n");
 		} else if (pending_events.vector == FIRST_EXTERNAL_VECTOR) {
 			sysvec_irq_move_cleanup(regs);
+#if defined(CONFIG_IA32_EMULATION) || defined(CONFIG_X86_32)
 		} else if (pending_events.vector == IA32_SYSCALL_VECTOR) {
 			WARN(1, "syscall shouldn't happen\n");
+#endif
 		} else if (pending_events.vector >= FIRST_SYSTEM_VECTOR) {
 			if (!(sysvec_table[pending_events.vector - FIRST_SYSTEM_VECTOR])) {
 				WARN(1, "system vector entry 0x%x is NULL\n",
