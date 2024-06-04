@@ -233,17 +233,17 @@ struct mshv_ioeventfd {
 	__u8  pad[4];
 };
 
-struct mshv_msi_routing_entry {
+struct mshv_user_irq_entry {
 	__u32 gsi;
 	__u32 address_lo;
 	__u32 address_hi;
 	__u32 data;
 };
 
-struct mshv_msi_routing {
+struct mshv_user_irq_table {
 	__u32 nr;
 	__u32 pad;
-	struct mshv_msi_routing_entry entries[0];
+	struct mshv_user_irq_entry entries[0];
 };
 
 /* Subsection - SEV/SNP data structures */
@@ -299,7 +299,7 @@ struct mshv_root_hvcall {
 #define MSHV_UNMAP_GUEST_MEMORY		_IOW(MSHV_IOCTL, 0x03, struct mshv_user_mem_region)
 #define MSHV_IRQFD			_IOW(MSHV_IOCTL, 0xE, struct mshv_irqfd)
 #define MSHV_IOEVENTFD			_IOW(MSHV_IOCTL, 0xF, struct mshv_ioeventfd)
-#define MSHV_SET_MSI_ROUTING		_IOW(MSHV_IOCTL, 0x11, struct mshv_msi_routing)
+#define MSHV_SET_MSI_ROUTING		_IOW(MSHV_IOCTL, 0x11, struct mshv_user_irq_table)
 #define MSHV_GET_GPA_ACCESS_STATES	_IOWR(MSHV_IOCTL, 0x12, \
 					      struct mshv_get_gpa_pages_access_state)
 /* SEV/SNP-related partition IOCTLs */

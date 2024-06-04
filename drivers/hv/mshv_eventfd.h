@@ -42,7 +42,7 @@ struct mshv_kernel_irqfd_resampler {
 struct mshv_kernel_irqfd {
 	struct mshv_partition                *partition;
 	struct eventfd_ctx                   *eventfd;
-	struct mshv_kernel_msi_routing_entry msi_entry;
+	struct mshv_guest_irq_ent            irqfd_girq_ent;
 	seqcount_spinlock_t                  msi_entry_sc;
 	u32                                  gsi;
 	struct mshv_lapic_irq                lapic_irq;
@@ -58,8 +58,8 @@ struct mshv_kernel_irqfd {
 	struct hlist_node                    resampler_hnode;
 };
 
-int mshv_irqfd(struct mshv_partition *partition,
-		struct mshv_irqfd *args);
+int mshv_set_unset_irqfd(struct mshv_partition *partition,
+			 struct mshv_irqfd *args);
 
 int mshv_irqfd_wq_init(void);
 void mshv_irqfd_wq_cleanup(void);

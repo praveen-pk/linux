@@ -188,10 +188,10 @@ irqfd_inject(struct mshv_kernel_irqfd *irqfd)
 		!irq->control.level_triggered);
 
 	idx = srcu_read_lock(&partition->irq_srcu);
-	if (irqfd->msi_entry.gsi) {
-		if (!irqfd->msi_entry.entry_valid) {
+	if (irqfd->irqfd_girq_ent.guest_irq_num) {
+		if (!irqfd->irqfd_girq_ent.girq_entry_valid) {
 			pr_warn("Invalid routing info for gsi %u",
-				irqfd->msi_entry.gsi);
+				irqfd->irqfd_girq_ent.guest_irq_num);
 			srcu_read_unlock(&partition->irq_srcu, idx);
 			return;
 		}
@@ -339,8 +339,8 @@ static void irqfd_update(struct mshv_partition *partition,
 			 struct mshv_kernel_irqfd *irqfd)
 {
 	write_seqcount_begin(&irqfd->msi_entry_sc);
-	irqfd->msi_entry = mshv_msi_map_gsi(partition, irqfd->gsi);
-	mshv_set_msi_irq(&irqfd->msi_entry, &irqfd->lapic_irq);
+	irqfd->irqfd_girq_ent = mshv_ret_girq_entry(partition, irqfd->gsi);
+	mshv_copy_girq_info(&irqfd->irqfd_girq_ent, &irqfd->lapic_irq);
 	write_seqcount_end(&irqfd->msi_entry_sc);
 }
 
@@ -547,7 +547,7 @@ mshv_irqfd_deassign(struct mshv_partition *partition,
 }
 
 int
-mshv_irqfd(struct mshv_partition *partition, struct mshv_irqfd *args)
+mshv_set_unset_irqfd(struct mshv_partition *partition, struct mshv_irqfd *args)
 {
 	if (args->flags & MSHV_IRQFD_FLAG_DEASSIGN)
 		return mshv_irqfd_deassign(partition, args);

@@ -80,7 +80,7 @@ struct mshv_mem_region {
 	struct {
 		u64 large_pages:  1; /* 2MiB */
 		u64 range_pinned: 1;
-		u64 reserved:    62;
+		u64 reserved:	 62;
 	} flags;
 	struct mshv_partition *partition;
 	struct page *pages[];
@@ -120,7 +120,7 @@ struct mshv_partition {
 	u64 async_hypercall_status;
 
 	struct {
-		spinlock_t        lock;
+		spinlock_t	  lock;
 		struct hlist_head items;
 		struct mutex resampler_lock;
 		struct hlist_head resampler_list;
@@ -128,7 +128,7 @@ struct mshv_partition {
 	struct {
 		struct hlist_head items;
 	} ioeventfds;
-	struct mshv_msi_routing_table __rcu *msi_routing;
+	struct mshv_girq_routing_table __rcu *part_girq_tbl;
 	u64 isolation_type;
 	bool import_completed;
 #ifdef CONFIG_DEBUG_FS
@@ -162,19 +162,20 @@ struct mshv_lapic_irq {
 	union hv_interrupt_control control;
 };
 
-#define MSHV_MAX_MSI_ROUTES		4096
+#define MSHV_MAX_GUEST_IRQS		4096
 
-struct mshv_kernel_msi_routing_entry {
-	u32 entry_valid;
-	u32 gsi;
-	u32 address_lo;
-	u32 address_hi;
-	u32 data;
+/* representation of one guest irq entry, either msi or legacy */
+struct mshv_guest_irq_ent {
+	u32 girq_entry_valid;	/* vfio looks at this */
+	u32 guest_irq_num;	/* a unique number for each irq */
+	u32 girq_addr_lo;	/* guest irq msi address info */
+	u32 girq_addr_hi;
+	u32 girq_irq_data;	/* idt vector in some cases */
 };
 
-struct mshv_msi_routing_table {
-	u32 nr_rt_entries;
-	struct mshv_kernel_msi_routing_entry entries[];
+struct mshv_girq_routing_table {
+	u32 num_rt_entries;
+	struct mshv_guest_irq_ent mshv_girq_info_tbl[];
 };
 
 struct hv_synic_pages {
@@ -221,16 +222,16 @@ struct port_table_info {
 	};
 };
 
-int mshv_set_msi_routing(struct mshv_partition *partition,
-		const struct mshv_msi_routing_entry *entries,
-		unsigned int nr);
-void mshv_free_msi_routing(struct mshv_partition *partition);
+int mshv_update_routing_table(struct mshv_partition *partition,
+			      const struct mshv_user_irq_entry *entries,
+			      unsigned int numents);
+void mshv_free_routing_table(struct mshv_partition *partition);
 
-struct mshv_kernel_msi_routing_entry mshv_msi_map_gsi(
-		struct mshv_partition *partition, u32 gsi);
+struct mshv_guest_irq_ent mshv_ret_girq_entry(struct mshv_partition *partition,
+					      u32 irq_num);
 
-void mshv_set_msi_irq(struct mshv_kernel_msi_routing_entry *e,
-		      struct mshv_lapic_irq *irq);
+void mshv_copy_girq_info(struct mshv_guest_irq_ent *src_irq,
+			 struct mshv_lapic_irq *dest_irq);
 
 void mshv_irqfd_routing_update(struct mshv_partition *partition);
 
