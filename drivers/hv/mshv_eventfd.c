@@ -78,7 +78,7 @@ static void mshv_irqfd_resampler_ack(struct mshv_irq_ack_notifier *mian)
 	hlist_for_each_entry_rcu(irqfd, &resampler->rsmplr_irqfd_list,
 				 irqfd_resampler_hnode) {
 
-		if (hv_should_clear_interrupt(irqfd->irqfd_lapic_irq.control.interrupt_type))
+		if (hv_should_clear_interrupt(irqfd->irqfd_lapic_irq.lapic_control.interrupt_type))
 			hv_call_clear_virtual_interrupt(partition->id);
 
 		eventfd_signal(irqfd->irqfd_resamplefd, 1);
@@ -147,12 +147,12 @@ static int irq_inject_fast(struct mshv_irqfd *irqfd)
 	if (hv_scheduler_type != HV_SCHEDULER_TYPE_ROOT)
 		return -EOPNOTSUPP;
 
-	if (irq->control.logical_dest_mode)
+	if (irq->lapic_control.logical_dest_mode)
 		return -EOPNOTSUPP;
 
-	vp = partition->vps.array[irq->apic_id];
+	vp = partition->vps.array[irq->lapic_apic_id];
 
-	if (mshv_vp_irq_inject_vector(vp, irq->vector))
+	if (mshv_vp_irq_inject_vector(vp, irq->lapic_vector))
 		return -EINVAL;
 
 	if (vp->run.flags.dispatched &&
@@ -178,7 +178,7 @@ static void mshv_irqfd_inject(struct mshv_irqfd *irqfd)
 	int idx;
 
 	WARN_ON(irqfd->irqfd_resampler &&
-		!irq->control.level_triggered);
+		!irq->lapic_control.level_triggered);
 
 	idx = srcu_read_lock(&partition->irq_srcu);
 	if (irqfd->irqfd_girq_ent.guest_irq_num) {
@@ -195,8 +195,8 @@ static void mshv_irqfd_inject(struct mshv_irqfd *irqfd)
 	}
 
 	hv_call_assert_virtual_interrupt(irqfd->irqfd_partn->id,
-					 irq->vector, irq->apic_id,
-					 irq->control);
+					 irq->lapic_vector, irq->lapic_apic_id,
+					 irq->lapic_control);
 	srcu_read_unlock(&partition->irq_srcu, idx);
 }
 
@@ -443,7 +443,7 @@ static int mshv_irqfd_assign(struct mshv_partition *pt,
 
 	spin_lock_irq(&pt->irqfds.lock);
 	if (args->flags & MSHV_IRQFD_FLAG_RESAMPLE &&
-	    !irqfd->irqfd_lapic_irq.control.level_triggered) {
+	    !irqfd->irqfd_lapic_irq.lapic_control.level_triggered) {
 		/*
 		 * Resample Fd must be for level triggered interrupt
 		 * Otherwise return with failure

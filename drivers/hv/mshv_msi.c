@@ -120,9 +120,9 @@ void mshv_copy_girq_info(struct mshv_guest_irq_ent *ent,
 	if (!ent || !ent->girq_entry_valid)
 		return;
 
-	lirq->vector = ent->girq_irq_data & 0xFF;
-	lirq->apic_id = (ent->girq_addr_lo >> 12) & 0xFF;
-	lirq->control.interrupt_type = (ent->girq_irq_data & 0x700) >> 8;
-	lirq->control.level_triggered = (ent->girq_irq_data >> 15) & 0x1;
-	lirq->control.logical_dest_mode = (ent->girq_addr_lo >> 2) & 0x1;
+	lirq->lapic_vector = ent->girq_irq_data & 0xFF;
+	lirq->lapic_apic_id = (ent->girq_addr_lo >> 12) & 0xFF;
+	lirq->lapic_control.interrupt_type = (ent->girq_irq_data & 0x700) >> 8;
+	lirq->lapic_control.level_triggered = (ent->girq_irq_data >> 15) & 0x1;
+	lirq->lapic_control.logical_dest_mode = (ent->girq_addr_lo >> 2) & 0x1;
 }

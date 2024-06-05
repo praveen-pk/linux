@@ -157,9 +157,9 @@ struct mshv_partition {
 	dev_dbg(pt_dev(p), pt_fmt(fmt), (p)->id, ##__VA_ARGS__)
 
 struct mshv_lapic_irq {
-	u32 vector;
-	u64 apic_id;
-	union hv_interrupt_control control;
+	u32 lapic_vector;
+	u64 lapic_apic_id;
+	union hv_interrupt_control lapic_control;
 };
 
 #define MSHV_MAX_GUEST_IRQS		4096
