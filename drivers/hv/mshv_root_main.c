@@ -1681,7 +1681,7 @@ static long
 mshv_partition_ioctl_irqfd(struct mshv_partition *partition,
 		void __user *user_args)
 {
-	struct mshv_irqfd args;
+	struct mshv_user_irqfd args;
 
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
