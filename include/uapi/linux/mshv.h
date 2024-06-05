@@ -224,7 +224,7 @@ enum {
 
 #define MSHV_IOEVENTFD_VALID_FLAG_MASK	((1 << mshv_ioeventfd_flag_nr_max) - 1)
 
-struct mshv_ioeventfd {
+struct mshv_user_ioeventfd {
 	__u64 datamatch;
 	__u64 addr;	   /* legal pio/mmio address */
 	__u32 len;	   /* 1, 2, 4, or 8 bytes    */
@@ -298,7 +298,7 @@ struct mshv_root_hvcall {
 #define MSHV_MAP_GUEST_MEMORY		_IOW(MSHV_IOCTL, 0x02, struct mshv_user_mem_region)
 #define MSHV_UNMAP_GUEST_MEMORY		_IOW(MSHV_IOCTL, 0x03, struct mshv_user_mem_region)
 #define MSHV_IRQFD			_IOW(MSHV_IOCTL, 0xE, struct mshv_user_irqfd)
-#define MSHV_IOEVENTFD			_IOW(MSHV_IOCTL, 0xF, struct mshv_ioeventfd)
+#define MSHV_IOEVENTFD			_IOW(MSHV_IOCTL, 0xF, struct mshv_user_ioeventfd)
 #define MSHV_SET_MSI_ROUTING		_IOW(MSHV_IOCTL, 0x11, struct mshv_user_irq_table)
 #define MSHV_GET_GPA_ACCESS_STATES	_IOWR(MSHV_IOCTL, 0x12, \
 					      struct mshv_get_gpa_pages_access_state)

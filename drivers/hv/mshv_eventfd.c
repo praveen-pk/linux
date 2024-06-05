@@ -592,11 +592,11 @@ void mshv_irqfd_wq_cleanup(void)
  * --------------------------------------------------------------------
  */
 
-static void ioeventfd_release(struct kernel_mshv_ioeventfd *p, u64 partition_id)
+static void ioeventfd_release(struct mshv_ioeventfd *p, u64 partition_id)
 {
-	if (p->doorbell_id > 0)
-		mshv_unregister_doorbell(partition_id, p->doorbell_id);
-	eventfd_ctx_put(p->eventfd);
+	if (p->iovntfd_doorbell_id > 0)
+		mshv_unregister_doorbell(partition_id, p->iovntfd_doorbell_id);
+	eventfd_ctx_put(p->iovntfd_eventfd);
 	kfree(p);
 }
 
@@ -604,12 +604,13 @@ static void ioeventfd_release(struct kernel_mshv_ioeventfd *p, u64 partition_id)
 static void ioeventfd_mmio_write(int doorbell_id, void *data)
 {
 	struct mshv_partition *partition = (struct mshv_partition *)data;
-	struct kernel_mshv_ioeventfd *p;
+	struct mshv_ioeventfd *p;
 
 	rcu_read_lock();
-	hlist_for_each_entry_rcu(p, &partition->ioeventfds.items, hnode) {
-		if (p->doorbell_id == doorbell_id) {
-			eventfd_signal(p->eventfd, 1);
+	hlist_for_each_entry_rcu(p, &partition->ioeventfds.items,
+				 iovntfd_hnode){
+		if (p->iovntfd_doorbell_id == doorbell_id) {
+			eventfd_signal(p->iovntfd_eventfd, 1);
 			break;
 		}
 	}
@@ -617,25 +618,26 @@ static void ioeventfd_mmio_write(int doorbell_id, void *data)
 }
 
 static bool ioeventfd_check_collision(struct mshv_partition *pt,
-				      struct kernel_mshv_ioeventfd *p)
+				      struct mshv_ioeventfd *p)
 	__must_hold(&pt->mutex)
 {
-	struct kernel_mshv_ioeventfd *_p;
+	struct mshv_ioeventfd *_p;
 
-	hlist_for_each_entry(_p, &pt->ioeventfds.items, hnode)
-		if (_p->addr == p->addr && _p->length == p->length &&
-		    (_p->wildcard || p->wildcard ||
-		     _p->datamatch == p->datamatch))
+	hlist_for_each_entry(_p, &pt->ioeventfds.items, iovntfd_hnode)
+		if (_p->iovntfd_addr == p->iovntfd_addr &&
+		    _p->iovntfd_length == p->iovntfd_length &&
+		    (_p->iovntfd_wildcard || p->iovntfd_wildcard ||
+		     _p->iovntfd_datamatch == p->iovntfd_datamatch))
 			return true;
 
 	return false;
 }
 
 static int mshv_assign_ioeventfd(struct mshv_partition *pt,
-				 struct mshv_ioeventfd *args)
+				 struct mshv_user_ioeventfd *args)
 	__must_hold(&pt->mutex)
 {
-	struct kernel_mshv_ioeventfd *p;
+	struct mshv_ioeventfd *p;
 	struct eventfd_ctx *eventfd;
 	u64 doorbell_flags = 0;
 	int ret;
@@ -686,15 +688,15 @@ static int mshv_assign_ioeventfd(struct mshv_partition *pt,
 		goto fail;
 	}
 
-	p->addr    = args->addr;
-	p->length  = args->len;
-	p->eventfd = eventfd;
+	p->iovntfd_addr = args->addr;
+	p->iovntfd_length  = args->len;
+	p->iovntfd_eventfd = eventfd;
 
 	/* The datamatch feature is optional, otherwise this is a wildcard */
 	if (args->flags & MSHV_IOEVENTFD_FLAG_DATAMATCH)
-		p->datamatch = args->datamatch;
+		p->iovntfd_datamatch = args->datamatch;
 	else {
-		p->wildcard = true;
+		p->iovntfd_wildcard = true;
 		doorbell_flags |= HV_DOORBELL_FLAG_TRIGGER_ANY_VALUE;
 	}
 
@@ -704,16 +706,16 @@ static int mshv_assign_ioeventfd(struct mshv_partition *pt,
 	}
 
 	ret = mshv_register_doorbell(pt->id, ioeventfd_mmio_write,
-				     (void *)pt, p->addr,
-				     p->datamatch, doorbell_flags);
+				     (void *)pt, p->iovntfd_addr,
+				     p->iovntfd_datamatch, doorbell_flags);
 	if (ret < 0) {
 		pr_err("Failed to register ioeventfd doorbell!\n");
 		goto unlock_fail;
 	}
 
-	p->doorbell_id = ret;
+	p->iovntfd_doorbell_id = ret;
 
-	hlist_add_head_rcu(&p->hnode, &pt->ioeventfds.items);
+	hlist_add_head_rcu(&p->iovntfd_hnode, &pt->ioeventfds.items);
 
 	return 0;
 
@@ -727,10 +729,10 @@ fail:
 }
 
 static int mshv_deassign_ioeventfd(struct mshv_partition *pt,
-				   struct mshv_ioeventfd *args)
+				   struct mshv_user_ioeventfd *args)
 	__must_hold(&pt->mutex)
 {
-	struct kernel_mshv_ioeventfd *p;
+	struct mshv_ioeventfd *p;
 	struct eventfd_ctx *eventfd;
 	struct hlist_node *n;
 	int ret = -ENOENT;
@@ -742,19 +744,20 @@ static int mshv_deassign_ioeventfd(struct mshv_partition *pt,
 	if (IS_ERR(eventfd))
 		return PTR_ERR(eventfd);
 
-	hlist_for_each_entry_safe(p, n, &pt->ioeventfds.items, hnode) {
+	hlist_for_each_entry_safe(p, n, &pt->ioeventfds.items, iovntfd_hnode) {
 		bool wildcard = !(args->flags & MSHV_IOEVENTFD_FLAG_DATAMATCH);
 
-		if (p->eventfd != eventfd  ||
-		    p->addr != args->addr  ||
-		    p->length != args->len ||
-		    p->wildcard != wildcard)
+		if (p->iovntfd_eventfd != eventfd  ||
+		    p->iovntfd_addr != args->addr  ||
+		    p->iovntfd_length != args->len ||
+		    p->iovntfd_wildcard != wildcard)
 			continue;
 
-		if (!p->wildcard && p->datamatch != args->datamatch)
+		if (!p->iovntfd_wildcard &&
+		    p->iovntfd_datamatch != args->datamatch)
 			continue;
 
-		hlist_del_rcu(&p->hnode);
+		hlist_del_rcu(&p->iovntfd_hnode);
 		synchronize_rcu();
 		ioeventfd_release(p, pt->id);
 		ret = 0;
@@ -766,7 +769,8 @@ static int mshv_deassign_ioeventfd(struct mshv_partition *pt,
 	return ret;
 }
 
-int mshv_ioeventfd(struct mshv_partition *pt, struct mshv_ioeventfd *args)
+int mshv_set_unset_ioeventfd(struct mshv_partition *pt,
+			     struct mshv_user_ioeventfd *args)
 	__must_hold(&pt->mutex)
 {
 	/* PIO not yet implemented */
@@ -794,13 +798,13 @@ void mshv_eventfd_release(struct mshv_partition *pt)
 {
 	struct hlist_head items;
 	struct hlist_node *n;
-	struct kernel_mshv_ioeventfd *p;
+	struct mshv_ioeventfd *p;
 
 	hlist_move_list(&pt->ioeventfds.items, &items);
 	synchronize_rcu();
 
-	hlist_for_each_entry_safe(p, n, &items, hnode) {
-		hlist_del(&p->hnode);
+	hlist_for_each_entry_safe(p, n, &items, iovntfd_hnode) {
+		hlist_del(&p->iovntfd_hnode);
 		ioeventfd_release(p, pt->id);
 	}
 

@@ -54,16 +54,17 @@ int mshv_set_unset_irqfd(struct mshv_partition *partition,
 int mshv_irqfd_wq_init(void);
 void mshv_irqfd_wq_cleanup(void);
 
-struct kernel_mshv_ioeventfd {
-	struct hlist_node    hnode;
-	u64		     addr;
-	int		     length;
-	struct eventfd_ctx  *eventfd;
-	u64		     datamatch;
-	int		     doorbell_id;
-	bool		     wildcard;
+struct mshv_ioeventfd {
+	struct hlist_node    iovntfd_hnode;
+	u64		     iovntfd_addr;
+	int		     iovntfd_length;
+	struct eventfd_ctx  *iovntfd_eventfd;
+	u64		     iovntfd_datamatch;
+	int		     iovntfd_doorbell_id;
+	bool		     iovntfd_wildcard;
 };
 
-int mshv_ioeventfd(struct mshv_partition *pt, struct mshv_ioeventfd *args);
+int mshv_set_unset_ioeventfd(struct mshv_partition *pt,
+			     struct mshv_user_ioeventfd *args);
 
 #endif /* __LINUX_MSHV_EVENTFD_H */

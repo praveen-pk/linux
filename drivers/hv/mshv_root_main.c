@@ -1669,12 +1669,12 @@ static long
 mshv_partition_ioctl_ioeventfd(struct mshv_partition *partition,
 		void __user *user_args)
 {
-	struct mshv_ioeventfd args;
+	struct mshv_user_ioeventfd args;
 
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
 
-	return mshv_ioeventfd(partition, &args);
+	return mshv_set_unset_ioeventfd(partition, &args);
 }
 
 static long
