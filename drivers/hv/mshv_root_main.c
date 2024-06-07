@@ -1669,24 +1669,24 @@ static long
 mshv_partition_ioctl_ioeventfd(struct mshv_partition *partition,
 		void __user *user_args)
 {
-	struct mshv_ioeventfd args;
+	struct mshv_user_ioeventfd args;
 
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
 
-	return mshv_ioeventfd(partition, &args);
+	return mshv_set_unset_ioeventfd(partition, &args);
 }
 
 static long
 mshv_partition_ioctl_irqfd(struct mshv_partition *partition,
 		void __user *user_args)
 {
-	struct mshv_irqfd args;
+	struct mshv_user_irqfd args;
 
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
 
-	return mshv_irqfd(partition, &args);
+	return mshv_set_unset_irqfd(partition, &args);
 }
 
 static long
@@ -1810,18 +1810,18 @@ static long
 mshv_partition_ioctl_set_msi_routing(struct mshv_partition *partition,
 		void __user *user_args)
 {
-	struct mshv_msi_routing_entry *entries = NULL;
-	struct mshv_msi_routing args;
+	struct mshv_user_irq_entry *entries = NULL;
+	struct mshv_user_irq_table args;
 	long ret;
 
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
 
-	if (args.nr > MSHV_MAX_MSI_ROUTES)
+	if (args.nr > MSHV_MAX_GUEST_IRQS)
 		return -EINVAL;
 
 	if (args.nr) {
-		struct mshv_msi_routing __user *urouting = user_args;
+		struct mshv_user_irq_table __user *urouting = user_args;
 
 		entries = vmemdup_user(urouting->entries,
 				       array_size(sizeof(*entries),
@@ -1829,7 +1829,7 @@ mshv_partition_ioctl_set_msi_routing(struct mshv_partition *partition,
 		if (IS_ERR(entries))
 			return PTR_ERR(entries);
 	}
-	ret = mshv_set_msi_routing(partition, entries, args.nr);
+	ret = mshv_update_routing_table(partition, entries, args.nr);
 	kvfree(entries);
 
 	return ret;
@@ -2560,7 +2560,7 @@ static void destroy_partition(struct mshv_partition *partition)
 	hv_call_delete_partition(partition->id);
 
 	mshv_destroy_devices(partition);
-	mshv_free_msi_routing(partition);
+	mshv_free_routing_table(partition);
 	kfree(partition);
 }
 

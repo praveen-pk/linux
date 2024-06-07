@@ -203,7 +203,7 @@ struct mshv_create_vp {
 #define MSHV_IRQFD_FLAG_DEASSIGN	(1 << 0)
 #define MSHV_IRQFD_FLAG_RESAMPLE	(1 << 1)
 
-struct mshv_irqfd {
+struct mshv_user_irqfd {
 	__s32 fd;
 	__s32 resamplefd;
 	__u32 gsi;
@@ -224,26 +224,26 @@ enum {
 
 #define MSHV_IOEVENTFD_VALID_FLAG_MASK	((1 << mshv_ioeventfd_flag_nr_max) - 1)
 
-struct mshv_ioeventfd {
+struct mshv_user_ioeventfd {
 	__u64 datamatch;
-	__u64 addr;        /* legal pio/mmio address */
-	__u32 len;         /* 1, 2, 4, or 8 bytes    */
+	__u64 addr;	   /* legal pio/mmio address */
+	__u32 len;	   /* 1, 2, 4, or 8 bytes    */
 	__s32 fd;
 	__u32 flags;
 	__u8  pad[4];
 };
 
-struct mshv_msi_routing_entry {
+struct mshv_user_irq_entry {
 	__u32 gsi;
 	__u32 address_lo;
 	__u32 address_hi;
 	__u32 data;
 };
 
-struct mshv_msi_routing {
+struct mshv_user_irq_table {
 	__u32 nr;
 	__u32 pad;
-	struct mshv_msi_routing_entry entries[0];
+	struct mshv_user_irq_entry entries[0];
 };
 
 /* Subsection - SEV/SNP data structures */
@@ -270,14 +270,14 @@ struct mshv_complete_isolated_import {
  * struct mshv_root_hvcall - arguments for MSHV_ROOT_HVCALL
  * @code: Hypercall code (HVCALL_*)
  * @reps: in: Rep count ('repcount')
- *        out: Reps completed ('repcomp'). MBZ unless rep hvcall
+ *	  out: Reps completed ('repcomp'). MBZ unless rep hvcall
  * @in_sz: Size of input incl rep data. <= HV_HYP_PAGE_SIZE
  * @out_sz: Size of output buffer. <= HV_HYP_PAGE_SIZE. MBZ if out_ptr is 0
  * @status: in: MBZ
- *          out: HV_STATUS_* from hypercall
+ *	    out: HV_STATUS_* from hypercall
  * @rsvd: MBZ
  * @in_ptr: Input data buffer (struct hv_input_*). If used with partition or
- *          vp fd, partition id field is added by kernel.
+ *	    vp fd, partition id field is added by kernel.
  * @out_ptr: Output data buffer (optional)
  */
 struct mshv_root_hvcall {
@@ -297,9 +297,9 @@ struct mshv_root_hvcall {
 #define MSHV_CREATE_DEVICE		_IOWR(MSHV_IOCTL, 0x13, struct mshv_create_device)
 #define MSHV_MAP_GUEST_MEMORY		_IOW(MSHV_IOCTL, 0x02, struct mshv_user_mem_region)
 #define MSHV_UNMAP_GUEST_MEMORY		_IOW(MSHV_IOCTL, 0x03, struct mshv_user_mem_region)
-#define MSHV_IRQFD			_IOW(MSHV_IOCTL, 0xE, struct mshv_irqfd)
-#define MSHV_IOEVENTFD			_IOW(MSHV_IOCTL, 0xF, struct mshv_ioeventfd)
-#define MSHV_SET_MSI_ROUTING		_IOW(MSHV_IOCTL, 0x11, struct mshv_msi_routing)
+#define MSHV_IRQFD			_IOW(MSHV_IOCTL, 0xE, struct mshv_user_irqfd)
+#define MSHV_IOEVENTFD			_IOW(MSHV_IOCTL, 0xF, struct mshv_user_ioeventfd)
+#define MSHV_SET_MSI_ROUTING		_IOW(MSHV_IOCTL, 0x11, struct mshv_user_irq_table)
 #define MSHV_GET_GPA_ACCESS_STATES	_IOWR(MSHV_IOCTL, 0x12, \
 					      struct mshv_get_gpa_pages_access_state)
 /* SEV/SNP-related partition IOCTLs */
@@ -435,7 +435,7 @@ struct mshv_trace_config {
 /* /dev/mshv_diag device */
 #define MSHV_GET_TRACE_FD				\
 		_IO(MSHV_DIAG_IOCTL, HV_EVENT_LOG_TYPE_LOCAL_DIAGNOSTICS)
-#define MSHV_GET_DIAGLOG_FD                             \
+#define MSHV_GET_DIAGLOG_FD				\
 		_IO(MSHV_DIAG_IOCTL, HV_EVENT_LOG_TYPE_SYSTEM_DIAGNOSTICS)
 
 /* Trace fd created with MSHV_GET_TRACE_FD */

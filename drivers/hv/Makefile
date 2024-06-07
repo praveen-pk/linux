@@ -13,7 +13,7 @@ CFLAGS_hv_balloon.o = -I$(src)
 
 mshv-y			+= mshv_main.o
 mshv_root-y		:= mshv_root_main.o mshv_synic.o mshv_portid_table.o\
-			   mshv_eventfd.o mshv_msi.o vfio.o mshv_root_hv_call.o\
+			   mshv_eventfd.o mshv_irq.o vfio.o mshv_root_hv_call.o\
 			   hv_call.o
 
 mshv_root-$(CONFIG_DEBUG_FS)	+= mshv_debugfs.o
