@@ -30,42 +30,28 @@ struct mshv_device {
 
 };
 
-/* create, destroy, and name are mandatory */
+/*
+ * @create is called holding partition->mutex and any operations not suitable
+ *	to do while holding the lock should be deferred to init (see below.
+ * @init is called after create if create is successful and is called
+ *	outside of holding partition->mutex.
+ * @destroy is responsible for freeing dev.
+ * It may be called before or after destructors are called
+ *	on emulated I/O regions, depending on whether a reference is
+ *	held by a vcpu or other mshv component that gets destroyed
+ *	after the emulated I/O.
+ * @release is an alternative method to free the device. It is
+ *	called when the device file descriptor is closed. Once
+ *	release is called, the destroy method will not be called
+ *	anymore as the device is removed from the device list of
+ *	the VM. partition->mutex is held.
+ */
 struct mshv_device_ops {
-	const char *name;
-
-	/*
-	 * create is called holding partition->mutex and any operations not suitable
-	 * to do while holding the lock should be deferred to init (see
-	 * below).
-	 */
-	int (*create)(struct mshv_device *dev, u32 type);
-
-	/*
-	 * init is called after create if create is successful and is called
-	 * outside of holding partition->mutex.
-	 */
+	const char *name;				   /* required */
+	int (*create)(struct mshv_device *dev, u32 type);  /* required */
 	void (*init)(struct mshv_device *dev);
-
-	/*
-	 * Destroy is responsible for freeing dev.
-	 *
-	 * Destroy may be called before or after destructors are called
-	 * on emulated I/O regions, depending on whether a reference is
-	 * held by a vcpu or other mshv component that gets destroyed
-	 * after the emulated I/O.
-	 */
-	void (*destroy)(struct mshv_device *dev);
-
-	/*
-	 * Release is an alternative method to free the device. It is
-	 * called when the device file descriptor is closed. Once
-	 * release is called, the destroy method will not be called
-	 * anymore as the device is removed from the device list of
-	 * the VM. partition->mutex is held.
-	 */
+	void (*destroy)(struct mshv_device *dev);	   /* required */
 	void (*release)(struct mshv_device *dev);
-
 	int (*set_attr)(struct mshv_device *dev, struct mshv_device_attr *attr);
 	int (*get_attr)(struct mshv_device *dev, struct mshv_device_attr *attr);
 	int (*has_attr)(struct mshv_device *dev, struct mshv_device_attr *attr);
@@ -76,7 +62,7 @@ struct mshv_device_ops {
 
 struct mshv_vfio_group {
 	struct list_head node;
-	struct vfio_group *vfio_group;
+	struct vfio_group *vfio_group;	/* list of struct mshv_vfio_group */
 };
 
 struct mshv_vfio {
@@ -87,7 +73,7 @@ struct mshv_vfio {
 static struct vfio_group *mshv_vfio_group_get_external_user(struct file *filep)
 {
 	struct vfio_group *vfio_group;
-	struct vfio_group *(*fn)(struct file *);
+	struct vfio_group *(*fn)(struct file *filep);
 
 	fn = symbol_get(vfio_group_get_external_user);
 	if (!fn)
@@ -118,7 +104,7 @@ static bool mshv_vfio_external_group_match_file(struct vfio_group *group,
 
 static void mshv_vfio_group_put_external_user(struct vfio_group *vfio_group)
 {
-	void (*fn)(struct vfio_group *);
+	void (*fn)(struct vfio_group *vfio_group);
 
 	fn = symbol_get(vfio_group_put_external_user);
 	if (!fn)
@@ -129,9 +115,9 @@ static void mshv_vfio_group_put_external_user(struct vfio_group *vfio_group)
 	symbol_put(vfio_group_put_external_user);
 }
 
-static int mshv_vfio_set_group(struct mshv_device *dev, long attr, u64 arg)
+static int mshv_vfio_set_group(struct mshv_device *hvdev, long attr, u64 arg)
 {
-	struct mshv_vfio *mv = dev->private;
+	struct mshv_vfio *mv = hvdev->private;
 	struct vfio_group *vfio_group;
 	struct mshv_vfio_group *mvg;
 	int32_t __user *argp = (int32_t __user *)(unsigned long)arg;
@@ -212,18 +198,18 @@ static int mshv_vfio_set_group(struct mshv_device *dev, long attr, u64 arg)
 	return -ENXIO;
 }
 
-static int mshv_vfio_set_attr(struct mshv_device *dev,
+static int mshv_vfio_set_attr(struct mshv_device *hvdev,
 			      struct mshv_device_attr *attr)
 {
 	switch (attr->group) {
 	case MSHV_DEV_VFIO_GROUP:
-		return mshv_vfio_set_group(dev, attr->attr, attr->addr);
+		return mshv_vfio_set_group(hvdev, attr->attr, attr->addr);
 	}
 
 	return -ENXIO;
 }
 
-static int mshv_vfio_has_attr(struct mshv_device *dev,
+static int mshv_vfio_has_attr(struct mshv_device *hvdev,
 			      struct mshv_device_attr *attr)
 {
 	switch (attr->group) {
@@ -240,9 +226,9 @@ static int mshv_vfio_has_attr(struct mshv_device *dev,
 	return -ENXIO;
 }
 
-static void mshv_vfio_destroy(struct mshv_device *dev)
+static void mshv_vfio_destroy(struct mshv_device *hvdev)
 {
-	struct mshv_vfio *mv = dev->private;
+	struct mshv_vfio *mv = hvdev->private;
 	struct mshv_vfio_group *mvg, *tmp;
 
 	list_for_each_entry_safe(mvg, tmp, &mv->group_list, node) {
@@ -252,7 +238,7 @@ static void mshv_vfio_destroy(struct mshv_device *dev)
 	}
 
 	kfree(mv);
-	kfree(dev);
+	kfree(hvdev);
 }
 
 static int mshv_vfio_create(struct mshv_device *dev, u32 type);
@@ -265,13 +251,13 @@ static struct mshv_device_ops mshv_vfio_ops = {
 	.has_attr = mshv_vfio_has_attr,
 };
 
-static int mshv_vfio_create(struct mshv_device *dev, u32 type)
+static int mshv_vfio_create(struct mshv_device *hvdev, u32 type)
 {
 	struct mshv_device *tmp;
 	struct mshv_vfio *mv;
 
 	/* Only one VFIO "device" per VM */
-	hlist_for_each_entry(tmp, &dev->partition->devices, partition_node)
+	hlist_for_each_entry(tmp, &hvdev->partition->devices, partition_node)
 		if (tmp->ops == &mshv_vfio_ops)
 			return -EBUSY;
 
@@ -282,7 +268,7 @@ static int mshv_vfio_create(struct mshv_device *dev, u32 type)
 	INIT_LIST_HEAD(&mv->group_list);
 	mutex_init(&mv->lock);
 
-	dev->private = mv;
+	hvdev->private = mv;
 
 	return 0;
 }
