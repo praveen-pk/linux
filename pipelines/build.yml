@@ -433,21 +433,25 @@ stages:
         ./pipelines/scripts/ref-package "$(Build.SourceBranch)"
       displayName: 'Package tarball'
 
-    - bash: |
-        set -e
-        set -x
-        TGZ=$(ls -1 *.tar.gz | head -1)
-        SUM="${TGZ}.sha256"
-        # TODO might move the checksum calculation to the packaging script instead
-        sha256sum "${TGZ}" | cut -d ' ' -f1 > "${SUM}"
-        for i in "${TGZ}" "${SUM}"; do
+    - task: AzureCLI@2
+      inputs:
+        connectedServiceNameARM: lsg-virt-mi2
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          set -e
+          set -x
+          TGZ=$(ls -1 *.tar.gz | head -1)
+          SUM="${TGZ}.sha256"
+          # TODO might move the checksum calculation to the packaging script instead
+          sha256sum "${TGZ}" | cut -d ' ' -f1 > "${SUM}"
+          for i in "${TGZ}" "${SUM}"; do
                 az storage blob upload \
-                  --account-key '$(IMAGES_PRIVATE_STORAGE_ACCOUNT_KEY)' \
                   --account-name '$(SOURCES_STORAGE_ACCOUNT)' \
                   --container-name '$(SOURCES_STORAGE_CONTAINER)' \
                   --file "${i}" \
                   --name "${i}"
-        done
+          done
       displayName: 'Upload tarball'
 
   - job: Kernel_Spec
