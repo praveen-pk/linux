@@ -318,12 +318,12 @@ stages:
           # TODO might move the checksum calculation to the packaging script instead
           sha256sum "${TGZ}" | cut -d ' ' -f1 > "${SUM}"
           for i in "${TGZ}" "${SUM}"; do
-                az storage blob upload \
-                  --account-name '$(SOURCES_STORAGE_ACCOUNT)' \
-                  --container-name '$(SOURCES_STORAGE_CONTAINER)' \
-                  --file "${i}" \
-                  --name "${i}"
+                URL="https://$(SOURCES_STORAGE_ACCOUNT).blob.core.windows.net/$(SOURCES_STORAGE_CONTAINER)/${i}"
+                azcopy copy ${i} ${URL}
           done
+      env:
+        AZCOPY_AUTO_LOGIN_TYPE: "AZCLI"
+        AZCOPY_TENANT_ID: $(LSG_TENANT_ID)
       displayName: 'Upload tarball'
 
   - job: Kernel_Spec
