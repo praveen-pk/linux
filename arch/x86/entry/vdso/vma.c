@@ -191,7 +191,9 @@ static vm_fault_t vvar_fault(const struct vm_special_mapping *sm,
 		pfn = hv_get_tsc_pfn();
 
 		if (pfn && vclock_was_used(VDSO_CLOCKMODE_HVCLOCK))
-			return vmf_insert_pfn(vma, vmf->address, pfn);
+			return vmf_insert_pfn_prot(vma, vmf->address,
+					pfn,
+					pgprot_decrypted(vma->vm_page_prot));
 	} else if (sym_offset == image->sym_timens_page) {
 		struct page *timens_page = find_timens_vvar_page(vma);
 
