@@ -28,6 +28,7 @@ void __printk_safe_exit(void)
 
 static DEFINE_SPINLOCK(printk_lock);
 
+#ifdef CONFIG_SEV_GUEST
 static int hv_sev_printf2(const char *fmt)
 {
 	char buf[1024];
@@ -124,6 +125,7 @@ void hv_sev_debugbreak(u32 val)
 	asm volatile ("wrmsr" :: "c" (0xc0010130), "a" (low), "d" (high));
 }
 EXPORT_SYMBOL_GPL(hv_sev_debugbreak);
+#endif
 
 asmlinkage int vprintk(const char *fmt, va_list args)
 {
@@ -135,11 +137,13 @@ asmlinkage int vprintk(const char *fmt, va_list args)
 		return vkdb_printf(KDB_MSGSRC_PRINTK, fmt, args);
 #endif
 
+#ifdef CONFIG_SEV_GUEST
 	if (cc_platform_has(CC_ATTR_GUEST_SEV_SNP)) {
 		va_copy(args2, args);
 		hv_sev_printf(fmt, args2);
 		va_end(args2);
 	}
+#endif
 
 	/*
 	 * Use the main logbuf even in NMI. But avoid calling console
