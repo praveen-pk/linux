@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+
+set -x
+set -e
+
+export_modules=""
+
+# Get the options
+while getopts "e:h" option; do
+   case $option in
+      e) # set export_module flag to produce kernel module in given path
+         export_modules="$OPTARG";;
+      h) # print help menu for kernel-compile script
+	 set +x
+         echo "-h: Print the help menu with all options"
+         echo "-e: Pass this flag to save kernel modules.It will create folder path passed as argument and store all the modules in it.For example, ./kernel-compile -e /mnt/kernel_modules <FLAVOR>"
+         exit;;
+     \?) # Invalid option
+         echo "Error: Invalid option. Please use -h to print the option menu."
+         exit 1;;
+   esac
+done
+
+shift $((OPTIND-1))
+
+FLAVOR=$1
+
+SOURCE_ROOT=$(cd "$(dirname "$0")/../.." && pwd)
+cd "${SOURCE_ROOT}"
+
+ARCH=$(uname -m)
+if [ "$ARCH" == "aarch64" ];
+then
+    ARCH="arm64"
+fi
+
+make mrproper
+
+CONFIG=mshv_defconfig
+case "${FLAVOR}" in
+	mariner)
+		curl -o .config https://raw.githubusercontent.com/microsoft/CBL-Mariner/main/SPECS/kernel-mshv/config
+		CONFIG=olddefconfig
+		;;
+	uvm)
+		CONFIG=uvm_defconfig
+		if [ "x86_64" == "${ARCH}" ]; then
+			KCFLAGS="-Wa,-mx86-used-note=no"
+		fi
+		;;
+	dom0-built-in)
+		# pass
+		;;
+esac
+
+make LC_ALL= ARCH="${ARCH}" ${CONFIG}
+
+case "${FLAVOR}" in
+	dom0-vtl)
+		sed -i 's/^# CONFIG_TRANSPARENT_HUGEPAGE is not set/CONFIG_TRANSPARENT_HUGEPAGE=y/' .config
+		echo 'CONFIG_MSHV_VTL=y' >> .config
+        ;;
+	dom0-module)
+		sed -i 's/MSHV=y/MSHV=m/' .config
+		sed -i 's/MSHV_ROOT=y/MSHV_ROOT=m/' .config
+		;;
+	dom0-disabled)
+		sed -i 's/MSHV=.*//' .config
+		sed -i 's/MSHV_ROOT=.*//' .config
+		;;
+esac
+
+KCFLAGS="${KCFLAGS}" make -j"$(nproc)" ARCH="${ARCH}" W=1
+
+if [ "uvm" == "${FLAVOR}" ]; then
+	# There are no modules nor any other tools. The only artifact is the image.
+	if [ "$export_modules" != "" ]; then
+		echo "Modules are not to be built for flavor '${FLAVOR}'"
+	fi
+	exit 0
+fi
+
+make -j"$(nproc)" ARCH="${ARCH}" W=1 modules
+
+if [ "$export_modules" != "" ]; then
+	mkdir -p $export_modules
+	make -j"$(nproc)" ARCH="${ARCH}" W=1 modules_install INSTALL_MOD_PATH=$export_modules
+fi
+
+make -j"$(nproc)" ARCH="${ARCH}" -C tools/perf PYTHON=python3 all
+make -j"$(nproc)" ARCH="${ARCH}" -C tools/bpf/bpftool
+
