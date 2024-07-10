@@ -172,27 +172,28 @@ struct mshv_complete_isolated_import {
  *******************************************
  */
 
-#define MSHV_API_VERSION	0
-
 enum {
-	MSHV_CAP_RSVD = 0,
-	MSHV_CAP_VTL_REGISTER_PAGE,
-	MSHV_CAP_VTL_RETURN_ACTION,
-	MSHV_CAP_VTL_DR6_SHARED,
+	MSHV_VTL_CAP_BIT_REGISTER_PAGE,
+	MSHV_VTL_CAP_BIT_RETURN_ACTION,
+	MSHV_VTL_CAP_BIT_DR6_SHARED,
+	MSHV_VTL_CAP_BIT_COUNT,
 };
+#define MSHV_VTL_CAP_MASK ((1 << MSHV_CAP_BIT_COUNT) - 1)
 
-struct mshv_version_info {
-	__u32 mshv_uapi_version;	/* in: Must contain MSHV_API_VERSION */
-	__u32 rsvd_0[3];		/* Must Be Zero (MBZ) */
-	__u32 mshv_api_version;		/* out: kernel api version */
-	__u32 rsvd_1;			/* MBZ */
-	__u64 mshv_capabilities;	/* out: bitmask of 1 << MSHV_CAP_* */
+/**
+ * struct mshv_vtl_capabilities - arguments for MSHV_GET_VTL_CAPS
+ * @bits: in: MBZ
+ *	  out: bitmask of MSHV_VTL_CAP_BIT << 1
+ */
+struct mshv_vtl_capabilities {
+	__u64 bits;
 };
 
 /* /dev/mshv */
-#define MSHV_GET_VERSION_INFO	_IOWR(MSHV_IOCTL, 0x00, struct mshv_version_info)
 #define MSHV_CREATE_PARTITION	_IOW(MSHV_IOCTL, 0x01, struct mshv_create_partition)
-#define MSHV_CREATE_VTL		_IOR(MSHV_IOCTL, 0x1D, char)
+/* Start nr again from 0x00 - mshv_vtl ioctls won't collide with mshv_root */
+#define MSHV_CREATE_VTL		_IO(MSHV_IOCTL, 0x00)
+#define MSHV_GET_VTL_CAPS	_IOR(MSHV_IOCTL, 0x01, struct mshv_vtl_capabilities)
 
 /*
  ************************

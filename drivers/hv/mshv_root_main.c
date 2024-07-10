@@ -2619,7 +2619,7 @@ add_partition(struct mshv_partition *partition)
 }
 
 static long
-__mshv_ioctl_create_partition(void __user *user_arg, struct device *module_dev)
+mshv_ioctl_create_partition(void __user *user_arg, struct device *module_dev)
 {
 	struct mshv_create_partition args;
 	struct mshv_partition *partition;
@@ -3039,31 +3039,19 @@ static void mshv_root_partition_exit(void)
 	root_scheduler_deinit();
 }
 
-static long __mshv_ioctl_get_version_info(struct mshv_version_info *info)
-{
-	info->mshv_api_version = MSHV_API_VERSION;
-	info->mshv_capabilities = 0;
-	return 0;
-}
-
-static long __mshv_dev_ioctl(struct file *filp, unsigned int ioctl,
-	unsigned long arg)
+static long mshv_dev_ioctl(struct file *filp, unsigned int ioctl,
+			   unsigned long arg)
 {
 	struct miscdevice *misc = filp->private_data;
 
 	switch (ioctl) {
 	case MSHV_CREATE_PARTITION:
-		return __mshv_ioctl_create_partition((void __user *)arg,
-				misc->this_device);
+		return mshv_ioctl_create_partition((void __user *)arg,
+						   misc->this_device);
 	}
 
 	return -ENOTTY;
 }
-
-static const struct mshv_ops mshv_root_ops = {
-	.get_version_info	= __mshv_ioctl_get_version_info,
-	.ioctl			= __mshv_dev_ioctl,
-};
 
 static int __init mshv_root_partition_init(struct device *dev)
 {
@@ -3110,7 +3098,7 @@ int __init mshv_parent_partition_init(void)
 	if (hv_get_hypervisor_version(&version_info))
 		return -ENODEV;
 
-	ret = mshv_set_ops(&mshv_root_ops, &dev);
+	ret = mshv_set_ioctl_func(mshv_dev_ioctl, &dev);
 	if (ret)
 		return ret;
 
@@ -3126,7 +3114,7 @@ int __init mshv_parent_partition_init(void)
 	if (!mshv_root.synic_pages) {
 		dev_err(dev, "Failed to allocate percpu synic page\n");
 		ret = -ENOMEM;
-		goto unset_ops;
+		goto unset_func;
 	}
 
 	ret = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN, "mshv_synic",
@@ -3170,8 +3158,8 @@ remove_cpu_state:
 	cpuhp_remove_state(mshv_cpuhp_online);
 free_synic_pages:
 	free_percpu(mshv_root.synic_pages);
-unset_ops:
-	mshv_set_ops(NULL, NULL);
+unset_func:
+	mshv_set_ioctl_func(NULL, NULL);
 	return ret;
 }
 
@@ -3179,7 +3167,7 @@ void __exit mshv_parent_partition_exit(void)
 {
 	hv_remove_mshv_irq();
 	mshv_port_table_fini();
-	mshv_set_ops(NULL, NULL);
+	mshv_set_ioctl_func(NULL, NULL);
 	mshv_vfio_ops_exit();
 	mshv_irqfd_wq_cleanup();
 	if (hv_root_partition())
