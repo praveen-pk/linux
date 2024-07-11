@@ -240,8 +240,12 @@ struct mshv_user_mem_region {
 	__u8 rsvd[7];
 };
 
-#define MSHV_IRQFD_FLAG_DEASSIGN	(1 << 0)
-#define MSHV_IRQFD_FLAG_RESAMPLE	(1 << 1)
+enum {
+	MSHV_IRQFD_BIT_DEASSIGN,
+	MSHV_IRQFD_BIT_RESAMPLE,
+	MSHV_IRQFD_BIT_COUNT,
+};
+#define MSHV_IRQFD_FLAGS_MASK	((1 << MSHV_IRQFD_BIT_COUNT) - 1)
 
 struct mshv_user_irqfd {
 	__s32 fd;
@@ -251,18 +255,12 @@ struct mshv_user_irqfd {
 };
 
 enum {
-	/* TODO: convert to CAPS_SNAKE_CASE */
-	mshv_ioeventfd_flag_nr_datamatch,
-	mshv_ioeventfd_flag_nr_pio,
-	mshv_ioeventfd_flag_nr_deassign,
-	mshv_ioeventfd_flag_nr_max,
+	MSHV_IOEVENTFD_BIT_DATAMATCH,
+	MSHV_IOEVENTFD_BIT_PIO,
+	MSHV_IOEVENTFD_BIT_DEASSIGN,
+	MSHV_IOEVENTFD_BIT_COUNT,
 };
-
-#define MSHV_IOEVENTFD_FLAG_DATAMATCH	(1 << mshv_ioeventfd_flag_nr_datamatch)
-#define MSHV_IOEVENTFD_FLAG_PIO		(1 << mshv_ioeventfd_flag_nr_pio)
-#define MSHV_IOEVENTFD_FLAG_DEASSIGN	(1 << mshv_ioeventfd_flag_nr_deassign)
-
-#define MSHV_IOEVENTFD_VALID_FLAG_MASK	((1 << mshv_ioeventfd_flag_nr_max) - 1)
+#define MSHV_IOEVENTFD_FLAGS_MASK	((1 << MSHV_IOEVENTFD_BIT_COUNT) - 1)
 
 struct mshv_user_ioeventfd {
 	__u64 datamatch;
@@ -270,7 +268,7 @@ struct mshv_user_ioeventfd {
 	__u32 len;	   /* 1, 2, 4, or 8 bytes    */
 	__s32 fd;
 	__u32 flags;
-	__u8  pad[4];
+	__u8  rsvd[4];
 };
 
 struct mshv_user_irq_entry {
@@ -282,7 +280,7 @@ struct mshv_user_irq_entry {
 
 struct mshv_user_irq_table {
 	__u32 nr;
-	__u32 pad;
+	__u32 rsvd; /* MBZ */
 	struct mshv_user_irq_entry entries[0];
 };
 
@@ -405,9 +403,9 @@ struct mshv_root_hvcall {
 #define MSHV_INITIALIZE_PARTITION	_IO(MSHV_IOCTL, 0x00)
 #define MSHV_CREATE_VP			_IOW(MSHV_IOCTL, 0x01, struct mshv_create_vp)
 #define MSHV_SET_GUEST_MEMORY		_IOW(MSHV_IOCTL, 0x02, struct mshv_user_mem_region)
-#define MSHV_IRQFD			_IOW(MSHV_IOCTL, 0xE, struct mshv_user_irqfd)
-#define MSHV_IOEVENTFD			_IOW(MSHV_IOCTL, 0xF, struct mshv_user_ioeventfd)
-#define MSHV_SET_MSI_ROUTING		_IOW(MSHV_IOCTL, 0x11, struct mshv_user_irq_table)
+#define MSHV_IRQFD			_IOW(MSHV_IOCTL, 0x03, struct mshv_user_irqfd)
+#define MSHV_IOEVENTFD			_IOW(MSHV_IOCTL, 0x04, struct mshv_user_ioeventfd)
+#define MSHV_SET_MSI_ROUTING		_IOW(MSHV_IOCTL, 0x05, struct mshv_user_irq_table)
 #define MSHV_GET_GPAP_ACCESS_BITMAP	_IOWR(MSHV_IOCTL, 0x06, struct mshv_gpap_access_bitmap)
 #define MSHV_CREATE_DEVICE		_IOWR(MSHV_IOCTL, 0x13, struct mshv_create_device)
 /* SEV/SNP-related partition IOCTLs */

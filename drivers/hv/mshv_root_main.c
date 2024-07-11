@@ -1888,7 +1888,8 @@ mshv_partition_ioctl_set_msi_routing(struct mshv_partition *partition,
 	if (copy_from_user(&args, user_args, sizeof(args)))
 		return -EFAULT;
 
-	if (args.nr > MSHV_MAX_GUEST_IRQS)
+	if ((args.nr > MSHV_MAX_GUEST_IRQS) ||
+	    mshv_field_nonzero(args, rsvd))
 		return -EINVAL;
 
 	if (args.nr) {
