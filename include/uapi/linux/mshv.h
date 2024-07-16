@@ -399,7 +399,6 @@ struct mshv_root_hvcall {
 };
 
 /* Partition fds created with MSHV_CREATE_PARTITION */
-/* TODO: renumber from 0x00*/
 #define MSHV_INITIALIZE_PARTITION	_IO(MSHV_IOCTL, 0x00)
 #define MSHV_CREATE_VP			_IOW(MSHV_IOCTL, 0x01, struct mshv_create_vp)
 #define MSHV_SET_GUEST_MEMORY		_IOW(MSHV_IOCTL, 0x02, struct mshv_user_mem_region)
@@ -407,20 +406,26 @@ struct mshv_root_hvcall {
 #define MSHV_IOEVENTFD			_IOW(MSHV_IOCTL, 0x04, struct mshv_user_ioeventfd)
 #define MSHV_SET_MSI_ROUTING		_IOW(MSHV_IOCTL, 0x05, struct mshv_user_irq_table)
 #define MSHV_GET_GPAP_ACCESS_BITMAP	_IOWR(MSHV_IOCTL, 0x06, struct mshv_gpap_access_bitmap)
-#define MSHV_CREATE_DEVICE		_IOWR(MSHV_IOCTL, 0x13, struct mshv_create_device)
-/* SEV/SNP-related partition IOCTLs */
-#define MSHV_MODIFY_GPA_HOST_ACCESS	_IOW(MSHV_IOCTL, 0x28, struct mshv_modify_gpa_host_access)
-#define MSHV_IMPORT_ISOLATED_PAGES	_IOW(MSHV_IOCTL, 0x29, struct mshv_import_isolated_pages)
 /* Generic hypercall */
-#define MSHV_ROOT_HVCALL		_IOWR(MSHV_IOCTL, 0x35, struct mshv_root_hvcall)
+#define MSHV_ROOT_HVCALL		_IOWR(MSHV_IOCTL, 0x07, struct mshv_root_hvcall)
+/* Experimental */
+#define MSHV_CREATE_DEVICE		_IOWR(MSHV_IOCTL, 0x08, struct mshv_create_device)
+/* SEV/SNP-related partition IOCTLs */
+#define MSHV_MODIFY_GPA_HOST_ACCESS	_IOW(MSHV_IOCTL, 0x09, struct mshv_modify_gpa_host_access)
+#define MSHV_IMPORT_ISOLATED_PAGES	_IOW(MSHV_IOCTL, 0x0A, struct mshv_import_isolated_pages)
 /* TODO: Remove the following. They are replaceable with MSHV_ROOT_HVCALL */
-#define MSHV_INSTALL_INTERCEPT		_IOW(MSHV_IOCTL, 0x08, struct mshv_install_intercept)
-#define MSHV_ASSERT_INTERRUPT		_IOW(MSHV_IOCTL, 0x09, struct mshv_assert_interrupt)
-#define MSHV_SET_PARTITION_PROPERTY	_IOW(MSHV_IOCTL, 0xC, struct mshv_partition_property)
-#define MSHV_GET_PARTITION_PROPERTY	_IOWR(MSHV_IOCTL, 0xD, struct mshv_partition_property)
-#define MSHV_COMPLETE_ISOLATED_IMPORT	_IOW(MSHV_IOCTL, 0x30, struct mshv_complete_isolated_import)
-#define MSHV_ISSUE_PSP_GUEST_REQUEST	_IOW(MSHV_IOCTL, 0x31, struct mshv_issue_psp_guest_request)
-#define MSHV_SEV_SNP_AP_CREATE		_IOW(MSHV_IOCTL, 0x34, struct mshv_sev_snp_ap_create)
+#define MSHV_INSTALL_INTERCEPT		_IOW(MSHV_IOCTL, 0xF0, struct mshv_install_intercept)
+#define MSHV_ASSERT_INTERRUPT		_IOW(MSHV_IOCTL, 0xF1, struct mshv_assert_interrupt)
+#define MSHV_SET_PARTITION_PROPERTY	_IOW(MSHV_IOCTL, 0xF2, struct mshv_partition_property)
+#define MSHV_GET_PARTITION_PROPERTY	_IOWR(MSHV_IOCTL, 0xF3, struct mshv_partition_property)
+#define MSHV_COMPLETE_ISOLATED_IMPORT	_IOW(MSHV_IOCTL, 0xF4, struct mshv_complete_isolated_import)
+#define MSHV_ISSUE_PSP_GUEST_REQUEST	_IOW(MSHV_IOCTL, 0xF5, struct mshv_issue_psp_guest_request)
+#define MSHV_SEV_SNP_AP_CREATE		_IOW(MSHV_IOCTL, 0xF6, struct mshv_sev_snp_ap_create)
+#define MSHV_SIGNAL_EVENT_DIRECT	_IOWR(MSHV_IOCTL, 0xF7, struct mshv_signal_event_direct)
+#define MSHV_POST_MESSAGE_DIRECT	_IOW(MSHV_IOCTL, 0xF8, struct mshv_post_message_direct)
+#define MSHV_REGISTER_DELIVERABILITY_NOTIFICATIONS \
+					_IOW(MSHV_IOCTL, 0xF9, \
+					     struct mshv_register_deliverabilty_notifications)
 
 /*
  ********************************
@@ -458,34 +463,28 @@ struct mshv_get_set_vp_state {
 #endif
 
 /* VP fds created with MSHV_CREATE_VP */
-/* TODO: renumber from 0x00*/
 #define MSHV_RUN_VP			_IOR(MSHV_IOCTL, 0x00, struct mshv_run_vp)
 #ifdef HV_SUPPORTS_VP_STATE
-#define MSHV_GET_VP_STATE		_IOWR(MSHV_IOCTL, 0x0A, struct mshv_get_set_vp_state)
-#define MSHV_SET_VP_STATE		_IOWR(MSHV_IOCTL, 0x0B, struct mshv_get_set_vp_state)
+#define MSHV_GET_VP_STATE		_IOWR(MSHV_IOCTL, 0x01, struct mshv_get_set_vp_state)
+#define MSHV_SET_VP_STATE		_IOWR(MSHV_IOCTL, 0x02, struct mshv_get_set_vp_state)
 #endif
 /*
  * Generic hypercall
  * Defined above in partition IOCTLs, avoid redefining it here
- * #define MSHV_ROOT_HVCALL			_IOWR(MSHV_IOCTL, 0x35, struct mshv_root_hvcall)
+ * #define MSHV_ROOT_HVCALL			_IOWR(MSHV_IOCTL, 0x07, struct mshv_root_hvcall)
  */
 /* TODO: Remove the following. They are replaceable with MSHV_ROOT_HVCALL */
-#define MSHV_GET_VP_REGISTERS		_IOWR(MSHV_IOCTL, 0x05, struct mshv_vp_registers)
-#define MSHV_SET_VP_REGISTERS		_IOW(MSHV_IOCTL, 0x06, struct mshv_vp_registers)
-#define MSHV_TRANSLATE_GVA		_IOWR(MSHV_IOCTL, 0x0E, struct mshv_translate_gva)
+#define MSHV_GET_VP_REGISTERS		_IOWR(MSHV_IOCTL, 0xF0, struct mshv_vp_registers)
+#define MSHV_SET_VP_REGISTERS		_IOW(MSHV_IOCTL, 0xF1, struct mshv_vp_registers)
+#define MSHV_TRANSLATE_GVA		_IOWR(MSHV_IOCTL, 0xF2, struct mshv_translate_gva)
 #ifdef HV_SUPPORTS_REGISTER_INTERCEPT
 #define MSHV_VP_REGISTER_INTERCEPT_RESULT \
-					_IOW(MSHV_IOCTL, 0x17, \
+					_IOW(MSHV_IOCTL, 0xF3, \
 					     struct mshv_register_intercept_result)
 #endif
-#define MSHV_SIGNAL_EVENT_DIRECT	_IOWR(MSHV_IOCTL, 0x18, struct mshv_signal_event_direct)
-#define MSHV_POST_MESSAGE_DIRECT	_IOW(MSHV_IOCTL, 0x19, struct mshv_post_message_direct)
-#define MSHV_REGISTER_DELIVERABILITY_NOTIFICATIONS \
-					_IOW(MSHV_IOCTL, 0x1A, \
-					     struct mshv_register_deliverabilty_notifications)
-#define MSHV_GET_VP_CPUID_VALUES	_IOWR(MSHV_IOCTL, 0x1B, struct mshv_get_vp_cpuid_values)
-#define MSHV_READ_GPA			_IOWR(MSHV_IOCTL, 0x32, struct mshv_read_write_gpa)
-#define MSHV_WRITE_GPA			_IOW(MSHV_IOCTL, 0x33, struct mshv_read_write_gpa)
+#define MSHV_GET_VP_CPUID_VALUES	_IOWR(MSHV_IOCTL, 0xF4, struct mshv_get_vp_cpuid_values)
+#define MSHV_READ_GPA			_IOWR(MSHV_IOCTL, 0xF5, struct mshv_read_write_gpa)
+#define MSHV_WRITE_GPA			_IOW(MSHV_IOCTL, 0xF6, struct mshv_read_write_gpa)
 
 /*
  **************************
@@ -519,10 +518,9 @@ struct mshv_device_attr {
 };
 
 /* Device fds created with MSHV_CREATE_DEVICE */
-/* TODO: renumber from 0x00*/
-#define MSHV_SET_DEVICE_ATTR	_IOW(MSHV_IOCTL, 0x14, struct mshv_device_attr)
-#define MSHV_GET_DEVICE_ATTR	_IOW(MSHV_IOCTL, 0x15, struct mshv_device_attr)
-#define MSHV_HAS_DEVICE_ATTR	_IOW(MSHV_IOCTL, 0x16, struct mshv_device_attr)
+#define MSHV_SET_DEVICE_ATTR	_IOW(MSHV_IOCTL, 0x00, struct mshv_device_attr)
+#define MSHV_GET_DEVICE_ATTR	_IOW(MSHV_IOCTL, 0x01, struct mshv_device_attr)
+#define MSHV_HAS_DEVICE_ATTR	_IOW(MSHV_IOCTL, 0x02, struct mshv_device_attr)
 
 /*
  ***********************
