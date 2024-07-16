@@ -5,10 +5,10 @@ import sys
 import subprocess
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))  # noqa E402
 
-from lsgtools import cli
-from lsgtools import log
-from lsgtools import git
-from lsgtools.virt.mshv import kernel
+from lsgtools import cli  # noqa E402
+from lsgtools import log  # noqa E402
+from lsgtools import git  # noqa E402
+from lsgtools.virt.mshv import kernel  # noqa E402
 
 arg_parser = cli.create_arg_parser(prog="kernel-version-update",
                                    description="Update the kernel version in optionally created feature branch")
