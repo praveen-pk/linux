@@ -7,10 +7,10 @@ import sys
 import subprocess
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))  # noqa E402
 
-from lsgtools import log
-from lsgtools import cli
-from lsgtools import ado
-from lsgtools import git
+from lsgtools import log  # noqa E402
+from lsgtools import cli  # noqa E402
+from lsgtools import ado  # noqa E402
+from lsgtools import git  # noqa E402
 
 parser = cli.create_arg_parser(prog="kernel-checkpatch",
                                description="Wrapper to scripts/checkpatch.pl")

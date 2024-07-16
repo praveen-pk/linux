@@ -7,7 +7,7 @@ import time
 import subprocess
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))  # noqa E402
 
-from lsgtools import log
+from lsgtools import log  # noqa E402
 
 log.set_verbosity(log.DEBUG)
 
