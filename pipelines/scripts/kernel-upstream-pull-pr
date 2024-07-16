@@ -6,10 +6,10 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))  # noqa E402
 
-from lsgtools import log
-from lsgtools import cli
-from lsgtools import ado
-from lsgtools.virt.mshv import kernel
+from lsgtools import log  # noqa E402
+from lsgtools import cli  # noqa E402
+from lsgtools import ado  # noqa E402
+from lsgtools.virt.mshv import kernel  # noqa E402
 
 arg_parser = cli.create_arg_parser(prog="kernel-upstream-pull-pr",
                                    description="File a PR in linux-dom0 for the specific branch")
