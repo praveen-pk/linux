@@ -34,12 +34,30 @@ jobs:
       git config --global user.name "$(Build.RequestedFor)"
     displayName: 'Prepare update environment'
 
+  - task: AzureCLI@2
+    inputs:
+      connectedServiceNameARM: lsg-virt-mi2
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        TOK_FL=$(mktemp)
+        az account get-access-token --resource '499b84ac-1321-427f-aa17-267ca6975798' --query "accessToken" --output tsv 2>/dev/null > ${TOK_FL}
+        exec 3< ${TOK_FL}
+        read TOK <&3
+        rm ${TOK_FL}
+        echo "##vso[task.setVariable variable=MI_TOKEN;issecret=true;isreadonly=true]${TOK}"
+    displayName: 'Acquire access token'
+
   - bash: |
       set -e
       set -x
-      git remote add lsg-linux-rolling "https://$(PAT_MSAZURE)@msazure.visualstudio.com/DefaultCollection/LSG-linux/_git/LSG-linux-rolling"
+      git clone -c http.extraheader="Authorization: Bearer $(MI_TOKEN)" "https://msazure.visualstudio.com/DefaultCollection/LSG-linux/_git/LSG-linux-rolling" /tmp/lsg-linux-rolling
+      git remote add lsg-linux-rolling /tmp/lsg-linux-rolling
       git fetch --progress --verbose --tags lsg-linux-rolling
     displayName: 'Add LSG-linux-rolling remote'
+    env:
+      GCM_AZREPOS_CREDENTIALTYPE: "oauth"
+      GCM_INTERACTIVE: "never"
 
   - bash: |
       set -e
