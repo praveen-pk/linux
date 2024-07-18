@@ -1,0 +1,16 @@
+
+steps:
+  - task: AzureCLI@2
+    inputs:
+      connectedServiceNameARM: lsg-virt-mi2
+      scriptType: bash
+      scriptLocation: inlineScript
+      inlineScript: |
+        TOK_FL=$(mktemp)
+        az account get-access-token --resource '499b84ac-1321-427f-aa17-267ca6975798' --query "accessToken" --output tsv 2>/dev/null > ${TOK_FL}
+        exec 3< ${TOK_FL}
+        read TOK <&3
+        rm ${TOK_FL}
+        echo "##vso[task.setVariable variable=MI_TOKEN;issecret=true;isreadonly=true]${TOK}"
+    displayName: 'Acquire access token'
+

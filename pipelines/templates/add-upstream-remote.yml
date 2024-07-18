@@ -1,0 +1,13 @@
+
+steps:
+  - bash: |
+      set -e
+      set -x
+      git clone -c http.extraheader="Authorization: Bearer $(MI_TOKEN)" "https://msazure.visualstudio.com/DefaultCollection/LSG-linux/_git/LSG-linux-rolling" /tmp/lsg-linux-rolling
+      git remote add lsg-linux-rolling /tmp/lsg-linux-rolling
+      git fetch --progress --verbose --tags lsg-linux-rolling
+    displayName: 'Add LSG-linux-rolling remote'
+    env:
+      GCM_AZREPOS_CREDENTIALTYPE: "oauth"
+      GCM_INTERACTIVE: "never"
+
