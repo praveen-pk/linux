@@ -73,7 +73,7 @@ def version_mshv_old():
     version = int(re.findall(r"VERSION = (\d+)\n", mfc)[0])
     patchlevel = int(re.findall(r"PATCHLEVEL = (\d+)\n", mfc)[0])
     sublevel = int(re.findall(r"SUBLEVEL = (\d+)\n", mfc)[0])
-    extraver = re.findall(r"EXTRAVERSION =\.(mshv\d+)\n", mfc)[0]
+    extraver = re.findall(r"EXTRAVERSION =\s*\.(mshv\d+)\n", mfc)[0]
 
     return "{}.{}.{}.{}".format(version, patchlevel, sublevel, extraver)
 
