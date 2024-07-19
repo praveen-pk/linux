@@ -7,6 +7,7 @@ steps:
       scriptLocation: inlineScript
       inlineScript: |
         TOK_FL=$(mktemp)
+        # This information should not land in the pipeline logs, thus ensure the pipeline variable is assigned accordingly. 
         az account get-access-token --resource '499b84ac-1321-427f-aa17-267ca6975798' --query "accessToken" --output tsv 2>/dev/null > ${TOK_FL}
         exec 3< ${TOK_FL}
         read TOK <&3
