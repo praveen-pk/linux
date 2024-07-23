@@ -309,7 +309,7 @@ struct hv_input_map_gpa_pages {
 union hv_gpa_page_access_state_flags {
 	struct {
 		__u64 clear_accessed : 1;
-		__u64 set_access : 1;
+		__u64 set_accessed : 1;
 		__u64 clear_dirty : 1;
 		__u64 set_dirty : 1;
 		__u64 reserved : 60;

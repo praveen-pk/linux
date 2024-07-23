@@ -133,17 +133,6 @@ static struct page *mshv_cpu_reg_page(int cpu)
 	return *per_cpu_ptr(&mshv_vtl_per_cpu.reg_page, cpu);
 }
 
-static long __mshv_vtl_ioctl_get_version_info(struct mshv_version_info *info)
-{
-	info->mshv_api_version = MSHV_API_VERSION;
-	info->mshv_capabilities =
-		((!!mshv_has_reg_page) << MSHV_CAP_VTL_REGISTER_PAGE) |
-		((!!mshv_vsm_capabilities.return_action_available) << MSHV_CAP_VTL_RETURN_ACTION) |
-		((!!mshv_vsm_capabilities.dr6_shared) << MSHV_CAP_VTL_DR6_SHARED);
-
-	return 0;
-}
-
 static void mshv_configure_reg_page(struct mshv_vtl_per_cpu *per_cpu)
 {
 	struct hv_register_assoc reg_assoc = {};
@@ -1109,7 +1098,30 @@ static const struct file_operations mshv_vtl_fops = {
 	.mmap = mshv_vtl_mmap,
 };
 
-static long __mshv_ioctl_create_vtl(void __user *user_arg, struct device *dev)
+static long mshv_ioctl_get_vtl_caps(void __user *user_args)
+{
+	struct mshv_vtl_capabilities args;
+
+	if (copy_from_user(&args, user_args, sizeof(args)))
+		return -EFAULT;
+
+	if (mshv_field_nonzero(args, bits))
+		return -EINVAL;
+
+	args.bits = ((!!mshv_has_reg_page)
+			<< MSHV_VTL_CAP_BIT_REGISTER_PAGE) |
+		    ((!!mshv_vsm_capabilities.return_action_available)
+			<< MSHV_VTL_CAP_BIT_RETURN_ACTION) |
+		    ((!!mshv_vsm_capabilities.dr6_shared)
+			<< MSHV_VTL_CAP_BIT_DR6_SHARED);
+
+	if (copy_to_user(user_args, &args, sizeof(args)))
+		return -EFAULT;
+
+	return 0;
+}
+
+static long mshv_ioctl_create_vtl(struct device *dev)
 {
 	struct mshv_vtl *vtl;
 	struct file *file;
@@ -1501,15 +1513,16 @@ static vm_fault_t mshv_vtl_low_fault(struct vm_fault *vmf)
 	return mshv_vtl_low_huge_fault(vmf, PE_SIZE_PTE);
 }
 
-static long __mshv_dev_ioctl(struct file *filp, unsigned int ioctl,
-	unsigned long arg)
+static long mshv_dev_ioctl(struct file *filp, unsigned int ioctl,
+			   unsigned long arg)
 {
 	struct miscdevice *misc = filp->private_data;
 
 	switch (ioctl) {
 	case MSHV_CREATE_VTL:
-		return __mshv_ioctl_create_vtl((void __user *)arg,
-				misc->this_device);
+		return mshv_ioctl_create_vtl(misc->this_device);
+	case MSHV_GET_VTL_CAPS:
+		return mshv_ioctl_get_vtl_caps((void __user *)arg);
 	}
 
 	return -ENOTTY;
@@ -1541,17 +1554,12 @@ static struct miscdevice mshv_vtl_low = {
 	.minor = MISC_DYNAMIC_MINOR,
 };
 
-static const struct mshv_ops mshv_vtl_ops = {
-	.get_version_info	= __mshv_vtl_ioctl_get_version_info,
-	.ioctl			= __mshv_dev_ioctl,
-};
-
 static int __init mshv_vtl_init(void)
 {
 	int ret;
 	struct device *dev;
 
-	ret = mshv_set_ops(&mshv_vtl_ops, &dev);
+	ret = mshv_set_ioctl_func(mshv_dev_ioctl, &dev);
 	if (ret)
 		return ret;
 
@@ -1561,12 +1569,12 @@ static int __init mshv_vtl_init(void)
 	if (mshv_vtl_get_vsm_regs()) {
 		dev_emerg(dev, "Unable to get VSM capabilities!\n");
 		ret = -ENODEV;
-		goto unset_ops;
+		goto unset_func;
 	}
 	if (mshv_vtl_configure_vsm_partition(dev)) {
 		dev_emerg(dev, "VSM configuration failed!\n");
 		ret = -ENODEV;
-		goto unset_ops;
+		goto unset_func;
 	}
 
 	ret = hv_vtl_setup_synic();
@@ -1596,7 +1604,7 @@ static int __init mshv_vtl_init(void)
 	dev_set_name(mem_dev, "mshv vtl mem dev");
 	ret = device_add(mem_dev);
 	if (ret) {
-		dev_err(dev, "mshv vtl mem dev add: %d\n", ret);
+		dev_err(dev, "mem dev add: %d\n", ret);
 		goto free_mem;
 	}
 
@@ -1610,14 +1618,14 @@ free_hvcall:
 	misc_deregister(&mshv_vtl_hvcall);
 free_sint:
 	misc_deregister(&mshv_vtl_sint_dev);
-unset_ops:
-	mshv_set_ops(NULL, NULL);
+unset_func:
+	mshv_set_ioctl_func(NULL, NULL);
 	return ret;
 }
 
 static void __exit mshv_vtl_exit(void)
 {
-	mshv_set_ops(NULL, NULL);
+	mshv_set_ioctl_func(NULL, NULL);
 	misc_deregister(&mshv_vtl_sint_dev);
 	misc_deregister(&mshv_vtl_hvcall);
 	misc_deregister(&mshv_vtl_low);

@@ -386,7 +386,7 @@ static int mshv_irqfd_assign(struct mshv_partition *pt,
 
 	irqfd->irqfd_eventfd_ctx = eventfd;
 
-	if (args->flags & MSHV_IRQFD_FLAG_RESAMPLE) {
+	if (args->flags & BIT(MSHV_IRQFD_BIT_RESAMPLE)) {
 		struct mshv_irqfd_resampler *rp;
 
 		resamplefd = eventfd_ctx_fdget(args->resamplefd);
@@ -442,7 +442,7 @@ static int mshv_irqfd_assign(struct mshv_partition *pt,
 	init_poll_funcptr(&irqfd->irqfd_polltbl, mshv_irqfd_queue_proc);
 
 	spin_lock_irq(&pt->irqfds.lock);
-	if (args->flags & MSHV_IRQFD_FLAG_RESAMPLE &&
+	if (args->flags & BIT(MSHV_IRQFD_BIT_RESAMPLE) &&
 	    !irqfd->irqfd_lapic_irq.lapic_control.level_triggered) {
 		/*
 		 * Resample Fd must be for level triggered interrupt
@@ -539,7 +539,10 @@ static int mshv_irqfd_deassign(struct mshv_partition *pt,
 int mshv_set_unset_irqfd(struct mshv_partition *pt,
 			 struct mshv_user_irqfd *args)
 {
-	if (args->flags & MSHV_IRQFD_FLAG_DEASSIGN)
+	if (args->flags & ~MSHV_IRQFD_FLAGS_MASK)
+		return -EINVAL;
+
+	if (args->flags & BIT(MSHV_IRQFD_BIT_DEASSIGN))
 		return mshv_irqfd_deassign(pt, args);
 
 	return mshv_irqfd_assign(pt, args);
@@ -645,7 +648,7 @@ static int mshv_assign_ioeventfd(struct mshv_partition *pt,
 	/* This mutex is currently protecting ioeventfd.items list */
 	WARN_ON_ONCE(!mutex_is_locked(&pt->mutex));
 
-	if (args->flags & MSHV_IOEVENTFD_FLAG_PIO)
+	if (args->flags & BIT(MSHV_IOEVENTFD_BIT_PIO))
 		return -EOPNOTSUPP;
 
 	/* must be natural-word sized */
@@ -675,7 +678,7 @@ static int mshv_assign_ioeventfd(struct mshv_partition *pt,
 		return -EINVAL;
 
 	/* check for extra flags that we don't understand */
-	if (args->flags & ~MSHV_IOEVENTFD_VALID_FLAG_MASK)
+	if (args->flags & ~MSHV_IOEVENTFD_FLAGS_MASK)
 		return -EINVAL;
 
 	eventfd = eventfd_ctx_fdget(args->fd);
@@ -693,7 +696,7 @@ static int mshv_assign_ioeventfd(struct mshv_partition *pt,
 	p->iovntfd_eventfd = eventfd;
 
 	/* The datamatch feature is optional, otherwise this is a wildcard */
-	if (args->flags & MSHV_IOEVENTFD_FLAG_DATAMATCH)
+	if (args->flags & BIT(MSHV_IOEVENTFD_BIT_DATAMATCH))
 		p->iovntfd_datamatch = args->datamatch;
 	else {
 		p->iovntfd_wildcard = true;
@@ -745,7 +748,7 @@ static int mshv_deassign_ioeventfd(struct mshv_partition *pt,
 		return PTR_ERR(eventfd);
 
 	hlist_for_each_entry_safe(p, n, &pt->ioeventfds.items, iovntfd_hnode) {
-		bool wildcard = !(args->flags & MSHV_IOEVENTFD_FLAG_DATAMATCH);
+		bool wildcard = !(args->flags & BIT(MSHV_IOEVENTFD_BIT_DATAMATCH));
 
 		if (p->iovntfd_eventfd != eventfd  ||
 		    p->iovntfd_addr != args->addr  ||
@@ -773,11 +776,15 @@ int mshv_set_unset_ioeventfd(struct mshv_partition *pt,
 			     struct mshv_user_ioeventfd *args)
 	__must_hold(&pt->mutex)
 {
+	if ((args->flags & ~MSHV_IOEVENTFD_FLAGS_MASK) ||
+	    mshv_field_nonzero(*args, rsvd))
+		return -EINVAL;
+
 	/* PIO not yet implemented */
-	if (args->flags & MSHV_IOEVENTFD_FLAG_PIO)
+	if (args->flags & BIT(MSHV_IOEVENTFD_BIT_PIO))
 		return -EOPNOTSUPP;
 
-	if (args->flags & MSHV_IOEVENTFD_FLAG_DEASSIGN)
+	if (args->flags & BIT(MSHV_IOEVENTFD_BIT_DEASSIGN))
 		return mshv_deassign_ioeventfd(pt, args);
 
 	return mshv_assign_ioeventfd(pt, args);

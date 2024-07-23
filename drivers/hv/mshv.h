@@ -14,6 +14,10 @@
 #include <linux/wait.h>
 #include <uapi/linux/mshv.h>
 
+#define mshv_field_nonzero(STRUCT, MEMBER) \
+	memchr_inv(&((STRUCT).MEMBER), \
+		   0, sizeof_field(typeof(STRUCT), MEMBER))
+
 /*
  * Hyper-V hypercalls
  */
@@ -47,7 +51,7 @@ int hv_call_get_gpa_access_states(
 		u64 partition_id,
 		u32 count,
 		u64 gpa_base_pfn,
-		u64 state_flags,
+		union hv_gpa_page_access_state_flags state_flags,
 		int *written_total,
 		union hv_gpa_page_access_state *states);
 
@@ -186,14 +190,11 @@ int hv_call_issue_psp_guest_request(
 
 int mshv_xfer_to_guest_mode_handle_work(unsigned long ti_work);
 
-typedef long (*mshv_get_version_func_t)(struct mshv_version_info *info);
-typedef long (*mshv_ioctl_func_t)(struct file *filp, unsigned int ioctl,
-					unsigned long arg);
-struct mshv_ops {
-	mshv_get_version_func_t		get_version_info;
-	mshv_ioctl_func_t		ioctl;
-};
-int mshv_set_ops(const struct mshv_ops *ops, struct device **dev);
+typedef long (*mshv_ioctl_func_t)(struct file *filp,
+				  unsigned int ioctl,
+				  unsigned long arg);
+
+int mshv_set_ioctl_func(const mshv_ioctl_func_t func, struct device **dev);
 
 #if IS_ENABLED(CONFIG_MSHV_DIAG)
 void mshv_trace_buffer_complete(const struct hv_eventlog_message_payload *msg);

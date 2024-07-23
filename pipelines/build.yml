@@ -94,7 +94,7 @@ variables:
       # Following are VM life cycle tests from ch integration tests
       value: 'common_parallel::test_api_http_create_boot,common_parallel::test_api_http_shutdown,common_parallel::test_api_http_delete,common_parallel::test_macvtap,common_parallel::test_virtio_vsock,common_parallel::test_virtio_vsock_hotplug,common_parallel::test_pty_interaction'
   - name: mshv_crate_ref
-    value: "v0.2.0"
+    value: "v0.3.0"
 
 stages:
 - stage: "Linux_Dom0_Build"

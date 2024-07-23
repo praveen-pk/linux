@@ -395,7 +395,7 @@ int hv_call_get_gpa_access_states(
 		u64 partition_id,
 		u32 count,
 		u64 gpa_base_pfn,
-		u64 state_flags,
+		union hv_gpa_page_access_state_flags state_flags,
 		int *written_total,
 		union hv_gpa_page_access_state *states)
 {
@@ -415,7 +415,7 @@ int hv_call_get_gpa_access_states(
 
 		input_page->partition_id = partition_id;
 		input_page->hv_gpa_page_number = gpa_base_pfn + *written_total;
-		input_page->flags.as_uint64 = state_flags;
+		input_page->flags = state_flags;
 		rep_count = min(remaining, HV_GET_GPA_ACCESS_STATES_BATCH_SIZE);
 
 		status = hv_do_rep_hypercall(HVCALL_GET_GPA_PAGES_ACCESS_STATES, rep_count,

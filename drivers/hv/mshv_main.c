@@ -30,8 +30,8 @@
 MODULE_AUTHOR("Microsoft");
 MODULE_LICENSE("GPL");
 
-static struct mutex mshv_ops_mutex;
-static const struct mshv_ops *module_ops;
+static struct mutex mshv_mutex;
+static mshv_ioctl_func_t mshv_ioctl_func;
 
 static int mshv_register_dev(void);
 static void mshv_deregister_dev(void);
@@ -55,12 +55,12 @@ static struct miscdevice mshv_dev = {
 	.mode = 0600,
 };
 
-int mshv_set_ops(const struct mshv_ops *ops, struct device **dev)
+int mshv_set_ioctl_func(const mshv_ioctl_func_t func, struct device **dev)
 {
 	int ret = 0;
 
-	mutex_lock(&mshv_ops_mutex);
-	if (ops && dev) {
+	mutex_lock(&mshv_mutex);
+	if (func && dev) {
 		ret = mshv_register_dev();
 		if (!ret)
 			*dev = mshv_dev.this_device;
@@ -69,12 +69,12 @@ int mshv_set_ops(const struct mshv_ops *ops, struct device **dev)
 	}
 
 	if (!ret)
-		module_ops = ops;
-	mutex_unlock(&mshv_ops_mutex);
+		mshv_ioctl_func = func;
+	mutex_unlock(&mshv_mutex);
 
 	return ret;
 }
-EXPORT_SYMBOL_GPL(mshv_set_ops);
+EXPORT_SYMBOL_GPL(mshv_set_ioctl_func);
 
 static int mshv_register_dev(void)
 {
@@ -99,40 +99,12 @@ static void mshv_deregister_dev(void)
 }
 
 static long
-mshv_ioctl_get_api_version(void __user *user_arg)
-{
-	long ret;
-	struct mshv_version_info arg;
-
-	if (copy_from_user(&arg, user_arg, sizeof(arg)))
-		return -EFAULT;
-
-	if (memchr_inv(&arg.rsvd_0, 0,
-		       sizeof(arg) - offsetof(struct mshv_version_info, rsvd_0)))
-		return -EINVAL;
-
-	ret = module_ops->get_version_info(&arg);
-	if (ret)
-		return ret;
-
-	if (copy_to_user(user_arg, &arg, sizeof(arg)))
-		return -EFAULT;
-
-	return 0;
-}
-
-static long
 mshv_dev_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 {
-	if (!module_ops)
+	if (!mshv_ioctl_func)
 		return -ENODEV;
 
-	switch (ioctl) {
-	case MSHV_GET_VERSION_INFO:
-		return mshv_ioctl_get_api_version((void __user *)arg);
-	}
-
-	return module_ops->ioctl(filp, ioctl, arg);
+	return mshv_ioctl_func(filp, ioctl, arg);
 }
 
 static int
@@ -153,7 +125,8 @@ __init mshv_init(void)
 	if (!hv_is_hyperv_initialized())
 		return -ENODEV;
 
-	mutex_init(&mshv_ops_mutex);
+	mutex_init(&mshv_mutex);
+	mshv_ioctl_func = NULL;
 
 	return 0;
 }
