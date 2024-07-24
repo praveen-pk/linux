@@ -219,9 +219,10 @@ stages:
         set -e
         set -x
 
-        $(CONTAINER_RT) run -d -t --name $(CONTAINER_NAME) --volume $PWD:$(CONTAINER_VOL) --volume $(Pipeline.Workspace):$(CONTAINER_RESULT) $(CONTAINER_IMAGE)
         if [ "$(FLAVOR)" == "dom0-built-in" ] && [ "$(ARCH)" == "x86_64" ]; then
-          $(CONTAINER_RT) run -d -t --name "$(CONTAINER_NAME)-ubuntu" --volume $PWD:$(CONTAINER_VOL) --volume $(MSHV_CRATE_PATH):$(CONTAINER_MSHV_CRATE) ubuntu
+                $(CONTAINER_RT) run -d -t --name $(CONTAINER_NAME) --volume $PWD:$(CONTAINER_VOL) --volume $(Pipeline.Workspace):$(CONTAINER_RESULT) --volume $(MSHV_CRATE_PATH):$(CONTAINER_MSHV_CRATE) $(CONTAINER_IMAGE)
+        else
+                $(CONTAINER_RT) run -d -t --name $(CONTAINER_NAME) --volume $PWD:$(CONTAINER_VOL) --volume $(Pipeline.Workspace):$(CONTAINER_RESULT) $(CONTAINER_IMAGE)
         fi
         $(CONTAINER_RT) exec $(CONTAINER_NAME) $(CONTAINER_VOL)/pipelines/scripts/mariner-prepare
       displayName: 'Prepare Container'
@@ -253,7 +254,7 @@ stages:
     - bash: |
         echo "Generating MSHV Bindings..."
 
-        $(CONTAINER_RT) exec "$(CONTAINER_NAME)-ubuntu" $(CONTAINER_VOL)/pipelines/scripts/generate_mshv_bindings.sh $(CONTAINER_MSHV_CRATE) $(CONTAINER_VOL)
+        $(CONTAINER_RT) exec $(CONTAINER_NAME) $(CONTAINER_VOL)/pipelines/scripts/generate_mshv_bindings.sh $(CONTAINER_MSHV_CRATE) $(CONTAINER_VOL)
 
         BINDINGS_FILE_PATH=$(find $(MSHV_CRATE_PATH) -name "bindings.rs")
         echo "bindings.rs File Path: $BINDINGS_FILE_PATH"
