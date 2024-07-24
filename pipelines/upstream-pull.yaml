@@ -34,12 +34,8 @@ jobs:
       git config --global user.name "$(Build.RequestedFor)"
     displayName: 'Prepare update environment'
 
-  - bash: |
-      set -e
-      set -x
-      git remote add lsg-linux-rolling "https://$(PAT_MSAZURE)@msazure.visualstudio.com/DefaultCollection/LSG-linux/_git/LSG-linux-rolling"
-      git fetch --progress --verbose --tags lsg-linux-rolling
-    displayName: 'Add LSG-linux-rolling remote'
+  - template: templates/mi-oauth-token.yml
+  - template: templates/add-upstream-remote.yml
 
   - bash: |
       set -e

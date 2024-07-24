@@ -385,13 +385,8 @@ stages:
       fetchTags: false
     - template: templates/ubuntu-20.04-build.yml
 
-    - bash: |
-        set -e
-        set -x
-        # TODO Check how to replace user specific PAT with something system generated. This is a different org, though.
-        git remote add lsg-linux-rolling "https://$(PAT_MSAZURE)@msazure.visualstudio.com/DefaultCollection/LSG-linux/_git/LSG-linux-rolling"
-        git fetch --progress --verbose --tags lsg-linux-rolling
-      displayName: 'Fetch LSG-linux-rolling'
+    - template: templates/mi-oauth-token.yml
+    - template: templates/add-upstream-remote.yml
 
     - bash: |
         set -e
