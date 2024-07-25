@@ -5,8 +5,8 @@ set -e
 MSHV_DIR="${1:-/mshv}"
 LINUX_DOM0_DIR="${2:-/linux_dom0}"
 
-apt-get update
-apt-get install libclang-dev rsync curl linux-headers-generic git build-essential python3 -y
+tdnf update
+tdnf install clang-devel rsync curl kernel-headers git build-essential python3 -y
 curl https://sh.rustup.rs -sSf | sh -s -- -y
 
 CARGO_ENV_PATH="/root/.cargo/env"
