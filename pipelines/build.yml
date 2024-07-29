@@ -1,0 +1,396 @@
+
+resources:
+  repositories:
+    - repository: lsg-virt-mariner
+      type: git
+      name: LSG/lsg-virt-mariner
+      ref: refs/heads/main
+
+trigger:
+  batch: false
+  branches:
+    include:
+      - msft-uvm-main
+      - msft-uvm-main-6.6
+      - aks-6.6
+  tags:
+    include:
+      - msft/uvm-rolling/*
+
+pr:
+  autoCancel: false
+  drafts: false
+  branches:
+    include:
+      - msft-uvm-main
+      - msft-uvm-main-6.6
+      - aks-6.6
+
+stages:
+- stage: "Linux_Dom0_Build"
+  displayName: "Linux Dom0 Build"
+
+  variables:
+    - name: CONTAINER_IMAGE
+      value: mcr.microsoft.com/cbl-mariner/base/core:2.0
+    - name: CONTAINER_NAME
+      value: dom0kerneltest
+    - name: CONTAINER_VOL
+      value: /linux-dom0
+    - name: CONTAINER_RESULT
+      value: /build_results
+    - name: CONTAINER_RT
+      value: docker
+    - name: BUILDING_TAG
+      value: $[startsWith(variables['Build.SourceBranch'], 'refs/tags')]
+    - name: BUILDING_MSFT_UVM_MAIN
+      value: $[eq(variables['Build.SourceBranch'], 'refs/heads/msft-uvm-main')]
+    - name: SOURCES_STORAGE_URL
+      value: https://lsgvirtstorage.blob.core.windows.net/dom0-mariner-sources-public
+
+  jobs:
+  - job: Kernel
+    timeoutInMinutes: 120
+    strategy:
+      matrix:
+        'UVM x86_64':
+          machinePool: 'lsg-virt-amd64-1es-agent-pool-2'
+          FLAVOR: 'uvm'
+          ARCH: 'x86_64'
+          DEFCONF: 'uvm_defconfig'
+        'UVM aarch64':
+          machinePool: 'lsg-virt-aarch64-1es-agent-pool-2'
+          FLAVOR: 'uvm'
+          ARCH: 'arm64'
+          DEFCONF: 'uvm_defconfig'
+    pool:
+      name: $(machinePool)
+
+    steps:
+    - checkout: self
+      persistCredentials: true
+      fetchTags: false
+    - template: templates/ubuntu-20.04-build.yml
+    - bash: |
+        set -e
+        set -x
+
+        sudo systemctl enable --now docker
+
+        # Allow agent to run docker operations without sudo
+        sudo chmod a+rw /run/docker.sock
+      displayName: 'Prepare Docker'
+
+    - bash: |
+        set -e
+        set -x
+
+        IMG_HASH=$($(CONTAINER_RT) inspect $(CONTAINER_IMAGE) --format '{{ .ID }}')
+        echo "##vso[task.setVariable variable=MARINER_IMG_ID]${IMG_HASH}"
+      displayName: 'Query Container Image'
+
+    - task: Cache@2
+      inputs:
+        key: '"docker-container" | "$(MARINER_IMG_ID)" | "$(Agent.OSArchitecture)"'
+        path: docker_cache
+        cacheHitVar: CONTAINER_CACHE_HIT
+      displayName: 'Cache Container Image'
+
+    - bash: |
+        set -e
+        set -x
+
+        cat docker_cache/mariner.tar | $(CONTAINER_RT) import --change 'CMD ["/bin/bash"]' - $(CONTAINER_IMAGE)
+      condition: eq(variables.CONTAINER_CACHE_HIT, 'true')
+      displayName: 'Restore Container Image'
+
+    - bash: |
+        set -e
+        set -x
+
+        $(CONTAINER_RT) pull $(CONTAINER_IMAGE)
+      condition: ne(variables.CONTAINER_CACHE_HIT, 'true')
+      displayName: 'Pull Container Image'
+
+    - bash: |
+        set -e
+        set -x
+
+        $(CONTAINER_RT) run -d -t --name $(CONTAINER_NAME) --volume $PWD:$(CONTAINER_VOL) --volume $(Pipeline.Workspace):$(CONTAINER_RESULT) $(CONTAINER_IMAGE)
+        $(CONTAINER_RT) exec $(CONTAINER_NAME) $(CONTAINER_VOL)/pipelines/scripts/mariner-prepare
+      displayName: 'Prepare Container'
+
+    - bash: |
+        set -e
+        set -x
+        mkdir -p docker_cache
+        $(CONTAINER_RT) export $(CONTAINER_NAME) > docker_cache/mariner.tar
+      condition: ne(variables.CONTAINER_CACHE_HIT, 'true')
+      displayName: 'Export Container'
+
+    - bash: |
+        set -e
+        set -x
+        $(CONTAINER_RT) exec $(CONTAINER_NAME) $(CONTAINER_VOL)/pipelines/scripts/config-validate $(DEFCONF)
+      condition: or(eq(variables.FLAVOR, 'dom0-built-in'), eq(variables.FLAVOR, 'uvm'))
+      displayName: 'Validate Config'
+
+    - bash: |
+        set -e
+        set -x
+        if [ "uvm" != "$(FLAVOR)" ]; then
+                export_modules_arg="-e $(CONTAINER_RESULT)/kernel_modules_install"
+        fi
+        $(CONTAINER_RT) exec $(CONTAINER_NAME) $(CONTAINER_VOL)/pipelines/scripts/kernel-compile $export_modules_arg $(FLAVOR)
+      displayName: 'Compile Kernel'
+
+    - bash: |
+        set -e
+        set -x
+        echo "Preparing kernel image artifact"
+
+        mkdir -p artifacts_folder
+        case "$(FLAVOR)" in
+          uvm)
+             case "$(ARCH)" in
+               x86_64)
+                      kernel_image_path=arch/x86/boot/compressed/vmlinux.bin
+                      kernel_version=$(cat include/config/kernel.release 2> /dev/null)
+                      kernel_out_path=./artifacts_folder/vmlinux.bin-$kernel_version
+                      ;;
+               arm64)
+                      kernel_image_path=arch/arm64/boot/Image
+                      kernel_version=$(cat include/config/kernel.release 2> /dev/null)
+                      kernel_out_path=./artifacts_folder/Image-$kernel_version
+                      ;;
+               *)
+                      echo "Cannot build ARCH=$(ARCH)"
+                      exit 1
+                      ;;
+             esac
+             ;;
+          *)
+            # FIXME ARM64 artifact isn't vmlinuz
+            kernel_image_path=$(make image_name)
+            kernel_version=$(cat include/config/kernel.release 2> /dev/null)
+            kernel_out_path=./artifacts_folder/vmlinuz-$kernel_version
+            ;;
+        esac
+        cp $kernel_image_path $kernel_out_path
+
+        echo "Build ID: $(Build.BuildId)" >> info.txt
+        echo "Build Number: $(Build.BuildNumber)" >> info.txt
+        echo "Source Branch: $(Build.SourceBranch)" >> info.txt
+        echo "Source Branch Name: $(Build.SourceBranchName)" >> info.txt
+        echo "Commit ID: $(Build.SourceVersion)" >> info.txt
+        echo "Commit Message: $(Build.SourceVersionMessage)" >> info.txt
+
+        echo "PR ID: $(System.PullRequest.PullRequestId)" >> info.txt
+        echo "PR Number: $(System.PullRequest.PullRequestNumber)" >> info.txt
+        echo "PR Source Branch: $(System.PullRequest.SourceBranch)" >> info.txt
+        echo "PR Target Branch: $(System.PullRequest.TargetBranch)" >> info.txt
+        echo "PR Commit ID: $(System.PullRequest.SourceCommitId)" >> info.txt
+
+        cp info.txt ./artifacts_folder
+
+        echo "Preparing kernel modules artifact"
+
+        if [ -d $(Pipeline.Workspace)/kernel_modules_install ];then
+          sudo mv $(Pipeline.Workspace)/kernel_modules_install/lib/modules/$kernel_version .
+          tar_filename=kernel_modules_"$kernel_version".tar.gz
+          sudo tar cvzf $tar_filename $kernel_version
+          sudo mv $tar_filename ./artifacts_folder
+        else
+          if [ "uvm" != "$(FLAVOR)" ]; then
+            echo "Can not find kernel modules artifact"
+            exit 1
+          fi
+        fi
+      displayName: 'Prepare Artifacts'
+      name: PrepareArtifact
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Artifacts'
+      inputs:
+        targetPath: ./artifacts_folder
+        artifact: kernel_image_$(FLAVOR)_$(ARCH)
+
+    - bash: |
+        set -e
+        set -x
+        $(CONTAINER_RT) rm -f $(CONTAINER_IMAGE)
+      displayName: 'Cleanup Container'
+
+  - job: Checkpatch
+    timeoutInMinutes: 30
+    condition: not(or(eq(variables.BUILDING_MSFT_UVM_MAIN, 'true'), eq(variables.BUILDING_TAG, 'true')))
+    pool:
+      name: lsg-virt-amd64-1es-agent-pool-3
+
+    steps:
+    - checkout: self
+      persistCredentials: true
+      fetchTags: false
+    - template: templates/ubuntu-20.04-build.yml
+
+    - bash: |
+        set -e
+        set -x
+        ./pipelines/scripts/kernel-checkpatch \
+          --ado-org microsoft \
+          --ado-project LSG \
+          --ado-access-token "$(System.AccessToken)" \
+          --repo-id "$(Build.Repository.ID)" \
+          --pr-id "$(System.PullRequest.PullRequestId)" \
+          --source-branch "$(System.PullRequest.SourceBranch)" \
+          -v
+      displayName: 'Run checkpatch.pl'
+      continueOnError: true
+
+  - job: Revisions
+    timeoutInMinutes: 60
+    condition: or(eq(variables.BUILDING_TAG, 'true'), eq(variables.BUILDING_MSFT_UVM_MAIN, 'true'))
+    pool:
+      name: lsg-virt-amd64-1es-agent-pool-1
+
+    steps:
+    - checkout: self
+      persistCredentials: true
+      clean: true
+      fetchDepth: 0
+      fetchTags: false
+    - template: templates/ubuntu-20.04-build.yml
+
+    - template: templates/mi-oauth-token.yml
+    - template: templates/add-upstream-remote.yml
+
+    - bash: |
+        set -e
+        set -x
+        ./pipelines/scripts/rev-list
+        cat dom0-rev-list.txt
+        mkdir -p revs
+        mv dom0-rev-list.txt revs/
+      displayName: 'List revs'
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish artifacts'
+      inputs:
+        targetPath: revs
+        artifact: 'uvm revs'
+
+  - job: Packaging
+    timeoutInMinutes: 30
+    condition: eq(variables.BUILDING_TAG, 'true')
+    dependsOn: Kernel
+    pool:
+      name: lsg-virt-amd64-1es-agent-pool-3
+
+    steps:
+    - checkout: self
+      persistCredentials: true
+      clean: true
+    - template: templates/ubuntu-20.04-build.yml
+
+    - bash: |
+        set -e
+        set -x
+        ./pipelines/scripts/tag-validate "$(Build.SourceBranchName)"
+      displayName: 'Validate Tag'
+
+    - bash: |
+        set -e
+        set -x
+        ./pipelines/scripts/ref-package "$(Build.SourceBranch)"
+      displayName: 'Package tarball'
+
+    - task: AzureCLI@2
+      inputs:
+        connectedServiceNameARM: lsg-virt-mi2
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          set -e
+          set -x
+          TGZ=$(ls -1 *.tar.gz | head -1)
+          SUM="${TGZ}.sha256"
+          # TODO might move the checksum calculation to the packaging script instead
+          sha256sum "${TGZ}" | cut -d ' ' -f1 > "${SUM}"
+          for i in "${TGZ}" "${SUM}"; do
+                URL="https://$(SOURCES_STORAGE_ACCOUNT).blob.core.windows.net/$(SOURCES_STORAGE_CONTAINER)/${i}"
+                azcopy copy ${i} ${URL}
+          done
+      env:
+        AZCOPY_AUTO_LOGIN_TYPE: "AZCLI"
+        AZCOPY_TENANT_ID: $(LSG_TENANT_ID)
+      displayName: 'Upload tarball'
+
+  - job: Kernel_Spec
+    timeoutInMinutes: 30
+    condition: eq(variables.BUILDING_TAG, 'true')
+    dependsOn: Packaging
+    pool:
+      name: lsg-virt-amd64-1es-agent-pool-3
+
+    steps:
+    - checkout: self
+      persistCredentials: true
+      fetchTags: false
+      clean: true
+    - checkout: lsg-virt-mariner
+      persistCredentials: true
+      fetchTags: false
+      clean: true
+    - template: templates/ubuntu-20.04-build.yml
+
+    - bash: |
+        set -e
+        set -x
+        git config --global user.email "$(Build.RequestedForEmail)"
+        git config --global user.name "$(Build.RequestedFor)"
+        pushd "$(Agent.BuildDirectory)/s/lsg-virt-mariner"
+        "$(Agent.BuildDirectory)/s/linux-dom0/pipelines/scripts/kernel-spec-update" "$(Build.SourceBranch)" "$(Build.SourceVersion)"
+        # If the script above succeeded, the current checkout is now on something like autoupdate/kernel-mshv-.... branch
+        # and all the updates are committed here. So lets push the branch. This part might need to be moved into the script,
+        # if the branch names are to change.
+        git status
+        AUTOREF="autoupdate/kernel-uvm-$(Build.SourceBranchName)"
+        REPO_ID="ec147866-5bb7-4dfc-88b8-b144fca51529"
+        # REPO_ID=$(az repos list --organization https://dev.azure.com/microsoft --project LSG --query "[?name == 'lsg-virt-mariner'].id" --output tsv)
+        git push --verbose origin "${AUTOREF}"
+        # Now that the branch is in place, file a PR in lsg-virt-mariner and associate a workitem with it.
+        "$(Agent.BuildDirectory)/s/linux-dom0/pipelines/scripts/kernel-spec-pr" \
+          --ado-org microsoft \
+          --ado-project LSG \
+          --ado-access-token "$(System.AccessToken)" \
+          --repo-id "${REPO_ID}" \
+          --source-branch "${AUTOREF}" \
+          --tag "$(Build.SourceBranch)" \
+          --revision "$(Build.SourceVersion)" \
+          --build-requestedfor-id "$(Build.RequestedForId)" \
+          -v
+        popd
+      displayName: 'lsg-virt-mariner spec'
+      env:
+          SOURCES_STORAGE_URL: $(SOURCES_STORAGE_URL)
+
+  - job: CHECK_SCRIPTS
+    condition: not(or(eq(variables.BUILDING_MSFT_UVM_MAIN, 'true'), eq(variables.BUILDING_TAG, 'true')))
+    timeoutInMinutes: 30
+    pool:
+      name: 'lsg-virt-amd64-1es-agent-pool-3'
+    steps:
+    - checkout: self
+      persistCredentials: true
+      fetchTags: false
+    - template: templates/ubuntu-20.04-build.yml
+    - bash: |
+        set -e
+        set -x
+        ./pipelines/scripts/shellcheck
+      displayName: 'shellcheck'
+    - bash: |
+        set -e
+        set -x
+        ./pipelines/scripts/flake8check
+      displayName: 'flake8'
