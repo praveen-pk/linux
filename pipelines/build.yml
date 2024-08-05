@@ -10,9 +10,7 @@ trigger:
   batch: false
   branches:
     include:
-      - msft-uvm-main
       - msft-uvm-main-6.6
-      - aks-6.6
   tags:
     include:
       - msft/uvm-rolling/*
@@ -22,9 +20,7 @@ pr:
   drafts: false
   branches:
     include:
-      - msft-uvm-main
       - msft-uvm-main-6.6
-      - aks-6.6
 
 stages:
 - stage: "Linux_Dom0_Build"
@@ -44,7 +40,7 @@ stages:
     - name: BUILDING_TAG
       value: $[startsWith(variables['Build.SourceBranch'], 'refs/tags')]
     - name: BUILDING_MSFT_UVM_MAIN
-      value: $[eq(variables['Build.SourceBranch'], 'refs/heads/msft-uvm-main')]
+      value: $[eq(variables['Build.SourceBranch'], 'refs/heads/msft-uvm-main-6.6')]
     - name: SOURCES_STORAGE_URL
       value: https://lsgvirtstorage.blob.core.windows.net/dom0-mariner-sources-public
 
