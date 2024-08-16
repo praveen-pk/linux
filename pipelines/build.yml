@@ -1,0 +1,625 @@
+parameters:
+  - name: run_functional_tests
+    type: boolean
+    default: True
+    displayName: Run Guest Functional Tests
+  - name: run_network_perf_tests
+    type: boolean
+    default: False
+    displayName: Run Guest Network Perf Tests
+  - name: run_storage_perf_tests
+    type: boolean
+    default: False
+    displayName: Run Guest Storage Perf(FIO) Tests
+  - name: run_stress_ng_tests
+    type: boolean
+    default: False
+    displayName: Run Stressng on Guests
+  - name: run_ch_integration_tests
+    displayName: Run CH Integration tests
+    type: boolean
+    default: False
+  - name: run_ch_live_migration_tests
+    displayName: Run CH Live Migration tests
+    type: boolean
+    default: False
+  - name: run_ch_perf_tests
+    displayName: Run CH Perf tests on Dom0
+    type: boolean
+    default: False
+  - name: run_mshv_functional_tests
+    displayName: Run MSHV Functional tests
+    type: boolean
+    default: True
+  - name: run_mshv_stress_tests
+    displayName: Run MSHV STRESS tests
+    type: boolean
+    default: False
+
+resources:
+  repositories:
+    - repository: lsg-virt-mariner
+      type: git
+      name: LSG/lsg-virt-mariner
+      ref: refs/heads/main
+    - repository: lisa
+      type: git
+      name: LSG/lsg-lisa
+      #ref: refs/tags/virtstack/stable
+      ref: main
+
+trigger:
+  batch: false
+  branches:
+    include:
+      - main
+      - msft/mshv-stable
+      - msft/mshv-rolling
+  tags:
+    include:
+      - msft/mshv-rolling/*
+
+pr:
+  autoCancel: false
+  drafts: false
+  branches:
+    include:
+      - main
+      - msft/mshv-stable
+      - msft/mshv-rolling
+
+variables:
+  - group: azure_subscription_testonly
+  - group: azure_subscription_devtest
+  - group: lis_database
+  - group: mail
+  - group: virtstackvalidation_variables
+  - name: enable_publish
+    value: False
+  - name: kernel_source
+    value: "current"
+  - name: kernel_artifact
+    value: "kernel_image_dom0-built-in_x86_64"
+  - name: kernel_pattern
+    value: "vmlinuz-*"
+  - name: modules_pattern
+    value: "kernel_modules_*"
+  - name: kernel_params_to_lisa
+    value: '{\"kernel_source\":\"$(kernel_source)\",\"kernel_artifact\":\"$(kernel_artifact)\",\"kernel_pattern\":\"$(kernel_pattern)\",\"modules_pattern\":\"$(modules_pattern)\"}'
+  - name: ch_integration_tests
+    # Should be of comma separated strings format
+    ${{ if eq(variables['Build.Reason'], 'Manual') }}:
+      value: ""
+    ${{ else }}:
+      # Following are VM life cycle tests from ch integration tests
+      value: 'common_parallel::test_api_http_create_boot,common_parallel::test_api_http_shutdown,common_parallel::test_api_http_delete,common_parallel::test_macvtap,common_parallel::test_virtio_vsock,common_parallel::test_virtio_vsock_hotplug,common_parallel::test_pty_interaction'
+  - name: mshv_crate_ref
+    value: "v0.3.0"
+
+stages:
+- stage: "Linux_Dom0_Build"
+  displayName: "Linux Dom0 Build"
+
+  variables:
+    - name: CONTAINER_IMAGE
+      value: mcr.microsoft.com/cbl-mariner/base/core:2.0
+    - name: CONTAINER_NAME
+      value: dom0kerneltest
+    - name: CONTAINER_VOL
+      value: /linux-dom0
+    - name: CONTAINER_RESULT
+      value: /build_results
+    - name: CONTAINER_MSHV_CRATE
+      value: /mshv
+    - name: CONTAINER_RT
+      value: docker
+    - name: BUILDING_TAG
+      value: $[startsWith(variables['Build.SourceBranch'], 'refs/tags')]
+    - name: BUILDING_MAIN
+      value: $[or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/msft/mshv-stable'))]
+    - name: SOURCES_STORAGE_URL
+      value: https://lsgvirtstorage.blob.core.windows.net/dom0-mariner-sources-public
+
+  jobs:
+  - job: Kernel
+    timeoutInMinutes: 120
+    strategy:
+      # NOTE The default configuration used for the validation image is
+      #      currently dom0-built-in. Should this change, conditions in
+      #      some tasks need to be revised and adjusted accordingly;
+      matrix:
+        'Dom0 vtl x86_64':
+          machinePool: 'lsg-virt-amd64-1es-agent-pool-2'
+          FLAVOR: 'dom0-vtl'
+          ARCH: 'x86_64'
+        'Dom0 module x86_64':
+          machinePool: 'lsg-virt-amd64-1es-agent-pool-2'
+          FLAVOR: 'dom0-module'
+          ARCH: 'x86_64'
+        'Dom0 module aarch64':
+          machinePool: 'lsg-virt-aarch64-1es-agent-pool-2'
+          FLAVOR: 'dom0-module'
+          ARCH: 'arm64'
+        'Dom0 built-in x86_64':
+          machinePool: 'lsg-virt-amd64-1es-agent-pool-2'
+          FLAVOR: 'dom0-built-in'
+          ARCH: 'x86_64'
+        'Dom0 built-in aarch64':
+          machinePool: 'lsg-virt-aarch64-1es-agent-pool-2'
+          FLAVOR: 'dom0-built-in'
+          ARCH: 'arm64'
+        'Dom0 disabled x86_64':
+          machinePool: 'lsg-virt-amd64-1es-agent-pool-2'
+          FLAVOR: 'dom0-disabled'
+          ARCH: 'x86_64'
+        'Dom0 disabled aarch64':
+          machinePool: 'lsg-virt-aarch64-1es-agent-pool-2'
+          FLAVOR: 'dom0-disabled'
+          ARCH: 'arm64'
+    pool:
+      name: $(machinePool)
+
+    steps:
+    - checkout: self
+      persistCredentials: true
+      fetchTags: false
+    - template: templates/ubuntu-20.04-build.yml
+    - bash: |
+        set -e
+        set -x
+
+        sudo systemctl enable --now docker
+
+        # Allow agent to run docker operations without sudo
+        sudo chmod a+rw /run/docker.sock
+      displayName: 'Prepare Docker'
+
+    - bash: |
+        set -e
+        set -x
+
+        IMG_HASH=$($(CONTAINER_RT) inspect $(CONTAINER_IMAGE) --format '{{ .ID }}')
+        echo "##vso[task.setVariable variable=MARINER_IMG_ID]${IMG_HASH}"
+      displayName: 'Query Container Image'
+
+    - task: Cache@2
+      inputs:
+        key: '"docker-container" | "$(MARINER_IMG_ID)" | "$(Agent.OSArchitecture)"'
+        path: docker_cache
+        cacheHitVar: CONTAINER_CACHE_HIT
+      displayName: 'Cache Container Image'
+
+    - bash: |
+        set -e
+        set -x
+
+        cat docker_cache/mariner.tar | $(CONTAINER_RT) import --change 'CMD ["/bin/bash"]' - $(CONTAINER_IMAGE)
+      condition: eq(variables.CONTAINER_CACHE_HIT, 'true')
+      displayName: 'Restore Container Image'
+
+    - bash: |
+        set -e
+        set -x
+
+        $(CONTAINER_RT) pull $(CONTAINER_IMAGE)
+      condition: ne(variables.CONTAINER_CACHE_HIT, 'true')
+      displayName: 'Pull Container Image'
+
+    - bash: |
+        set -e
+        set -x
+
+        MSHV_CRATE_HOST_PATH="$(Pipeline.Workspace)/mshv"
+        git clone https://github.com/rust-vmm/mshv.git --depth 1 --branch '$(mshv_crate_ref)' $MSHV_CRATE_HOST_PATH
+        echo "##vso[task.setVariable variable=MSHV_CRATE_PATH]${MSHV_CRATE_HOST_PATH}"
+      condition: and(eq(variables.FLAVOR, 'dom0-built-in'), eq(variables.ARCH, 'x86_64'))
+      displayName: 'Configure MSHV Crate'
+
+    - bash: |
+        set -e
+        set -x
+
+        if [ "$(FLAVOR)" == "dom0-built-in" ] && [ "$(ARCH)" == "x86_64" ]; then
+                $(CONTAINER_RT) run -d -t --name $(CONTAINER_NAME) --volume $PWD:$(CONTAINER_VOL) --volume $(Pipeline.Workspace):$(CONTAINER_RESULT) --volume $(MSHV_CRATE_PATH):$(CONTAINER_MSHV_CRATE) $(CONTAINER_IMAGE)
+        else
+                $(CONTAINER_RT) run -d -t --name $(CONTAINER_NAME) --volume $PWD:$(CONTAINER_VOL) --volume $(Pipeline.Workspace):$(CONTAINER_RESULT) $(CONTAINER_IMAGE)
+        fi
+        $(CONTAINER_RT) exec $(CONTAINER_NAME) $(CONTAINER_VOL)/pipelines/scripts/mariner-prepare
+      displayName: 'Prepare Container'
+
+    - bash: |
+        set -e
+        set -x
+        mkdir -p docker_cache
+        $(CONTAINER_RT) export $(CONTAINER_NAME) > docker_cache/mariner.tar
+      condition: ne(variables.CONTAINER_CACHE_HIT, 'true')
+      displayName: 'Export Container'
+
+    - bash: |
+        set -e
+        set -x
+        $(CONTAINER_RT) exec $(CONTAINER_NAME) $(CONTAINER_VOL)/pipelines/scripts/config-validate $(DEFCONF)
+      condition: or(eq(variables.FLAVOR, 'dom0-built-in'), eq(variables.FLAVOR, 'uvm'))
+      displayName: 'Validate Config'
+
+    - bash: |
+        set -e
+        set -x
+        if [ "uvm" != "$(FLAVOR)" ]; then
+                export_modules_arg="-e $(CONTAINER_RESULT)/kernel_modules_install"
+        fi
+        $(CONTAINER_RT) exec $(CONTAINER_NAME) $(CONTAINER_VOL)/pipelines/scripts/kernel-compile $export_modules_arg $(FLAVOR)
+      displayName: 'Compile Kernel'
+
+    - bash: |
+        echo "Generating MSHV Bindings..."
+
+        $(CONTAINER_RT) exec $(CONTAINER_NAME) $(CONTAINER_VOL)/pipelines/scripts/generate_mshv_bindings.sh $(CONTAINER_MSHV_CRATE) $(CONTAINER_VOL)
+
+        BINDINGS_FILE_PATH=$(find $(MSHV_CRATE_PATH) -name "bindings.rs")
+        echo "bindings.rs File Path: $BINDINGS_FILE_PATH"
+        echo "##vso[task.setVariable variable=MSHV_BINDINGS_FILE_PATH]${BINDINGS_FILE_PATH}"
+      condition: and(eq(variables.FLAVOR, 'dom0-built-in'), eq(variables.ARCH, 'x86_64'))
+      displayName: 'Generate MSHV Bindings'
+
+    - bash: |
+        set -e
+        set -x
+        echo "Preparing kernel image artifact"
+
+        mkdir -p artifacts_folder
+        case "$(FLAVOR)" in
+          uvm)
+             case "$(ARCH)" in
+               x86_64)
+                      kernel_image_path=arch/x86/boot/compressed/vmlinux.bin
+                      kernel_version=$(cat include/config/kernel.release 2> /dev/null)
+                      kernel_out_path=./artifacts_folder/vmlinux.bin-$kernel_version
+                      ;;
+               arm64)
+                      kernel_image_path=arch/arm64/boot/Image
+                      kernel_version=$(cat include/config/kernel.release 2> /dev/null)
+                      kernel_out_path=./artifacts_folder/Image-$kernel_version
+                      ;;
+               *)
+                      echo "Cannot build ARCH=$(ARCH)"
+                      exit 1
+                      ;;
+             esac
+             ;;
+          *)
+            # FIXME ARM64 artifact isn't vmlinuz
+            kernel_image_path=$(make image_name)
+            kernel_version=$(cat include/config/kernel.release 2> /dev/null)
+            kernel_out_path=./artifacts_folder/vmlinuz-$kernel_version
+            ;;
+        esac
+        cp $kernel_image_path $kernel_out_path
+
+        echo "Build ID: $(Build.BuildId)" >> info.txt
+        echo "Build Number: $(Build.BuildNumber)" >> info.txt
+        echo "Source Branch: $(Build.SourceBranch)" >> info.txt
+        echo "Source Branch Name: $(Build.SourceBranchName)" >> info.txt
+        echo "Commit ID: $(Build.SourceVersion)" >> info.txt
+        echo "Commit Message: $(Build.SourceVersionMessage)" >> info.txt
+
+        echo "PR ID: $(System.PullRequest.PullRequestId)" >> info.txt
+        echo "PR Number: $(System.PullRequest.PullRequestNumber)" >> info.txt
+        echo "PR Source Branch: $(System.PullRequest.SourceBranch)" >> info.txt
+        echo "PR Target Branch: $(System.PullRequest.TargetBranch)" >> info.txt
+        echo "PR Commit ID: $(System.PullRequest.SourceCommitId)" >> info.txt
+
+        cp info.txt ./artifacts_folder
+
+        echo "Preparing kernel modules artifact"
+
+        if [ -d $(Pipeline.Workspace)/kernel_modules_install ];then
+          sudo mv $(Pipeline.Workspace)/kernel_modules_install/lib/modules/$kernel_version .
+          tar_filename=kernel_modules_"$kernel_version".tar.gz
+          sudo tar cvzf $tar_filename $kernel_version
+          sudo mv $tar_filename ./artifacts_folder
+        else
+          if [ "uvm" != "$(FLAVOR)" ]; then
+            echo "Can not find kernel modules artifact"
+            exit 1
+          fi
+        fi
+      displayName: 'Prepare Artifacts'
+      name: PrepareArtifact
+
+    - bash: |
+        echo "Preparing MSHV bindings.rs artifact from: $(MSHV_BINDINGS_FILE_PATH)"
+        sudo cp $(MSHV_BINDINGS_FILE_PATH) ./artifacts_folder
+      condition: and(eq(variables.FLAVOR, 'dom0-built-in'), eq(variables.ARCH, 'x86_64'))
+      displayName: 'Prepare MSHV Bindings Artifacts'
+      name: PrepareMSHVBindingsArtifact
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Artifacts'
+      inputs:
+        targetPath: ./artifacts_folder
+        artifact: kernel_image_$(FLAVOR)_$(ARCH)
+
+    - bash: |
+        set -e
+        set -x
+        $(CONTAINER_RT) rm -f $(CONTAINER_IMAGE)
+      displayName: 'Cleanup Container'
+
+  - job: Checkpatch
+    timeoutInMinutes: 30
+    condition: not(or(eq(variables.BUILDING_MAIN, 'true'), eq(variables.BUILDING_TAG, 'true')))
+    pool:
+      name: lsg-virt-amd64-1es-agent-pool-3
+
+    steps:
+    - checkout: self
+      persistCredentials: true
+      fetchTags: false
+    - template: templates/ubuntu-20.04-build.yml
+
+    - bash: |
+        set -e
+        set -x
+        ./pipelines/scripts/kernel-checkpatch \
+          --ado-org microsoft \
+          --ado-project LSG \
+          --ado-access-token "$(System.AccessToken)" \
+          --repo-id "$(Build.Repository.ID)" \
+          --pr-id "$(System.PullRequest.PullRequestId)" \
+          --source-branch "$(System.PullRequest.SourceBranch)" \
+          -v
+      displayName: 'Run checkpatch.pl'
+      continueOnError: true
+
+  - job: Revisions
+    timeoutInMinutes: 60
+    condition: or(eq(variables.BUILDING_TAG, 'true'), eq(variables.BUILDING_MAIN, 'true'))
+    pool:
+      name: lsg-virt-amd64-1es-agent-pool-1
+
+    steps:
+    - checkout: self
+      persistCredentials: true
+      clean: true
+      fetchDepth: 0
+      fetchTags: false
+    - template: templates/ubuntu-20.04-build.yml
+
+    - template: templates/mi-oauth-token.yml
+    - template: templates/add-upstream-remote.yml
+
+    - bash: |
+        set -e
+        set -x
+        ./pipelines/scripts/rev-list
+        cat dom0-rev-list.txt
+        mkdir -p revs
+        mv dom0-rev-list.txt revs/
+      displayName: 'List revs'
+
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish artifacts'
+      inputs:
+        targetPath: revs
+        artifact: 'mshv revs'
+
+  - job: Packaging
+    timeoutInMinutes: 30
+    condition: eq(variables.BUILDING_TAG, 'true')
+    dependsOn: Kernel
+    pool:
+      name: lsg-virt-amd64-1es-agent-pool-3
+
+    steps:
+    - checkout: self
+      persistCredentials: true
+      clean: true
+    - template: templates/ubuntu-20.04-build.yml
+
+    - bash: |
+        set -e
+        set -x
+        ./pipelines/scripts/tag-validate "$(Build.SourceBranchName)"
+      displayName: 'Validate Tag'
+
+    - bash: |
+        set -e
+        set -x
+        ./pipelines/scripts/ref-package "$(Build.SourceBranch)"
+      displayName: 'Package tarball'
+
+    - task: AzureCLI@2
+      inputs:
+        connectedServiceNameARM: lsg-virt-mi2
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          set -e
+          set -x
+          TGZ=$(ls -1 *.tar.gz | head -1)
+          SUM="${TGZ}.sha256"
+          # TODO might move the checksum calculation to the packaging script instead
+          sha256sum "${TGZ}" | cut -d ' ' -f1 > "${SUM}"
+          for i in "${TGZ}" "${SUM}"; do
+                URL="https://$(SOURCES_STORAGE_ACCOUNT).blob.core.windows.net/$(SOURCES_STORAGE_CONTAINER)/${i}"
+                azcopy copy ${i} ${URL}
+          done
+      env:
+        AZCOPY_AUTO_LOGIN_TYPE: "AZCLI"
+        AZCOPY_TENANT_ID: $(LSG_TENANT_ID)
+      displayName: 'Upload tarball'
+
+  - job: Kernel_Spec
+    timeoutInMinutes: 30
+    condition: eq(variables.BUILDING_TAG, 'true')
+    dependsOn: Packaging
+    pool:
+      name: lsg-virt-amd64-1es-agent-pool-3
+
+    steps:
+    - checkout: self
+      persistCredentials: true
+      fetchTags: false
+      clean: true
+    - checkout: lsg-virt-mariner
+      persistCredentials: true
+      fetchTags: false
+      clean: true
+    - template: templates/ubuntu-20.04-build.yml
+
+    - bash: |
+        set -e
+        set -x
+        git config --global user.email "$(Build.RequestedForEmail)"
+        git config --global user.name "$(Build.RequestedFor)"
+        pushd "$(Agent.BuildDirectory)/s/lsg-virt-mariner"
+        "$(Agent.BuildDirectory)/s/linux-dom0/pipelines/scripts/kernel-spec-update" "$(Build.SourceBranch)" "$(Build.SourceVersion)"
+        # If the script above succeeded, the current checkout is now on something like autoupdate/kernel-mshv-.... branch
+        # and all the updates are committed here. So lets push the branch. This part might need to be moved into the script,
+        # if the branch names are to change.
+        git status
+        AUTOREF="autoupdate/kernel-mshv-$(Build.SourceBranchName)"
+        REPO_ID="ec147866-5bb7-4dfc-88b8-b144fca51529"
+        # REPO_ID=$(az repos list --organization https://dev.azure.com/microsoft --project LSG --query "[?name == 'lsg-virt-mariner'].id" --output tsv)
+        git push --verbose origin "${AUTOREF}"
+        # Now that the branch is in place, file a PR in lsg-virt-mariner and associate a workitem with it.
+        "$(Agent.BuildDirectory)/s/linux-dom0/pipelines/scripts/kernel-spec-pr" \
+          --ado-org microsoft \
+          --ado-project LSG \
+          --ado-access-token "$(System.AccessToken)" \
+          --repo-id "${REPO_ID}" \
+          --source-branch "${AUTOREF}" \
+          --tag "$(Build.SourceBranch)" \
+          --revision "$(Build.SourceVersion)" \
+          --build-requestedfor-id "$(Build.RequestedForId)" \
+          -v
+        popd
+      displayName: 'lsg-virt-mariner spec'
+      env:
+          SOURCES_STORAGE_URL: $(SOURCES_STORAGE_URL)
+
+  - job: CHECK_SCRIPTS
+    condition: not(or(eq(variables.BUILDING_MAIN, 'true'), eq(variables.BUILDING_TAG, 'true')))
+    timeoutInMinutes: 30
+    pool:
+      name: 'lsg-virt-amd64-1es-agent-pool-3'
+    steps:
+    - checkout: self
+      persistCredentials: true
+      fetchTags: false
+    - template: templates/ubuntu-20.04-build.yml
+    - bash: |
+        set -e
+        set -x
+        ./pipelines/scripts/shellcheck
+      displayName: 'shellcheck'
+    - bash: |
+        set -e
+        set -x
+        ./pipelines/scripts/flake8check
+      displayName: 'flake8'
+
+- stage: "Linux_Dom0_Test"
+  displayName: "Linux Dom0 Test"
+  dependsOn: Linux_Dom0_Build
+
+  pool:
+    name: LSG_Virt_1ES_Pool
+
+  variables:
+    - name: test_project
+      value: "Linux Dom0 Test"
+    - name: ch_tests_exclude_list
+      value: "common_parallel::test_virtio_balloon_deflate_on_oom,common_parallel::test_vdpa_block,common_parallel::test_vdpa_net,common_parallel::test_watchdog,common_parallel::test_focal_ovmf"
+
+  jobs:
+    - template: virtstack\pipelines\templates\linux_dom0_test_template.yml@lisa
+      parameters:
+        checkout_repo: "lisa"
+        kernel_change_needed: True
+        kernel_params: $(kernel_params_to_lisa)
+        use_ms_clh_repo: "yes"
+        use_ms_guest_kernel: "YES"
+        use_ms_hypervisor_fw: "YES"
+        use_ms_ovmf_fw: "YES"
+        system_access_token: $(System.AccessToken)
+        run_on_intel: True
+        intel_vm_size_perf: "Standard_D96ds_v5"
+        ch_subtest_exclude_list: $(ch_tests_exclude_list)
+        mshv_crate_ref: $(mshv_crate_ref)
+        ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
+          intel_vm_size_func: "Standard_D16ds_v5"
+          run_functional_tests: True
+          run_ch_integration_tests: True
+          run_mshv_functional_tests: True
+          ch_subtest_include_list: "$(ch_integration_tests),common_parallel::test_api_http_pause_resume"
+        ${{ if eq(variables['Build.Reason'], 'IndividualCI') }}:
+          intel_vm_size_func: "Standard_D32ds_v5"
+          run_functional_tests: True
+          run_network_perf_tests: True
+          run_storage_perf_tests: True
+          run_stress_ng_tests: True
+          run_ch_integration_tests: True
+          run_ch_live_migration_tests: False
+          run_ch_perf_tests: True
+          run_mshv_functional_tests: True
+          run_mshv_stress_tests: True
+        ${{ if eq(variables['Build.Reason'], 'Manual') }}:
+          intel_vm_size_func: "Standard_D32ds_v5"
+          run_functional_tests: ${{ parameters.run_functional_tests }}
+          run_network_perf_tests: ${{ parameters.run_network_perf_tests }}
+          run_storage_perf_tests: ${{ parameters.run_storage_perf_tests }}
+          run_stress_ng_tests: ${{ parameters.run_stress_ng_tests }}
+          run_ch_integration_tests: ${{ parameters.run_ch_integration_tests }}
+          run_ch_live_migration_tests: ${{ parameters.run_ch_live_migration_tests }}
+          run_ch_perf_tests: ${{ parameters.run_ch_perf_tests }}
+          run_mshv_functional_tests: ${{ parameters.run_mshv_functional_tests }}
+          run_mshv_stress_tests: ${{ parameters.run_mshv_stress_tests }}
+
+- stage: "Linux_Dom0_Test_CVM"
+  displayName: "Linux Dom0 Test - CVM"
+  dependsOn: Linux_Dom0_Build
+
+  pool:
+    name: LSG_Virt_1ES_Pool
+
+  variables:
+    - name: test_project
+      value: "Linux Dom0 Test - CVM"
+    - name: ch_tests_exclude_list_cvm
+      # Should be of comma separated strings format
+      # Following are known failures
+      value: 'common_parallel::test_boot_from_vhost_user_blk_default,common_parallel::test_boot_from_virtio_pmem,common_parallel::test_cpu_hotplug,common_parallel::test_cpu_topology_142,common_parallel::test_cpu_topology_262,common_parallel::test_cpu_topology_421,common_parallel::test_initramfs,common_parallel::test_iommu_segments,common_parallel::test_memory_hotplug,common_parallel::test_pmem_hotplug,common_parallel::test_pmem_multi_segment_hotplug,common_parallel::test_tpm,common_parallel::test_vhost_user_blk_default,common_parallel::test_vhost_user_blk_direct,common_parallel::test_vhost_user_blk_readonly,common_parallel::test_vhost_user_net_client_mode,common_parallel::test_vhost_user_net_default,common_parallel::test_vhost_user_net_existing_tap,common_parallel::test_vhost_user_net_host_mac,common_parallel::test_vhost_user_net_multiple_queues,common_parallel::test_vhost_user_net_named_tap,common_parallel::test_vhost_user_net_tap_multiple_queues,common_parallel::test_virtio_balloon_deflate_on_oom,common_parallel::test_virtio_fs,common_parallel::test_virtio_fs_hotplug,common_parallel::test_virtio_iommu,common_parallel::test_virtio_pmem_discard_writes,common_parallel::test_virtio_pmem_persist_writes,common_parallel::test_virtio_pmem_with_size,common_parallel::test_watchdog,common_parallel::test_snapshot_restore_basic,common_parallel::test_dmi_serial_number,common_parallel::test_dmi_uuid,common_parallel::test_dmi_oem_strings,common_parallel::test_vfio_user,common_parallel::test_focal_hypervisor_fw,common_parallel::test_focal_ovmf,common_parallel::test_api_http_pause_resume,common_parallel::test_vdpa_net,common_parallel::test_vdpa_block,common_parallel::test_pci_multiple_segments_numa_node,boot_time_pmem_ms,boot_time_16_vcpus_pmem_ms'
+
+  jobs:
+    - template: virtstack\pipelines\templates\linux_dom0_test_template.yml@lisa
+      parameters:
+        checkout_repo: "lisa"
+        kernel_change_needed: True
+        kernel_params: $(kernel_params_to_lisa)
+        use_ms_clh_repo: "yes"
+        system_access_token: $(System.AccessToken)
+        run_on_amd: True
+        amd_vm_size_perf: "Standard_DC96ads_cc_v5"
+        ch_subtest_exclude_list: $(ch_tests_exclude_list_cvm)
+        clh_guest_vm_type: "CVM"
+        mshv_crate_ref: $(mshv_crate_ref)
+        ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
+          amd_vm_size_func: "Standard_DC16ads_cc_v5"
+          run_ch_integration_tests: True
+          run_mshv_functional_tests: True
+          ch_subtest_include_list: $(ch_integration_tests)
+        ${{ if eq(variables['Build.Reason'], 'IndividualCI') }}:
+          amd_vm_size_func: "Standard_DC32ads_cc_v5"
+          run_ch_integration_tests: True
+          run_ch_live_migration_tests: False
+          run_ch_perf_tests: True
+          run_mshv_functional_tests: True
+        ${{ if eq(variables['Build.Reason'], 'Manual') }}:
+          amd_vm_size_func: "Standard_DC32ads_cc_v5"
+          run_ch_integration_tests: ${{ parameters.run_ch_integration_tests }}
+          run_ch_live_migration_tests: ${{ parameters.run_ch_live_migration_tests }}
+          run_ch_perf_tests: ${{ parameters.run_ch_perf_tests }}
+          run_mshv_functional_tests: ${{ parameters.run_mshv_functional_tests }}
+

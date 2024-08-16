@@ -1,0 +1,41 @@
+# Template task to prepare the build environment. Things might be not needed
+# if an image has these baked in.
+
+steps:
+  - bash: |
+      set -e
+      set -x
+
+      export DEBIAN_FRONTEND=noninteractive
+
+      sudo apt-get update
+
+      command -v docker || sudo apt install -y \
+          docker.io containerd runc
+      docker -v
+
+      command -v az || (sudo pip3 install azure-cli;
+          az extension add --name azure-devops)
+      az version
+
+      sudo apt install -y \
+        make shellcheck flake8
+
+      # Install azcopy if not installed
+      command -v azcopy || (
+        if [ "$(uname -m)" == "aarch64" ]; then
+          wget -O downloadazcopy.tar.gz https://aka.ms/downloadazcopy-v10-linux-arm64
+        else
+          wget -O downloadazcopy.tar.gz  https://aka.ms/downloadazcopy-v10-linux
+        fi
+        tar -xvzf downloadazcopy.tar.gz
+        azcopy_folder=$(ls | grep -i azcopy_linux)
+        sudo cp $PWD/${azcopy_folder}/azcopy /usr/local/bin/
+        sudo chmod 555 /usr/local/bin/azcopy
+
+        # clean the downloaded files
+        rm -rf downloadazcopy.tar.gz
+        rm -rf ${azcopy_folder}
+      )
+      azcopy --version
+    displayName: 'Prepare Ubuntu'
