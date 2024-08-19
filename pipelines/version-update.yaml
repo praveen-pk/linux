@@ -5,7 +5,7 @@ parameters:
     default: ""
 
 variables:
-  TARGET_BRANCH: main
+  TARGET_BRANCH: main-6.6
 
 trigger: none
 

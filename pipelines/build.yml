@@ -52,9 +52,7 @@ trigger:
   batch: false
   branches:
     include:
-      - main
-      - msft/mshv-stable
-      - msft/mshv-rolling
+      - main-6.6
   tags:
     include:
       - msft/mshv-rolling/*
@@ -64,9 +62,7 @@ pr:
   drafts: false
   branches:
     include:
-      - main
-      - msft/mshv-stable
-      - msft/mshv-rolling
+      - main-6.6
 
 variables:
   - group: azure_subscription_testonly
