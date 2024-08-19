@@ -321,6 +321,14 @@ void sev_es_shutdown_ghcb(void)
 	if (!boot_ghcb)
 		return;
 
+	/*
+	 * HACK: This is a just a temporary way to tell the VMM to disable the
+	 * previously used GHCB page.
+	 */
+	snp_register_ghcb_early(0);
+
+	boot_ghcb = NULL;
+
 	if (!sev_es_check_cpu_features())
 		error("SEV-ES CPU Features missing.");
 
