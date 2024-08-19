@@ -102,7 +102,7 @@ def version_mshv_from_upstream(version_upstream):
     return ".".join(segs)
 
 
-upstream_tag = tag_get_latest("rolling-lts/mariner-2/*")
+upstream_tag = tag_get_latest("rolling-lts/mariner-3/*")
 log.msg("Latest tag is '{}'".format(upstream_tag))
 
 # Check if the upstream tag is already merged into the target branch
