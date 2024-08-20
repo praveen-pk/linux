@@ -3,9 +3,11 @@
 set -x
 set -e
 
-yum update -y
-yum install -y gcc make diffutils binutils glibc-devel dwarves \
+tdnf update -y
+tdnf install -y gcc make diffutils binutils glibc-devel dwarves \
 		kernel-headers flex bison python3-devel \
 		openssl-devel bc awk perl python3-requests \
-		python3-pip git ca-certificates
+		python3-pip git ca-certificates systemtap-sdt-devel \
+		libunwind-devel slang libcap-devel libnuma-devel \
+		libbabeltrace2-devel msopenjdk-11 libtraceevent-devel
 
