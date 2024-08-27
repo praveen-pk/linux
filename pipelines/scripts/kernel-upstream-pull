@@ -123,7 +123,7 @@ if args.out_file is not None:
 
 version_upstream = version_upstream_from_tag(upstream_tag)
 version_mshv = version_mshv_from_upstream(version_upstream)
-feature_branch = "autoupdate/rolling-{}".format(version_mshv)
+feature_branch = "autoupdate/{}-rolling-{}".format(target_branch, version_mshv)
 
 
 # Create a feature branch and merge the upstream tag.
