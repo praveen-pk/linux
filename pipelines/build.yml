@@ -526,6 +526,9 @@ stages:
   variables:
     - name: test_project
       value: "Linux Dom0 Test"
+    - name: lisa_tests_exclude_list
+      # should be of '|' seprated strings format
+      value: 'verify_kdumpcrash_on_random_cpu|verify_kdumpcrash_smp'
     - name: ch_tests_exclude_list
       value: "common_parallel::test_virtio_balloon_deflate_on_oom,common_parallel::test_vdpa_block,common_parallel::test_vdpa_net,common_parallel::test_watchdog,common_parallel::test_focal_ovmf"
 
@@ -543,6 +546,7 @@ stages:
         run_on_intel: True
         intel_vm_size_perf: "Standard_D96ds_v5"
         ch_subtest_exclude_list: $(ch_tests_exclude_list)
+        lisa_exclude_list: $(lisa_tests_exclude_list)
         mshv_crate_ref: $(mshv_crate_ref)
         ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
           intel_vm_size_func: "Standard_D16ds_v5"
@@ -583,6 +587,9 @@ stages:
   variables:
     - name: test_project
       value: "Linux Dom0 Test - CVM"
+    - name: lisa_tests_exclude_list
+      # should be of '|' seprated strings format
+      value: 'verify_kdumpcrash_on_random_cpu|verify_kdumpcrash_smp'
     - name: ch_tests_exclude_list_cvm
       # Should be of comma separated strings format
       # Following are known failures
@@ -599,6 +606,7 @@ stages:
         run_on_amd: True
         amd_vm_size_perf: "Standard_DC96ads_cc_v5"
         ch_subtest_exclude_list: $(ch_tests_exclude_list_cvm)
+        lisa_exclude_list: $(lisa_tests_exclude_list)
         clh_guest_vm_type: "CVM"
         mshv_crate_ref: $(mshv_crate_ref)
         ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
