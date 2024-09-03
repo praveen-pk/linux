@@ -96,7 +96,7 @@ stages:
 
   variables:
     - name: CONTAINER_IMAGE
-      value: mcr.microsoft.com/cbl-mariner/base/core:2.0
+      value: mcr.microsoft.com/azurelinux/base/core:3.0
     - name: CONTAINER_NAME
       value: dom0kerneltest
     - name: CONTAINER_VOL
