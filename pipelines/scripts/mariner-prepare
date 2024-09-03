@@ -9,5 +9,6 @@ tdnf install -y gcc make diffutils binutils glibc-devel dwarves \
 		openssl-devel bc awk perl python3-requests \
 		python3-pip git ca-certificates systemtap-sdt-devel \
 		libunwind-devel slang libcap-devel libnuma-devel \
-		libbabeltrace2-devel msopenjdk-11 libtraceevent-devel
+		libbabeltrace2-devel msopenjdk-11 libtraceevent-devel \
+		elfutils-libelf-devel zlib-devel
 
