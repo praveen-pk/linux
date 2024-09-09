@@ -2,11 +2,10 @@
 
 __copyright__ = "Copyright (c) Microsoft Corporation."
 
-import os
 import sys
 import subprocess
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))  # noqa E402
 
+import _init  # noqa F401
 from lsgtools import log
 from lsgtools import cli
 from lsgtools import ado
