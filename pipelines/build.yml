@@ -195,6 +195,12 @@ stages:
 
         cp info.txt ./artifacts_folder
 
+
+        if [ "$(FLAVOR)" == "uvm" ] && [ "$(ARCH)" == "x86_64" ]; then
+          echo "Copy bzImage file to artifact..."
+          cp ./arch/x86/boot/bzImage ./artifacts_folder
+        fi
+
         echo "Preparing kernel modules artifact"
 
         if [ -d $(Pipeline.Workspace)/kernel_modules_install ];then
