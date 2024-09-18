@@ -30,7 +30,7 @@ if not source_branch.startswith("refs/heads/"):
     source_branch = "refs/heads/{}".format(source_branch)
 payload = {
     "sourceRefName": source_branch,
-    "targetRefName": "refs/heads/main",
+    "targetRefName": "refs/heads/main-3.0",
     "title": "kernel-uvm: Autoupdate to {}".format(kernel.get_version_from_tag(args.tag)),
     "description": "Kernel revision: {}".format(args.revision),
     "autoCompleteSetBy": {
