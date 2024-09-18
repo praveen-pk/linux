@@ -321,8 +321,8 @@ static int get_diaglog_info(void)
 					 output_page);
 		if (!hv_result_success(status)) {
 			pr_err("%s: hypercall:HVCALL_GET_SYSTEM_PROPERTY, status %s\n",
-			       __func__, hv_status_to_string(status));
-			ret = hv_status_to_errno(status);
+			       __func__, hv_result_to_string(status));
+			ret = hv_result_to_errno(status);
 			goto hvcall_fail;
 		}
 		hv_logbuf_info.buffer_count =
@@ -336,8 +336,8 @@ static int get_diaglog_info(void)
 			     &part_buffer_log_conf.as_uint64);
 		if (!hv_result_success(status)) {
 			pr_err("%s: hypercall:HV_PARTITION_PROPERTY_PARTITION_DIAG_BUFFER_CONFIG, status %s\n",
-			       __func__, hv_status_to_string(status));
-			ret = hv_status_to_errno(status);
+			       __func__, hv_result_to_string(status));
+			ret = hv_result_to_errno(status);
 			goto hvcall_fail;
 		}
 		hv_logbuf_info.buffer_count = part_buffer_log_conf.buffer_count;
@@ -373,26 +373,36 @@ int __init mshv_diaglog_init(void)
 	for (i = 0; i < hv_logbuf_info.buffer_count; i++) {
 		struct hv_input_map_eventlog_buffer *input_page;
 		struct hv_output_map_eventlog_buffer *output_page;
+		do {
+			local_irq_save(flags);
 
-		local_irq_save(flags);
+			input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
+			input_page->type = HV_EVENT_LOG_TYPE_SYSTEM_DIAGNOSTICS;
+			input_page->buffer_index = i;
+			input_page->partition_id = HV_PARTITION_ID_SELF;
+			output_page = *this_cpu_ptr(hyperv_pcpu_output_arg);
 
-		input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
-		input_page->type = HV_EVENT_LOG_TYPE_SYSTEM_DIAGNOSTICS;
-		input_page->buffer_index = i;
-		input_page->partition_id = HV_PARTITION_ID_SELF;
-		output_page = *this_cpu_ptr(hyperv_pcpu_output_arg);
+			/* Get pfns of all pages in the buffer */
+			status = hv_do_hypercall(HVCALL_MAP_EVENT_LOG_BUFFER,
+						input_page, output_page);
 
-		/* Get pfns of all pages in the buffer */
-		status = hv_do_hypercall(HVCALL_MAP_EVENT_LOG_BUFFER,
-					 input_page, output_page);
-		if (!hv_result_success(status)) {
+			if (hv_result(status) == HV_STATUS_SUCCESS)
+				break;
+
+			if (hv_result(status) != HV_STATUS_INSUFFICIENT_MEMORY) {
+				local_irq_restore(flags);
+				pr_err("%s: hypercall: status %s\n", __func__,
+					hv_result_to_string(status));
+				ret = hv_result_to_errno(status);
+				unmap_diaglog_pages(i);
+				goto out;
+			}
+
 			local_irq_restore(flags);
-			pr_err("%s: hypercall: status %s\n", __func__,
-				hv_result_to_string(status));
-			ret = hv_result_to_errno(status);
-			unmap_diaglog_pages(i);
-			goto out;
-		}
+			ret = hv_call_deposit_pages(NUMA_NO_NODE,
+						    hv_current_partition_id, 1);
+
+		} while (!ret);
 
 		for (j = 0; j < hv_logbuf_info.buffer_size_in_pages; j++) {
 			pfn = output_page->gpa_numbers[j];
