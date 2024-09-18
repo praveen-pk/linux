@@ -58,7 +58,7 @@ resources:
       type: git
       name: LSG/lsg-lisa
       #ref: refs/tags/virtstack/stable
-      ref: main
+      ref: refs/heads/dom0-3.0
 
 trigger:
   batch: false
@@ -488,6 +488,7 @@ stages:
     - template: virtstack\pipelines\templates\linux_dom0_test_template.yml@lisa
       parameters:
         checkout_repo: "lisa"
+        dom0_vhd_version: '3.0'
         use_ms_clh_repo: "yes"
         use_ms_guest_kernel: "YES"
         use_ms_hypervisor_fw: "YES"
@@ -545,6 +546,7 @@ stages:
     - template: virtstack\pipelines\templates\linux_dom0_test_template.yml@lisa
       parameters:
         checkout_repo: "lisa"
+        dom0_vhd_version: '3.0'
         use_ms_clh_repo: "yes"
         system_access_token: $(System.AccessToken)
         ch_subtest_exclude_list: $(ch_tests_exclude_list_cvm)
