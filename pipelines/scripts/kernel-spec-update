@@ -59,7 +59,7 @@ except Exception as e:
     log.fatal("Couldn't retvieve the SHA256 sum file '{}'.\nException: {}").format(tarball_sum_url, e)
     exit(1)
 
-cmd = ["git", "checkout", "-b", derivative_branch]
+cmd = ["git", "checkout", "-b", derivative_branch, "main-3.0"]
 res = subprocess.run(cmd)
 if 0 != res.returncode:
     err = res.stderr.decode("ascii")
