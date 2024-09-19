@@ -6659,7 +6659,7 @@ CONFIG_LOCK_DOWN_KERNEL_FORCE_NONE=y
 # CONFIG_LOCK_DOWN_KERNEL_FORCE_INTEGRITY is not set
 # CONFIG_LOCK_DOWN_KERNEL_FORCE_CONFIDENTIALITY is not set
 # CONFIG_LOCK_DOWN_IN_EFI_SECURE_BOOT is not set
-# CONFIG_SECURITY_LANDLOCK is not set
+CONFIG_SECURITY_LANDLOCK=y
 # CONFIG_SECURITY_IPE is not set
 CONFIG_INTEGRITY=y
 # CONFIG_INTEGRITY_SIGNATURE is not set
@@ -6687,7 +6687,7 @@ CONFIG_IMA_QUEUE_EARLY_BOOT_KEYS=y
 # CONFIG_DEFAULT_SECURITY_SMACK is not set
 CONFIG_DEFAULT_SECURITY_APPARMOR=y
 # CONFIG_DEFAULT_SECURITY_DAC is not set
-CONFIG_LSM="lockdown,yama,loadpin,safesetid,integrity,apparmor,selinux,smack,tomoyo"
+CONFIG_LSM="landlock,lockdown,yama,loadpin,safesetid,integrity,apparmor,selinux,smack,tomoyo"
 
 #
 # Kernel hardening options
