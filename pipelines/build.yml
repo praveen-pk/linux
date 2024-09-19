@@ -41,7 +41,7 @@ resources:
     - repository: lsg-virt-mariner
       type: git
       name: LSG/lsg-virt-mariner
-      ref: refs/heads/main
+      ref: refs/heads/main-3.0
     - repository: lisa
       type: git
       name: LSG/lsg-lisa
