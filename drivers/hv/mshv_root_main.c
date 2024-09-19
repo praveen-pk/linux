@@ -225,6 +225,15 @@ free_pages_out:
 	return ret;
 }
 
+static inline bool is_ghcb_mapping_available(void)
+{
+#if defined(__x86_64__)
+	return ms_hyperv.ext_features & HV_VP_GHCB_ROOT_MAPPING_AVAILABLE;
+#else
+	return 0;
+#endif
+}
+
 static int mshv_get_vp_registers(u32 vp_index, u64 partition_id, u16 count,
 				 struct hv_register_assoc *registers)
 {
@@ -1236,7 +1245,21 @@ static vm_fault_t mshv_vp_fault(struct vm_fault *vmf)
 {
 	struct mshv_vp *vp = vmf->vma->vm_file->private_data;
 
-	vmf->page = virt_to_page(vp->register_page);
+	switch (vmf->vma->vm_pgoff) {
+	case MSHV_VP_MMAP_OFFSET_REGISTERS:
+		vmf->page = virt_to_page(vp->register_page);
+		break;
+	case MSHV_VP_MMAP_OFFSET_INTERCEPT_MESSAGE:
+		vmf->page = virt_to_page(vp->intercept_message_page);
+		break;
+	case MSHV_VP_MMAP_OFFSET_GHCB:
+		if (is_ghcb_mapping_available())
+			vmf->page = virt_to_page(vp->ghcb_page);
+		break;
+	default:
+		return -EINVAL;
+	}
+
 	get_page(vmf->page);
 
 	return 0;
@@ -1246,11 +1269,22 @@ static int mshv_vp_mmap(struct file *file, struct vm_area_struct *vma)
 {
 	struct mshv_vp *vp = file->private_data;
 
-	if (!vp->register_page)
-		return -EOPNOTSUPP;
-
-	if (vma->vm_pgoff != MSHV_VP_MMAP_REGISTERS_OFFSET)
+	switch (vma->vm_pgoff) {
+	case MSHV_VP_MMAP_OFFSET_REGISTERS:
+		if (!vp->register_page)
+			return -ENODEV;
+		break;
+	case MSHV_VP_MMAP_OFFSET_INTERCEPT_MESSAGE:
+		if (!vp->intercept_message_page)
+			return -ENODEV;
+		break;
+	case MSHV_VP_MMAP_OFFSET_GHCB:
+		if (is_ghcb_mapping_available() && !vp->ghcb_page)
+			return -ENODEV;
+		break;
+	default:
 		return -EINVAL;
+	}
 
 	vma->vm_ops = &mshv_vp_vm_ops;
 	return 0;
@@ -1274,7 +1308,7 @@ mshv_partition_ioctl_create_vp(struct mshv_partition *partition,
 {
 	struct mshv_create_vp args;
 	struct mshv_vp *vp;
-	struct page *intercept_message_page, *register_page;
+	struct page *intercept_message_page, *register_page, *ghcb_page;
 	union hv_stats_object_identity identity;
 	void *stats_page;
 	long ret;
@@ -1307,6 +1341,14 @@ mshv_partition_ioctl_create_vp(struct mshv_partition *partition,
 			goto unmap_intercept_message_page;
 	}
 
+	if (mshv_partition_encrypted(partition) && is_ghcb_mapping_available()) {
+		ret = hv_call_map_vp_state_page(partition->id, args.vp_index,
+						HV_VP_STATE_PAGE_GHCB,
+						&ghcb_page);
+		if (ret)
+			goto unmap_register_page;
+	}
+
 	/* L1VH partitions are not allowed to map the stats page. Yet. */
 	if (hv_root_partition()) {
 		memset(&identity, 0, sizeof(identity));
@@ -1317,7 +1359,7 @@ mshv_partition_ioctl_create_vp(struct mshv_partition *partition,
 		ret = hv_call_map_stat_page(HV_STATS_OBJECT_VP, &identity,
 					&stats_page);
 		if (ret)
-			goto unmap_register_page;
+			goto unmap_ghcb_page;
 	}
 
 	vp = kzalloc(sizeof(*vp), GFP_KERNEL);
@@ -1345,6 +1387,9 @@ mshv_partition_ioctl_create_vp(struct mshv_partition *partition,
 	vp->intercept_message_page = page_to_virt(intercept_message_page);
 	if (!mshv_partition_encrypted(partition))
 		vp->register_page = page_to_virt(register_page);
+
+	if (mshv_partition_encrypted(partition) && is_ghcb_mapping_available())
+		vp->ghcb_page = page_to_virt(ghcb_page);
 
 	if (hv_root_partition())
 		vp->stats_page = stats_page;
@@ -1380,6 +1425,10 @@ free_vp:
 unmap_stats_page:
 	if (hv_root_partition())
 		hv_call_unmap_stat_page(HV_STATS_OBJECT_VP, &identity);
+unmap_ghcb_page:
+	if (mshv_partition_encrypted(partition) && is_ghcb_mapping_available())
+		hv_call_unmap_vp_state_page(partition->id, args.vp_index,
+					    HV_VP_STATE_PAGE_GHCB);
 unmap_register_page:
 	if (!mshv_partition_encrypted(partition))
 		hv_call_unmap_vp_state_page(partition->id, args.vp_index,
