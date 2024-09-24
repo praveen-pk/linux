@@ -2258,7 +2258,6 @@ static int __init mshv_l1vh_partition_init(struct device *dev)
 
 static void mshv_root_partition_exit(void)
 {
-	mshv_debugfs_exit();
 	unregister_reboot_notifier(&mshv_reboot_nb);
 	root_scheduler_deinit();
 }
@@ -2278,14 +2277,8 @@ static int __init mshv_root_partition_init(struct device *dev)
 	if (err)
 		goto root_sched_deinit;
 
-	err = mshv_debugfs_init();
-	if (err)
-		goto unregister_reboot_notifier;
-
 	return 0;
 
-unregister_reboot_notifier:
-	unregister_reboot_notifier(&mshv_reboot_nb);
 root_sched_deinit:
 	root_scheduler_deinit();
 	return err;
@@ -2341,9 +2334,14 @@ static int __init mshv_parent_partition_init(void)
 	if (ret)
 		goto remove_cpu_state;
 
-	ret = mshv_irqfd_wq_init();
+
+	ret = mshv_debugfs_init();
 	if (ret)
 		goto exit_partition;
+
+	ret = mshv_irqfd_wq_init();
+	if (ret)
+		goto exit_debugfs;
 
 	spin_lock_init(&mshv_root.pt_ht_lock);
 	hash_init(mshv_root.pt_htable);
@@ -2352,6 +2350,10 @@ static int __init mshv_parent_partition_init(void)
 
 	return 0;
 
+destroy_irqds_wq:
+	mshv_irqfd_wq_cleanup();
+exit_debugfs:
+	mshv_debugfs_exit();
 exit_partition:
 	if (hv_root_partition())
 		mshv_root_partition_exit();
@@ -2368,7 +2370,7 @@ static void __exit mshv_parent_partition_exit(void)
 {
 	hv_setup_mshv_handler(NULL);
 	mshv_port_table_fini();
-	misc_deregister(&mshv_dev);
+	mshv_debugfs_exit();
 	mshv_irqfd_wq_cleanup();
 	if (hv_root_partition())
 		mshv_root_partition_exit();
