@@ -46,7 +46,7 @@ resources:
       type: git
       name: LSG/lsg-lisa
       #ref: refs/tags/virtstack/stable
-      ref: main
+      ref: refs/heads/dom0-3.0
 
 trigger:
   batch: false
@@ -547,6 +547,7 @@ stages:
   jobs:
     - template: virtstack\pipelines\templates\linux_dom0_test_template.yml@lisa
       parameters:
+        domo_vhd_version: '3.0'
         checkout_repo: "lisa"
         kernel_change_needed: True
         kernel_params: $(kernel_params_to_lisa)
@@ -610,6 +611,7 @@ stages:
   jobs:
     - template: virtstack\pipelines\templates\linux_dom0_test_template.yml@lisa
       parameters:
+        domo_vhd_version: '3.0'
         checkout_repo: "lisa"
         kernel_change_needed: True
         kernel_params: $(kernel_params_to_lisa)
