@@ -34,7 +34,7 @@ payload = {
     "sourceRefName": source_branch,
     "targetRefName": "refs/heads/msft-uvm-main",
     "title": "makefile: config: Update version {}".format(kernel.get_version_from_tag(args.new_version)),
-    "description": "Prepare to tag: msft/mshv-rolling/{}".format(args.new_version),
+    "description": "Prepare to tag: msft/uvm-rolling/{}".format(args.new_version),
     "completionOptions": {
         "deleteSourceBranch": True,
         "mergeStrategy": "rebaseMerge",
