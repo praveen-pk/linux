@@ -19,7 +19,7 @@ steps:
       az version
 
       sudo apt install -y \
-        make shellcheck flake8
+        make shellcheck flake8 zstd
 
       # Install azcopy if not installed
       command -v azcopy || (
