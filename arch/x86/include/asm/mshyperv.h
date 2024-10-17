@@ -39,7 +39,6 @@ static inline unsigned char hv_get_nmi_reason(void)
 }
 
 #if IS_ENABLED(CONFIG_HYPERV)
-extern int hyperv_init_cpuhp;
 extern bool hyperv_paravisor_present;
 extern int hv_crash_enabled;
 
