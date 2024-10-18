@@ -7,3 +7,5 @@ feature/cifs/6.6                                   8fa96e44d36ccd4fdd49893e44c99
 feature/mana/6.6                                   316ce7add54450bf816ae652fe2412446c4ee33e
 feature/ipe/6.6                                    ab3869750820d4392d7342f0a3154f5994b93a22
 feature/secure-boot-lockdown/6.6                   410fe6f99d21dfc25a0ce8764132eff45ccb78c0
+feature/mana-infiniband/6.6                        c6c4756ac822efa60cb1439c3aa6511cf068437a
+feature/mariner-3-tdx/6.6                          167785fb243530cfeaa45a779f68b80f9c1eb9b0

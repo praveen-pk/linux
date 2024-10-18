@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: GPL-2.0
 VERSION = 6
 PATCHLEVEL = 6
-SUBLEVEL = 51
-EXTRAVERSION =.mshv1
-NAME = Hurr durr I'ma ninja sloth
+SUBLEVEL = 56
+EXTRAVERSION = .mshv1
+NAME = Pinguïn Aangedreven
 
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
