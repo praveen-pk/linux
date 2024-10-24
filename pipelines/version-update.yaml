@@ -5,7 +5,7 @@ parameters:
     default: ""
 
 variables:
-  TARGET_BRANCH: msft-uvm-main
+  TARGET_BRANCH: msft-uvm-main-6.1-cvm-3.0
 
 trigger: none
 
