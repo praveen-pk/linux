@@ -12,11 +12,29 @@ from lsgtools import cli
 from lsgtools.virt import conf
 from lsgtools.virt.mshv import kernel
 
+
+def_specs = {"uvm": True, "uvm-cvm": True}
+def spec_opts(arg):
+    global def_specs
+    ret = def_specs
+    if None is arg:
+        return ret
+    arg_lst = arg.split(",")
+    for e in arg_lst:
+        if not "uvm" == e and not "uvm-cvm" == e:
+            raise Exception("Unknown value '{}' for --specs".format(e))
+    ret["uvm"] = "uvm" in arg_lst;
+    ret["uvm-cvm"] = "uvm-cvm" in arg_lst;
+
+    return ret
+
 arg_parser = cli.create_arg_parser(prog="kernel-spec-update",
                                    description="Update SPEC file in lsg-linux-mariner derivative repo")
 # Ref might look like refs/tags/msft/mshv-rolling/5.15.74.mshv3.
 arg_parser.add_argument("tag", action="store", help="Tag name")
 arg_parser.add_argument("rev", action="store", help="Git revision hash")
+arg_parser.add_argument("--specs", type=spec_opts, action="store", required=False,
+                        default=def_specs, help="Comma separated list of [uvm, uvm-cvm]")
 args = arg_parser.parse_args()
 log.set_verbosity(args.verbose)
 
@@ -28,7 +46,16 @@ if len(rev_hash) < 8:
     log.err("Git revision '{}' is invalid".format(rev_hash))
     exit(1)
 
-derivative_branch = "autoupdate/kernel-uvm-{}".format(version)
+commit_msg_tag = ""
+derivative_branch = "autoupdate/kernel"
+if args.specs["uvm"]:
+    commit_msg_tag = "{} {}:".format(commit_msg_tag, "kernel-uvm")
+    derivative_branch = "{}-uvm".format(derivative_branch)
+if args.specs["uvm-cvm"]:
+    commit_msg_tag = "{} {}:".format(commit_msg_tag, "kernel-uvm-cvm")
+    derivative_branch = "{}-uvm-cvm".format(derivative_branch)
+derivative_branch = "{}-{}".format(derivative_branch, version)
+
 storage_url = os.getenv("SOURCES_STORAGE_URL")
 if storage_url is None:
     storage_url = conf.default_storage_url
@@ -66,51 +93,69 @@ if 0 != res.returncode:
     raise Exception(err)
 
 
-# Update kernel-uvm.spec
-kernel_spec_path = "SPECS/kernel/kernel-uvm.spec"
-kernel_sums_path = "SPECS/kernel/kernel-uvm.signatures.json"
-kernel_conf = {
-        "x86": {"path": "SPECS/kernel/config_uvm_x86", "sha256": None, "kernel_arch": "x86"},
-        "aarch64": {"path": "SPECS/kernel/config_uvm_aarch64", "sha256": None, "kernel_arch": "arm64"}
-        }
+def add_cfg(cf):
+    cmd = ["git", "add", cf]
+    res = subprocess.run(cmd)
+    if 0 != res.returncode:
+        err = res.stderr.decode("ascii")
+        raise Exception(err)
+
+
 kernel_conf_patch = [
     ["Linux/(.*) (.*) Kernel Configuration", "Linux/\\1 {} Kernel Configuration".format(version)]
 ]
-kernel_conf = kernel.patch_config(tarball_local_path, kernel_conf, kernel_conf_patch, "uvm_defconfig")
-# Re-create signatures file
-sums_struct = {
-    "Signatures": {
-        os.path.basename(kernel_conf["x86"]["path"]): kernel_conf["x86"]["sha256"],
-        os.path.basename(kernel_conf["aarch64"]["path"]): kernel_conf["aarch64"]["sha256"],
-        tarball_name: tarball_sha256,
+
+if args.specs["uvm"]:
+    kernel_conf = {
+            "x86": {"path": "SPECS/kernel/config_uvm_x86", "sha256": None, "kernel_arch": "x86"},
+            "aarch64": {"path": "SPECS/kernel/config_uvm_aarch64", "sha256": None, "kernel_arch": "arm64"}
             }
-    }
-kernel.update_spec_sums(kernel_sums_path, sums_struct)
-# Update spec
-kernel.update_spec(kernel_spec_path, version, rev_hash)
+    kernel_conf = kernel.patch_config(tarball_local_path, kernel_conf, kernel_conf_patch, "uvm_defconfig")
+    for arch in kernel_conf:
+        add_cfg(kernel_conf[arch]["path"])
+    # Update kernel-uvm.spec
+    kernel_spec_path = "SPECS/kernel/kernel-uvm.spec"
+    kernel_sums_path = "SPECS/kernel/kernel-uvm.signatures.json"
+    # Re-create signatures file
+    sums_struct = {
+        "Signatures": {
+            os.path.basename(kernel_conf["x86"]["path"]): kernel_conf["x86"]["sha256"],
+            os.path.basename(kernel_conf["aarch64"]["path"]): kernel_conf["aarch64"]["sha256"],
+            tarball_name: tarball_sha256,
+                }
+        }
+    kernel.update_spec_sums(kernel_sums_path, sums_struct)
+    # Update spec
+    kernel.update_spec(kernel_spec_path, version, rev_hash)
 
 
-# Update kernel-uvm-cvm.spec
-kernel_spec_path = "SPECS/kernel/kernel-uvm-cvm.spec"
-kernel_sums_path = "SPECS/kernel/kernel-uvm-cvm.signatures.json"
-del kernel_conf["aarch64"]
-# Re-create signatures file
-sums_struct = {
-    "Signatures": {
-        os.path.basename(kernel_conf["x86"]["path"]): kernel_conf["x86"]["sha256"],
-        tarball_name: tarball_sha256,
+if args.specs["uvm-cvm"]:
+    kernel_conf = {
+            "x86": {"path": "SPECS/kernel/config_uvm_cvm_x86", "sha256": None, "kernel_arch": "x86"},
             }
-    }
-kernel.update_spec_sums(kernel_sums_path, sums_struct)
-# Update spec
-kernel.update_spec(kernel_spec_path, version, rev_hash)
+    kernel_conf = kernel.patch_config(tarball_local_path, kernel_conf, kernel_conf_patch, "uvm_defconfig")
+    for arch in kernel_conf:
+        add_cfg(kernel_conf[arch]["path"])
+    # Update kernel-uvm-cvm.spec
+    kernel_spec_path = "SPECS/kernel/kernel-uvm-cvm.spec"
+    kernel_sums_path = "SPECS/kernel/kernel-uvm-cvm.signatures.json"
+    # Re-create signatures file
+    sums_struct = {
+        "Signatures": {
+            os.path.basename(kernel_conf["x86"]["path"]): kernel_conf["x86"]["sha256"],
+            tarball_name: tarball_sha256,
+                }
+        }
+    kernel.update_spec_sums(kernel_sums_path, sums_struct)
+    # Update spec
+    kernel.update_spec(kernel_spec_path, version, rev_hash)
 
 
 # Commit the branch
-commit_msg = """kernel-uvm: Autoupdate to {}
+commit_msg = """{} Autoupdate to {}
 
 Kernel revision: {}
-""".format(version, rev_hash)
+""".format(commit_msg_tag.strip(), version, rev_hash)
 cmd = ["git", "commit", "-a", "-m", commit_msg]
 res = subprocess.run(cmd)
 if 0 != res.returncode:
