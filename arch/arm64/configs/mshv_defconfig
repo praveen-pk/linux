@@ -6514,6 +6514,7 @@ CONFIG_MSHV=y
 CONFIG_MSHV_ROOT=y
 CONFIG_MSHV_DIAG=y
 # CONFIG_DXGKRNL is not set
+CONFIG_HYPERV_VSM=y
 # end of Microsoft Hyper-V guest support
 
 #
