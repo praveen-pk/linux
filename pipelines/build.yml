@@ -79,8 +79,10 @@ variables:
     value: "vmlinuz-*"
   - name: modules_pattern
     value: "kernel_modules_*"
+  - name: kernel_config
+    value: "config-*"
   - name: kernel_params_to_lisa
-    value: '{\"kernel_source\":\"$(kernel_source)\",\"kernel_artifact\":\"$(kernel_artifact)\",\"kernel_pattern\":\"$(kernel_pattern)\",\"modules_pattern\":\"$(modules_pattern)\"}'
+    value: '{\"kernel_source\":\"$(kernel_source)\",\"kernel_artifact\":\"$(kernel_artifact)\",\"kernel_pattern\":\"$(kernel_pattern)\",\"modules_pattern\":\"$(modules_pattern)\",\"kernel_config\":\"$(kernel_config)\"}'
   - name: ch_integration_tests
     # Should be of comma separated strings format
     ${{ if eq(variables['Build.Reason'], 'Manual') }}:
