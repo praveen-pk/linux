@@ -9,3 +9,4 @@ feature/ipe/6.6                                    ab3869750820d4392d7342f0a3154
 feature/secure-boot-lockdown/6.6                   410fe6f99d21dfc25a0ce8764132eff45ccb78c0
 feature/mana-infiniband/6.6                        c6c4756ac822efa60cb1439c3aa6511cf068437a
 feature/mariner-3-tdx/6.6                          167785fb243530cfeaa45a779f68b80f9c1eb9b0
+feature/nvidia-gb-200/6.6                          124a3174dba0eca9b223dceedf8fd138cd48857f
