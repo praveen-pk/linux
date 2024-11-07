@@ -595,9 +595,6 @@ stages:
 - stage: "Linux_Dom0_Test_CVM"
   displayName: "Linux Dom0 Test - CVM"
   dependsOn: Linux_Dom0_Build
-  # Disable CVM validation stage
-  # https://dev.azure.com/microsoft/OS/_workitems/edit/54063295
-  condition: ${{ false }}
 
   pool:
     name: LSG_Virt_1ES_Pool
