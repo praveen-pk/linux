@@ -394,19 +394,20 @@ mshv_suspend_vp(const struct mshv_vp *vp, bool *message_in_flight)
  * after VP is released from HV_REGISTER_EXPLICIT_SUSPEND in case of the
  * opposite order.
  */
-static long
-mshv_run_vp_with_hv_scheduler(struct mshv_vp *vp, void __user *ret_message,
-	    struct hv_register_assoc *registers, size_t count)
-
+static long mshv_run_vp_with_hyp_scheduler(struct mshv_vp *vp)
 {
-	struct hv_message *msg = vp->vp_intercept_msg_page;
 	long ret;
+	struct hv_register_assoc suspend_regs[2] = {
+			{ .name = HV_REGISTER_INTERCEPT_SUSPEND },
+			{ .name = HV_REGISTER_EXPLICIT_SUSPEND }
+	};
+	size_t count = ARRAY_SIZE(suspend_regs);
 
 	/* Resume VP execution */
 	ret = mshv_set_vp_registers(vp->vp_index, vp->vp_partition->pt_id,
-				    count, registers);
+				    count, suspend_regs);
 	if (ret) {
-		vp_err(vp, "Failed to resume vp execution\n");
+		vp_err(vp, "Failed to resume vp execution. %lx\n", ret);
 		return ret;
 	}
 
@@ -431,9 +432,6 @@ mshv_run_vp_with_hv_scheduler(struct mshv_vp *vp, void __user *ret_message,
 		wait_event(vp->run.vp_suspend_queue, vp->run.kicked_by_hv == 1);
 	}
 
-	if (copy_to_user(ret_message, msg, sizeof(struct hv_message)))
-		return -EFAULT;
-
 	/*
 	 * Reset the flag to make the wait_event call above work
 	 * next time.
@@ -444,14 +442,14 @@ mshv_run_vp_with_hv_scheduler(struct mshv_vp *vp, void __user *ret_message,
 }
 
 static int
-hv_call_vp_dispatch(struct mshv_vp *vp, u32 flags,
-		    struct hv_output_dispatch_vp *res)
+mshv_vp_dispatch(struct mshv_vp *vp, u32 flags,
+		 struct hv_output_dispatch_vp *res)
 {
 	struct hv_input_dispatch_vp *input;
 	struct hv_output_dispatch_vp *output;
 	u64 status;
 
-	/* Preemption must be disabled at this point */
+	preempt_disable();
 	input = *this_cpu_ptr(root_scheduler_input);
 	output = *this_cpu_ptr(root_scheduler_output);
 
@@ -464,7 +462,9 @@ hv_call_vp_dispatch(struct mshv_vp *vp, u32 flags,
 	input->spec_ctrl = 0; /* TODO: set sensible flags */
 	input->flags = flags;
 
+	vp->run.flags.root_sched_dispatched = 1;
 	status = hv_do_hypercall(HVCALL_DISPATCH_VP, input, output);
+	vp->run.flags.root_sched_dispatched = 0;
 
 	trace_mshv_hvcall_dispatch_vp(status, vp->vp_partition->pt_id,
 				      vp->vp_index, flags,
@@ -472,27 +472,13 @@ hv_call_vp_dispatch(struct mshv_vp *vp, u32 flags,
 				      output->dispatch_event);
 
 	*res = *output;
+	preempt_enable();
 
 	if (!hv_result_success(status))
 		vp_err(vp, "%s: status %s\n", __func__,
 		       hv_status_to_string(status));
 
 	return hv_status_to_errno(status);
-}
-
-static int
-mshv_vp_dispatch(struct mshv_vp *vp, u32 flags,
-		 struct hv_output_dispatch_vp *output)
-{
-	int ret;
-
-	vp->run.flags.root_sched_dispatched = 1;
-
-	ret = hv_call_vp_dispatch(vp, flags, output);
-
-	vp->run.flags.root_sched_dispatched = 0;
-
-	return ret;
 }
 
 static int
@@ -517,14 +503,14 @@ mshv_vp_clear_explicit_suspend(struct mshv_vp *vp)
 }
 
 #if defined(__x86_64__)
-static inline u64 mshv_vp_injected_interrupt_vectors(struct mshv_vp *vp)
+static u64 mshv_vp_interrupt_pending(struct mshv_vp *vp)
 {
 	if (!vp->vp_register_page)
 		return 0;
 	return vp->vp_register_page->interrupt_vectors.as_uint64;
 }
 #else
-static inline u64 mshv_vp_injected_interrupt_vectors(struct mshv_vp *vp)
+static u64 mshv_vp_interrupt_pending(struct mshv_vp *vp)
 {
 	return 0;
 }
@@ -549,7 +535,7 @@ mshv_vp_wait_for_hv_kick(struct mshv_vp *vp)
 	ret = wait_event_interruptible(vp->run.vp_suspend_queue,
 		(vp->run.kicked_by_hv == 1 &&
 		 !mshv_vp_dispatch_thread_blocked(vp))
-		|| mshv_vp_injected_interrupt_vectors(vp)
+		|| mshv_vp_interrupt_pending(vp)
 		);
 	if (ret)
 		return -EINTR;
@@ -560,191 +546,32 @@ mshv_vp_wait_for_hv_kick(struct mshv_vp *vp)
 	return 0;
 }
 
-static int
-mshv_vp_xfer_to_guest_mode(struct mshv_vp *vp)
+static int mshv_pre_guest_mode_work(struct mshv_vp *vp)
 {
-	const unsigned long work_flags = _TIF_NEED_RESCHED |
-					 _TIF_SIGPENDING |
-					 _TIF_NOTIFY_SIGNAL |
-					 _TIF_NOTIFY_RESUME;
-	unsigned long ti_work;
+	const ulong work_flags = _TIF_NOTIFY_SIGNAL | _TIF_SIGPENDING |
+				 _TIF_NEED_RESCHED  | _TIF_NOTIFY_RESUME;
+	ulong th_flags;
 
-	ti_work = read_thread_flags();
-	while (ti_work & work_flags) {
+	th_flags = read_thread_flags();
+	while (th_flags & work_flags) {
 		int ret;
 
-		ret = mshv_xfer_to_guest_mode_handle_work(ti_work);
+		trace_mshv_root_sched_handle_work(ret, vp->vp_partition->pt_id,
+						  vp->vp_index, th_flags);
+
+		/* nb: following will call schedule */
+		ret = mshv_do_pre_guest_mode_work(th_flags);
 		if (ret)
 			return ret;
 
-		trace_mshv_root_sched_handle_work(ret,
-				vp->vp_partition->pt_id, vp->vp_index,
-				ti_work);
-
-		ti_work = read_thread_flags();
+		th_flags = read_thread_flags();
 	}
 
 	return 0;
 }
 
-static int
-mshv_partition_region_share(struct mshv_mem_region *region)
-{
-	u32 flags = HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_SHARED;
-
-	if (region->flags.large_pages)
-		flags |= HV_MODIFY_SPA_PAGE_HOST_ACCESS_LARGE_PAGE;
-
-	return hv_call_modify_spa_host_access(region->partition->pt_id,
-			region->pages, region->nr_pages,
-			HV_MAP_GPA_READABLE | HV_MAP_GPA_WRITABLE,
-			flags, true);
-}
-
-static int
-mshv_partition_region_unshare(struct mshv_mem_region *region)
-{
-	u32 flags = HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_EXCLUSIVE;
-
-	if (region->flags.large_pages)
-		flags |= HV_MODIFY_SPA_PAGE_HOST_ACCESS_LARGE_PAGE;
-
-	return hv_call_modify_spa_host_access(region->partition->pt_id,
-			region->pages, region->nr_pages,
-			0,
-			flags, false);
-}
-
-static int
-mshv_region_remap_pages(struct mshv_mem_region *region, u32 map_flags,
-			u64 page_offset, u64 page_count)
-{
-	if (page_offset + page_count > region->nr_pages)
-		return -EINVAL;
-
-	if (region->flags.large_pages)
-		map_flags |= HV_MAP_GPA_LARGE_PAGE;
-
-	/* ask the hypervisor to map guest ram */
-	return hv_call_map_gpa_pages(region->partition->pt_id,
-				     region->start_gfn + page_offset,
-				     page_count, map_flags,
-				     region->pages + page_offset);
-}
-
-static int
-mshv_region_map(struct mshv_mem_region *region)
-{
-	u32 map_flags = region->hv_map_flags;
-
-	return mshv_region_remap_pages(region, map_flags,
-				       0, region->nr_pages);
-}
-
-static void
-mshv_region_evict_pages(struct mshv_mem_region *region,
-			u64 page_offset, u64 page_count)
-{
-	if (region->flags.range_pinned)
-		unpin_user_pages(region->pages + page_offset, page_count);
-
-	memset(region->pages + page_offset, 0,
-	       page_count * sizeof(struct page *));
-}
-
-static void
-mshv_region_evict(struct mshv_mem_region *region)
-{
-	mshv_region_evict_pages(region, 0, region->nr_pages);
-}
-
-static int
-mshv_region_populate_pages(struct mshv_mem_region *region,
-			   u64 page_offset, u64 page_count)
-{
-	u64 done_count, nr_pages;
-	struct page **pages;
-	__u64 userspace_addr;
-	int ret;
-
-	if (page_offset + page_count > region->nr_pages)
-		return -EINVAL;
-
-	for (done_count = 0; done_count < page_count; done_count += ret) {
-		pages = region->pages + page_offset + done_count;
-		userspace_addr = region->start_uaddr +
-				(page_offset + done_count) *
-				HV_HYP_PAGE_SIZE;
-		nr_pages = min(page_count - done_count,
-			       MSHV_PIN_PAGES_BATCH_SIZE);
-
-		/*
-		 * Pinning assuming 4k pages works for large pages too.
-		 * All page structs within the large page are returned.
-		 *
-		 * Pin requests are batched because pin_user_pages_fast
-		 * with the FOLL_LONGTERM flag does a large temporary
-		 * allocation of contiguous memory.
-		 */
-		if (region->flags.range_pinned)
-			ret = pin_user_pages_fast(userspace_addr,
-						  nr_pages,
-						  FOLL_WRITE | FOLL_LONGTERM,
-						  pages);
-		else
-			ret = -EOPNOTSUPP;
-
-		if (ret < 0)
-			goto release_pages;
-	}
-
-	if (PageHuge(region->pages[page_offset]))
-		region->flags.large_pages = true;
-
-	return 0;
-
-release_pages:
-	mshv_region_evict_pages(region, page_offset, done_count);
-	return ret;
-}
-
-static int
-mshv_region_populate(struct mshv_mem_region *region)
-{
-	return mshv_region_populate_pages(region, 0, region->nr_pages);
-}
-
-static struct mshv_mem_region *
-mshv_partition_region_by_gfn(struct mshv_partition *partition, u64 gfn)
-{
-	struct mshv_mem_region *region;
-
-	hlist_for_each_entry(region, &partition->pt_mem_regions, hnode) {
-		if (gfn >= region->start_gfn &&
-		    gfn < region->start_gfn + region->nr_pages)
-			return region;
-	}
-
-	return NULL;
-}
-
-static struct mshv_mem_region *
-mshv_partition_region_by_uaddr(struct mshv_partition *partition, u64 uaddr)
-{
-	struct mshv_mem_region *region;
-
-	hlist_for_each_entry(region, &partition->pt_mem_regions, hnode) {
-		if (uaddr >= region->start_uaddr &&
-		    uaddr < region->start_uaddr +
-			    (region->nr_pages << HV_HYP_PAGE_SHIFT))
-			return region;
-	}
-
-	return NULL;
-}
-
-static long
-mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
+/* Must be called with interrupts enabled */
+static long mshv_run_vp_with_root_scheduler(struct mshv_vp *vp)
 {
 	long ret;
 
@@ -759,34 +586,18 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 			return ret;
 	}
 
-	preempt_disable();
-
 	do {
 		u32 flags = 0;
 		struct hv_output_dispatch_vp output;
-		unsigned long irq_flags;
 
-		ret = mshv_vp_xfer_to_guest_mode(vp);
+		ret = mshv_pre_guest_mode_work(vp);
 		if (ret)
 			break;
-
-		local_irq_save(irq_flags);
-
-		/*
-		 * Note the lack of local_irq_restore after the dispatch
-		 * call. We rely on the hypervisor to do that for us.
-		 *
-		 * Thread context should always have interrupt enabled,
-		 * but we try to be defensive here by testing what it
-		 * truly was before we disabled interrupt.
-		 */
-		if (!irqs_disabled_flags(irq_flags))
-			flags |= HV_DISPATCH_VP_FLAG_ENABLE_CALLER_INTERRUPTS;
 
 		if (vp->run.flags.intercept_suspend)
 			flags |= HV_DISPATCH_VP_FLAG_CLEAR_INTERCEPT_SUSPEND;
 
-		if (mshv_vp_injected_interrupt_vectors(vp))
+		if (mshv_vp_interrupt_pending(vp))
 			flags |= HV_DISPATCH_VP_FLAG_SCAN_INTERRUPT_INJECTION;
 
 		ret = mshv_vp_dispatch(vp, flags, &output);
@@ -796,9 +607,10 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 		vp->run.flags.intercept_suspend = 0;
 
 		if (output.dispatch_state == HV_VP_DISPATCH_STATE_BLOCKED) {
-			if (output.dispatch_event == HV_VP_DISPATCH_EVENT_SUSPEND) {
+			if (output.dispatch_event ==
+						HV_VP_DISPATCH_EVENT_SUSPEND) {
 				/* TODO: remove the warning once VP canceling
-				 * is supported */
+				 *	 is supported */
 				WARN_ONCE(
 				     atomic64_read(&vp->run.vp_signaled_count),
 				     "%s: vp#%d: unexpected explicit suspend\n",
@@ -827,42 +639,42 @@ mshv_run_vp_with_root_scheduler(struct mshv_vp *vp, void __user *ret_message)
 			}
 		} else {
 			/* HV_VP_DISPATCH_STATE_READY */
-			if (output.dispatch_event == HV_VP_DISPATCH_EVENT_INTERCEPT)
+			if (output.dispatch_event ==
+						HV_VP_DISPATCH_EVENT_INTERCEPT)
 				vp->run.flags.intercept_suspend = 1;
 		}
 	} while (!vp->run.flags.intercept_suspend);
 
-	preempt_enable();
-
-	if (ret)
-		return ret;
-
-	if (copy_to_user(ret_message, vp->vp_intercept_msg_page,
-			 sizeof(struct hv_message)))
-		return -EFAULT;
-
-	return 0;
+	return ret;
 }
 
 static_assert(sizeof(struct hv_message) <= MSHV_RUN_VP_BUF_SZ,
 	      "sizeof(struct hv_message) must not exceed MSHV_RUN_VP_BUF_SZ");
-static long
-mshv_vp_ioctl_run_vp(struct mshv_vp *vp, void __user *ret_message)
+
+static long mshv_vp_ioctl_run_vp(struct mshv_vp *vp, void __user *ret_msg)
 {
-	trace_mshv_run_vp_entry(vp->vp_partition->pt_id, vp->vp_index,
-				hv_scheduler_type == HV_SCHEDULER_TYPE_ROOT ? "root" : "hv");
+	long rc;
+	char *schednm;
 
-	if (hv_scheduler_type != HV_SCHEDULER_TYPE_ROOT) {
-		struct hv_register_assoc suspend_registers[2] = {
-			{ .name = HV_REGISTER_INTERCEPT_SUSPEND },
-			{ .name = HV_REGISTER_EXPLICIT_SUSPEND }
-		};
+	schednm = hv_scheduler_type == HV_SCHEDULER_TYPE_ROOT ? "root" : "hv";
+	trace_mshv_run_vp_entry(vp->vp_partition->pt_id, vp->vp_index, schednm);
 
-		return mshv_run_vp_with_hv_scheduler(vp, ret_message,
-				suspend_registers, ARRAY_SIZE(suspend_registers));
-	}
+	if (hv_scheduler_type == HV_SCHEDULER_TYPE_ROOT)
+		rc = mshv_run_vp_with_root_scheduler(vp);
+	else
+		rc = mshv_run_vp_with_hyp_scheduler(vp);
 
-	return mshv_run_vp_with_root_scheduler(vp, ret_message);
+	trace_mshv_run_vp_exit(rc, vp->vp_partition->pt_id, vp->vp_index,
+			       vp->vp_intercept_msg_page->header.message_type);
+
+	if (rc)
+		return rc;
+
+	if (copy_to_user(ret_msg, vp->vp_intercept_msg_page,
+			 sizeof(struct hv_message)))
+		rc = -EFAULT;
+
+	return rc;
 }
 
 #ifdef HV_SUPPORTS_VP_STATE
@@ -1183,8 +995,6 @@ mshv_vp_ioctl(struct file *filp, unsigned int ioctl, unsigned long arg)
 	switch (ioctl) {
 	case MSHV_RUN_VP:
 		r = mshv_vp_ioctl_run_vp(vp, (void __user *)arg);
-		trace_mshv_run_vp_exit(r, vp->vp_partition->pt_id, vp->vp_index,
-			       vp->vp_intercept_msg_page->header.message_type);
 		break;
 	case MSHV_GET_VP_REGISTERS:
 		r = mshv_vp_ioctl_get_regs(vp, (void __user *)arg);
@@ -1533,6 +1343,162 @@ mshv_partition_ioctl_set_property(struct mshv_partition *partition,
 					      args.property_value,
 					      mshv_async_hvcall_handler,
 					      (void *)partition);
+}
+
+static int
+mshv_partition_region_share(struct mshv_mem_region *region)
+{
+	u32 flags = HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_SHARED;
+
+	if (region->flags.large_pages)
+		flags |= HV_MODIFY_SPA_PAGE_HOST_ACCESS_LARGE_PAGE;
+
+	return hv_call_modify_spa_host_access(region->partition->pt_id,
+			region->pages, region->nr_pages,
+			HV_MAP_GPA_READABLE | HV_MAP_GPA_WRITABLE,
+			flags, true);
+}
+
+static int
+mshv_partition_region_unshare(struct mshv_mem_region *region)
+{
+	u32 flags = HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_EXCLUSIVE;
+
+	if (region->flags.large_pages)
+		flags |= HV_MODIFY_SPA_PAGE_HOST_ACCESS_LARGE_PAGE;
+
+	return hv_call_modify_spa_host_access(region->partition->pt_id,
+			region->pages, region->nr_pages,
+			0,
+			flags, false);
+}
+
+static int
+mshv_region_remap_pages(struct mshv_mem_region *region, u32 map_flags,
+			u64 page_offset, u64 page_count)
+{
+	if (page_offset + page_count > region->nr_pages)
+		return -EINVAL;
+
+	if (region->flags.large_pages)
+		map_flags |= HV_MAP_GPA_LARGE_PAGE;
+
+	/* ask the hypervisor to map guest ram */
+	return hv_call_map_gpa_pages(region->partition->pt_id,
+				     region->start_gfn + page_offset,
+				     page_count, map_flags,
+				     region->pages + page_offset);
+}
+
+static int
+mshv_region_map(struct mshv_mem_region *region)
+{
+	u32 map_flags = region->hv_map_flags;
+
+	return mshv_region_remap_pages(region, map_flags,
+				       0, region->nr_pages);
+}
+
+static void
+mshv_region_evict_pages(struct mshv_mem_region *region,
+			u64 page_offset, u64 page_count)
+{
+	if (region->flags.range_pinned)
+		unpin_user_pages(region->pages + page_offset, page_count);
+
+	memset(region->pages + page_offset, 0,
+	       page_count * sizeof(struct page *));
+}
+
+static void
+mshv_region_evict(struct mshv_mem_region *region)
+{
+	mshv_region_evict_pages(region, 0, region->nr_pages);
+}
+
+static int
+mshv_region_populate_pages(struct mshv_mem_region *region,
+			   u64 page_offset, u64 page_count)
+{
+	u64 done_count, nr_pages;
+	struct page **pages;
+	__u64 userspace_addr;
+	int ret;
+
+	if (page_offset + page_count > region->nr_pages)
+		return -EINVAL;
+
+	for (done_count = 0; done_count < page_count; done_count += ret) {
+		pages = region->pages + page_offset + done_count;
+		userspace_addr = region->start_uaddr +
+				(page_offset + done_count) *
+				HV_HYP_PAGE_SIZE;
+		nr_pages = min(page_count - done_count,
+			       MSHV_PIN_PAGES_BATCH_SIZE);
+
+		/*
+		 * Pinning assuming 4k pages works for large pages too.
+		 * All page structs within the large page are returned.
+		 *
+		 * Pin requests are batched because pin_user_pages_fast
+		 * with the FOLL_LONGTERM flag does a large temporary
+		 * allocation of contiguous memory.
+		 */
+		if (region->flags.range_pinned)
+			ret = pin_user_pages_fast(userspace_addr,
+						  nr_pages,
+						  FOLL_WRITE | FOLL_LONGTERM,
+						  pages);
+		else
+			ret = -EOPNOTSUPP;
+
+		if (ret < 0)
+			goto release_pages;
+	}
+
+	if (PageHuge(region->pages[page_offset]))
+		region->flags.large_pages = true;
+
+	return 0;
+
+release_pages:
+	mshv_region_evict_pages(region, page_offset, done_count);
+	return ret;
+}
+
+static int
+mshv_region_populate(struct mshv_mem_region *region)
+{
+	return mshv_region_populate_pages(region, 0, region->nr_pages);
+}
+
+static struct mshv_mem_region *
+mshv_partition_region_by_gfn(struct mshv_partition *partition, u64 gfn)
+{
+	struct mshv_mem_region *region;
+
+	hlist_for_each_entry(region, &partition->pt_mem_regions, hnode) {
+		if (gfn >= region->start_gfn &&
+		    gfn < region->start_gfn + region->nr_pages)
+			return region;
+	}
+
+	return NULL;
+}
+
+static struct mshv_mem_region *
+mshv_partition_region_by_uaddr(struct mshv_partition *partition, u64 uaddr)
+{
+	struct mshv_mem_region *region;
+
+	hlist_for_each_entry(region, &partition->pt_mem_regions, hnode) {
+		if (uaddr >= region->start_uaddr &&
+		    uaddr < region->start_uaddr +
+			    (region->nr_pages << HV_HYP_PAGE_SHIFT))
+			return region;
+	}
+
+	return NULL;
 }
 
 /*
