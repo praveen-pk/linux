@@ -49,7 +49,7 @@ struct mshv_vp {
 		wait_queue_head_t vp_suspend_queue;
 	} run;
 #ifdef CONFIG_DEBUG_FS
-	struct dentry *vp_debugfs_dentry;
+	struct dentry *vp_debugfs_stats_dentry;
 #endif
 };
 
@@ -139,7 +139,7 @@ struct mshv_partition {
 	bool import_completed;
 	bool pt_initialized;
 #ifdef CONFIG_DEBUG_FS
-	struct dentry *pt_debugfs_dentry;
+	struct dentry *pt_debugfs_stats_dentry;
 	struct dentry *pt_debugfs_vp_dentry;
 #endif
 };
