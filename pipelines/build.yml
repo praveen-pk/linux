@@ -35,6 +35,9 @@ parameters:
     displayName: Run MSHV STRESS tests
     type: boolean
     default: False
+  - name: githubref
+    type: string
+    default: "sgardhariya/fix_dom0_kernel_installer"
 
 resources:
   repositories:
@@ -563,6 +566,7 @@ stages:
         ch_subtest_exclude_list: $(ch_tests_exclude_list)
         lisa_exclude_list: $(lisa_tests_exclude_list)
         mshv_crate_ref: $(mshv_crate_ref)
+        githubref: ${{ parameters.githubref }}
         ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
           intel_vm_size_func: "Standard_D16ds_v5"
           run_functional_tests: True
@@ -625,6 +629,7 @@ stages:
         lisa_exclude_list: $(lisa_tests_exclude_list)
         clh_guest_vm_type: "CVM"
         mshv_crate_ref: $(mshv_crate_ref)
+        githubref: ${{ parameters.githubref }}
         ${{ if eq(variables['Build.Reason'], 'PullRequest') }}:
           amd_vm_size_func: "Standard_DC16ads_cc_v5"
           run_ch_integration_tests: True
