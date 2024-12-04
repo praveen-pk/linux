@@ -544,7 +544,7 @@ stages:
       value: "Linux Dom0 Test"
     - name: lisa_tests_exclude_list
       # should be of '|' seprated strings format
-      value: 'verify_kdumpcrash_smp|verify_kdumpcrash_on_random_cpu'
+      value: 'None'
     - name: ch_tests_exclude_list
       value: "common_parallel::test_virtio_balloon_deflate_on_oom,common_parallel::test_vdpa_block,common_parallel::test_vdpa_net,common_parallel::test_watchdog,common_parallel::test_focal_ovmf"
 
@@ -608,7 +608,7 @@ stages:
       value: "Linux Dom0 Test - CVM"
     - name: lisa_tests_exclude_list
       # should be of '|' seprated strings format
-      value: 'verify_kdumpcrash_on_random_cpu|verify_kdumpcrash_smp'
+      value: 'None'
     - name: ch_tests_exclude_list_cvm
       # Should be of comma separated strings format
       # Following are known failures
