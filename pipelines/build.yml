@@ -35,6 +35,10 @@ parameters:
     displayName: Run MSHV STRESS tests
     type: boolean
     default: False
+  - name: run_kdump_host_tests
+    displayName: Run KDUMP Host tests
+    type: boolean
+    default: True
   - name: githubref
     type: string
     default: "sgardhariya/fix_dom0_kernel_installer"
@@ -572,6 +576,7 @@ stages:
           run_functional_tests: True
           run_ch_integration_tests: True
           run_mshv_functional_tests: True
+          run_kdump_host_tests: True
           ch_subtest_include_list: "$(ch_integration_tests),common_parallel::test_api_http_pause_resume"
         ${{ if eq(variables['Build.Reason'], 'IndividualCI') }}:
           intel_vm_size_func: "Standard_D32ds_v5"
@@ -584,6 +589,7 @@ stages:
           run_ch_perf_tests: True
           run_mshv_functional_tests: True
           run_mshv_stress_tests: True
+          run_kdump_host_tests: True
         ${{ if eq(variables['Build.Reason'], 'Manual') }}:
           intel_vm_size_func: "Standard_D32ds_v5"
           run_functional_tests: ${{ parameters.run_functional_tests }}
@@ -595,6 +601,7 @@ stages:
           run_ch_perf_tests: ${{ parameters.run_ch_perf_tests }}
           run_mshv_functional_tests: ${{ parameters.run_mshv_functional_tests }}
           run_mshv_stress_tests: ${{ parameters.run_mshv_stress_tests }}
+          run_kdump_host_tests: ${{ parameters.run_kdump_host_tests }}
 
 - stage: "Linux_Dom0_Test_CVM"
   displayName: "Linux Dom0 Test - CVM"
@@ -634,6 +641,7 @@ stages:
           amd_vm_size_func: "Standard_DC16ads_cc_v5"
           run_ch_integration_tests: True
           run_mshv_functional_tests: True
+          run_kdump_host_tests: True
           ch_subtest_include_list: $(ch_integration_tests)
         ${{ if eq(variables['Build.Reason'], 'IndividualCI') }}:
           amd_vm_size_func: "Standard_DC32ads_cc_v5"
@@ -641,10 +649,12 @@ stages:
           run_ch_live_migration_tests: False
           run_ch_perf_tests: True
           run_mshv_functional_tests: True
+          run_kdump_host_tests: True
         ${{ if eq(variables['Build.Reason'], 'Manual') }}:
           amd_vm_size_func: "Standard_DC32ads_cc_v5"
           run_ch_integration_tests: ${{ parameters.run_ch_integration_tests }}
           run_ch_live_migration_tests: ${{ parameters.run_ch_live_migration_tests }}
           run_ch_perf_tests: ${{ parameters.run_ch_perf_tests }}
           run_mshv_functional_tests: ${{ parameters.run_mshv_functional_tests }}
+          run_kdump_host_tests: ${{ parameters.run_kdump_host_tests }}
 
