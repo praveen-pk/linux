@@ -12,7 +12,6 @@
 #include "policy.h"
 #include "policy_parser.h"
 #include "digest.h"
-#include "pathname.h"
 
 #define START_COMMENT	'#'
 #define IPE_POLICY_DELIM " \t"
@@ -78,66 +77,6 @@ static size_t remove_trailing_spaces(char *line)
 	line[i] = '\0';
 
 	return i;
-}
-
-/**
- * tokenize() - Split a string into tokens considering quoted strings.
- * @buf: The string to be tokenized
- * @delim: The delimiter characters
- *
- * tokenize() updates @buf to point after the token, ready for the next call.
- * It supports tokens enclosed in double quotes and treats them as single tokens.
- * This function behaves like strsep but with added functionality for handling quoted strings.
- *
- * Return: the next token or NULL if there are no more tokens.
- */
-static char *tokenize(char **buf, const char *delim)
-{
-	if (!*buf)
-		return NULL;
-
-	char *start = *buf, *end;
-	bool in_quotes = false;
-
-	for (end = start; *end; end++) {
-		if (*end == '\"')
-			in_quotes = !in_quotes;
-		else if (!in_quotes && strchr(delim, *end))
-			break;
-	}
-
-	if (*end == '\0') {
-		*buf = NULL;
-	} else {
-		*end = '\0';
-		*buf = end + 1;
-	}
-
-	return start;
-}
-
-/**
- * match_strdup_quoted() - allocate a new string with the contents of a substring_t, excluding quotes.
- * @s: &substring_t to copy
- *
- * Description: Allocates and returns a string filled with the contents of
- * the &substring_t @s, excluding the starting and ending quotes if present.
- * The caller is responsible for freeing the returned string with kfree().
- *
- * Return: the address of the newly allocated NUL-terminated string or
- * %NULL on error.
- */
-static char *match_strdup_quoted(const substring_t *s)
-{
-	const char *start = s->from;
-	const char *end = s->to;
-
-	if (*start == '\"' && *(end - 1) == '\"' && end - start >= 2) {
-		start++;
-		end--;
-	}
-
-	return kmemdup_nul(start, end - start, GFP_KERNEL);
 }
 
 /**
@@ -208,7 +147,7 @@ static int parse_header(char *line, struct ipe_parsed_policy *p)
 	size_t idx = 0;
 	int rc = 0;
 
-	while ((t = tokenize(&line, IPE_POLICY_DELIM)) != NULL) {
+	while ((t = strsep(&line, IPE_POLICY_DELIM)) != NULL) {
 		int token;
 
 		if (*t == '\0')
@@ -226,11 +165,9 @@ static int parse_header(char *line, struct ipe_parsed_policy *p)
 
 		switch (token) {
 		case IPE_HEADER_POLICY_NAME:
-			p->name = match_strdup_quoted(&args[0]);
+			p->name = match_strdup(&args[0]);
 			if (!p->name)
 				rc = -ENOMEM;
-			else if (strchr(p->name, '"'))
-				rc = -EBADMSG;
 			break;
 		case IPE_HEADER_POLICY_VERSION:
 			ver = match_strdup(&args[0]);
@@ -285,71 +222,11 @@ static void free_rule(struct ipe_rule *r)
 
 	list_for_each_entry_safe(p, t, &r->props, next) {
 		list_del(&p->next);
-		if (p->type == IPE_PROP_DMV_ROOTHASH ||
-		    p->type == IPE_PROP_FSV_DIGEST)
-			ipe_digest_free(p->value);
-		else if (p->type == IPE_PROP_INTENDED_PATHNAME)
-			kfree(p->value);
+		ipe_digest_free(p->value);
 		kfree(p);
 	}
 
 	kfree(r);
-}
-
-/**
- * dup_rule - Duplicate an IPE rule.
- * @r: Pointer to the rule to be duplicated.
- *
- * Return:
- * * !IS_ERR	- OK
- * * -ENOMEM	- Out of memory
- */
-static struct ipe_rule *dup_rule(struct ipe_rule *r)
-{
-	struct ipe_prop *p, *t, *dup_p = NULL;
-	struct ipe_rule *dup_r = NULL;
-
-	if (IS_ERR_OR_NULL(r))
-		return NULL;
-
-	dup_r = kzalloc(sizeof(*dup_r), GFP_KERNEL);
-	if (!dup_r)
-		return ERR_PTR(-ENOMEM);
-
-	dup_r->op = r->op;
-	dup_r->action = r->action;
-	INIT_LIST_HEAD(&dup_r->props);
-	INIT_LIST_HEAD(&dup_r->next);
-
-	list_for_each_entry_safe(p, t, &r->props, next) {
-		dup_p = kzalloc(sizeof(*dup_p), GFP_KERNEL);
-		if (!dup_p)
-			goto err;
-
-		dup_p->type = p->type;
-		if (p->type == IPE_PROP_DMV_ROOTHASH ||
-		    p->type == IPE_PROP_FSV_DIGEST) {
-			dup_p->value = ipe_digest_dup(p->value);
-			if (IS_ERR_OR_NULL(dup_p->value)) {
-				kfree(dup_p);
-				goto err;
-			}
-		} else if (p->type == IPE_PROP_INTENDED_PATHNAME) {
-			dup_p->value = kstrdup(p->value, GFP_KERNEL);
-			if (IS_ERR_OR_NULL(dup_p->value)) {
-				kfree(dup_p);
-				goto err;
-			}
-		}
-
-		list_add_tail(&dup_p->next, &dup_r->props);
-	}
-
-	return dup_r;
-
-err:
-	free_rule(dup_r);
-	return  ERR_PTR(-ENOMEM);
 }
 
 static const match_table_t operation_tokens = {
@@ -360,8 +237,6 @@ static const match_table_t operation_tokens = {
 	{IPE_OP_KEXEC_INITRAMFS,	"op=KEXEC_INITRAMFS"},
 	{IPE_OP_POLICY,			"op=POLICY"},
 	{IPE_OP_X509,			"op=X509_CERT"},
-	{IPE_OP_READ,			"op=READ"},
-	{IPE_OP_KERNEL_READ,		"op=KERNEL_READ"},
 	{IPE_OP_INVALID,		NULL}
 };
 
@@ -406,7 +281,6 @@ static const match_table_t property_tokens = {
 	{IPE_PROP_FSV_DIGEST,		"fsverity_digest=%s"},
 	{IPE_PROP_FSV_SIG_FALSE,	"fsverity_signature=FALSE"},
 	{IPE_PROP_FSV_SIG_TRUE,		"fsverity_signature=TRUE"},
-	{IPE_PROP_INTENDED_PATHNAME,	"intended_pathname=%s"},
 	{IPE_PROP_INVALID,		NULL}
 };
 
@@ -450,23 +324,7 @@ static int parse_property(char *t, struct ipe_rule *r)
 			rc = PTR_ERR(p->value);
 			goto err;
 		}
-		p->type = token;
-		kfree(dup);
-		break;
-	case IPE_PROP_INTENDED_PATHNAME:
-		dup = match_strdup_quoted(&args[0]);
-		if (!dup) {
-			rc = -ENOMEM;
-			goto err;
-		}
-		rc = ipe_validate_pathname_pattern(dup);
-		if (rc) {
-			kfree(dup);
-			goto err;
-		}
-		p->value = dup;
-		p->type = token;
-		break;
+		fallthrough;
 	case IPE_PROP_BOOT_VERIFIED_FALSE:
 	case IPE_PROP_BOOT_VERIFIED_TRUE:
 	case IPE_PROP_DMV_SIG_FALSE:
@@ -484,76 +342,11 @@ static int parse_property(char *t, struct ipe_rule *r)
 	list_add_tail(&p->next, &r->props);
 
 out:
+	kfree(dup);
 	return rc;
 err:
 	kfree(p);
 	goto out;
-}
-
-/**
- * set_kernel_read_default_action() - Set default actions for kernel read operations.
- * @p: Pointer to the partially parsed policy structure.
- * @action: The action to be set as the default for kernel read operations.
- *
- * Return:
- * * !IS_ERR	- OK
- * * -EBADMSG	- Policy syntax error
- */
-static int set_kernel_read_default_action(struct ipe_parsed_policy *p,
-					  enum ipe_action_type action)
-{
-	size_t i;
-
-	for (i = 0; i < KERNEL_READ_OPS_NUM; ++i) {
-		if (p->rules[kernel_read_ops[i]].default_action !=
-		    IPE_ACTION_INVALID) {
-			return -EBADMSG;
-		}
-	}
-
-	for (i = 0; i < KERNEL_READ_OPS_NUM; ++i)
-		p->rules[kernel_read_ops[i]].default_action = action;
-
-	return 0;
-}
-
-/**
- * append_kernel_read_rules() - Append a rule to all kernel read operations.
- * @p: Pointer to the partially parsed policy structure.
- * @r: Pointer to the rule to be appended.
- *
- * Return:
- * * !IS_ERR	- OK
- * * -ENOMEM	- Out of memory
- */
-static int append_kernel_read_rules(struct ipe_parsed_policy *p,
-				    struct ipe_rule *r)
-{
-	struct ipe_rule *kernel_read_rules[KERNEL_READ_OPS_NUM] = {0};
-	size_t i;
-	int rc = 0;
-
-	for (i = 1; i < KERNEL_READ_OPS_NUM; ++i) {
-		kernel_read_rules[i] = dup_rule(r);
-		if (IS_ERR(kernel_read_rules[i])) {
-			rc = PTR_ERR(kernel_read_rules[i]);
-			goto err;
-		}
-	}
-	kernel_read_rules[0] = r;
-
-	for (int i = 0; i < KERNEL_READ_OPS_NUM; ++i) {
-		kernel_read_rules[i]->op = kernel_read_ops[i];
-		list_add_tail(&kernel_read_rules[i]->next,
-			      &p->rules[kernel_read_ops[i]].rules);
-	}
-
-	return 0;
-err:
-	for (i = 1; i < KERNEL_READ_OPS_NUM; ++i)
-		free_rule(kernel_read_rules[i]);
-
-	return rc;
 }
 
 /**
@@ -576,6 +369,9 @@ static int parse_rule(char *line, struct ipe_parsed_policy *p)
 	bool op_parsed = false;
 	int rc = 0;
 	char *t;
+
+	if (IS_ERR_OR_NULL(line))
+		return -EBADMSG;
 
 	r = kzalloc(sizeof(*r), GFP_KERNEL);
 	if (!r)
@@ -620,8 +416,6 @@ static int parse_rule(char *line, struct ipe_parsed_policy *p)
 				rc = -EBADMSG;
 			else
 				p->global_default_action = action;
-		} else if (op == IPE_OP_KERNEL_READ) {
-			rc = set_kernel_read_default_action(p, action);
 		} else {
 			if (p->rules[op].default_action != IPE_ACTION_INVALID)
 				rc = -EBADMSG;
@@ -637,17 +431,10 @@ static int parse_rule(char *line, struct ipe_parsed_policy *p)
 
 	if (rc)
 		goto err;
-	if (!is_default_rule) {
-		if (op == IPE_OP_KERNEL_READ) {
-			rc = append_kernel_read_rules(p, r);
-			if (rc)
-				goto err;
-		} else {
-			list_add_tail(&r->next, &p->rules[op].rules);
-		}
-	} else {
+	if (!is_default_rule)
+		list_add_tail(&r->next, &p->rules[op].rules);
+	else
 		free_rule(r);
-	}
 
 	return rc;
 err:

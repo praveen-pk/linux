@@ -31,6 +31,25 @@ config IPE_BOOT_POLICY
 
 	  If unsure, leave blank.
 
+config IPE_POLICY_SIG_SECONDARY_KEYRING
+	bool "IPE policy update verification with secondary keyring"
+	default y
+	depends on SECONDARY_TRUSTED_KEYRING
+	help
+	  Also allow the secondary trusted keyring to verify IPE policy
+	  updates.
+
+	  If unsure, answer Y.
+
+config IPE_POLICY_SIG_PLATFORM_KEYRING
+	bool "IPE policy update verification with platform keyring"
+	default y
+	depends on INTEGRITY_PLATFORM_KEYRING
+	help
+	  Also allow the platform keyring to verify IPE policy updates.
+
+	  If unsure, answer Y.
+
 menu "IPE Trust Providers"
 
 config IPE_PROP_DM_VERITY
@@ -74,19 +93,6 @@ config IPE_PROP_FS_VERITY_BUILTIN_SIG
 	  is in the .fs-verity keyring.
 
 	  if unsure, answer Y.
-
-config IPE_PROP_INTENDED_PATHNAME
-	bool "Enable property for targeting applications based on application provided-path"
-	help
-	  This option enables IPE's "intended_pathname" property. This is the
-	  original userland, application-provided pathname passed to any open
-	  system call. This can be used by the userland application to signal
-	  its purpose to enforce integrity requirements on paths, such as
-	  verifying all config files in /etc.
-	  WARNING: intended_pathname is not a security property and should
-	  only be used for targeting an application via its intent to open
-	  a file.
-	  if unsure, answer N.
 
 endmenu
 
