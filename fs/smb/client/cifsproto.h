@@ -57,6 +57,8 @@ extern int init_cifs_idmap(void);
 extern void exit_cifs_idmap(void);
 extern int init_cifs_spnego(void);
 extern void exit_cifs_spnego(void);
+extern void smb3_crypto_register(void);
+extern void smb3_crypto_unregister(void);
 extern const char *build_path_from_dentry(struct dentry *, void *);
 char *__build_path_from_dentry_optional_prefix(struct dentry *direntry, void *page,
 					       const char *tree, int tree_len,
@@ -679,6 +681,7 @@ char *extract_hostname(const char *unc);
 char *extract_sharename(const char *unc);
 int parse_reparse_point(struct reparse_data_buffer *buf,
 			u32 plen, struct cifs_sb_info *cifs_sb,
+			const char *full_path,
 			bool unicode, struct cifs_open_info_data *data);
 int cifs_sfu_make_node(unsigned int xid, struct inode *inode,
 		       struct dentry *dentry, struct cifs_tcon *tcon,
