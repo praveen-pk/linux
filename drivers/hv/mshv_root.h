@@ -87,7 +87,7 @@ struct mshv_mem_region {
 	u32 hv_map_flags;
 	struct {
 		u64 large_pages:  1; /* 2MiB */
-		u64 range_pinned: 1;
+		u64 memreg_isram: 1; /* mem region can be ram or mmio */
 		u64 reserved:	 62;
 	} flags;
 	struct mshv_partition *partition;
@@ -120,7 +120,7 @@ struct mshv_partition {
 
 	/*
 	 * Since MSHV does not support more than one async hypercall in flight
-	 * for a single partition. Thus, it is okay to define per partition
+	 * for a single partition, it is okay to define per partition
 	 * async hypercall status.
 	 */
 	struct completion async_hypercall;
@@ -135,6 +135,7 @@ struct mshv_partition {
 
 	struct mshv_girq_routing_table __rcu *pt_girq_tbl;
 	u64 isolation_type;
+	pid_t pt_vmm_tgid;
 	bool import_completed;
 	bool pt_initialized;
 #ifdef CONFIG_DEBUG_FS

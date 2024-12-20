@@ -12,9 +12,18 @@
 #include <linux/irq.h>
 #include <asm/mshyperv.h>
 
-static int hv_map_interrupt(union hv_device_id device_id, bool level,
-			    int cpu, int vector,
-			    struct hv_interrupt_entry *ret_entry)
+/*
+ * Currently, direct attach must use logical device type and vice versa. Since
+ * vfio needs to bind irq at the very start before we know guest cpu/irq, we
+ * pick some default cpu/irq, and after the VM starts retarget will move it
+ * to relevant cpu and irq.
+ */
+#define HV_LOGDEV_DEF_CPU 0
+#define HV_LOGDEV_DEF_IRQ 32
+
+static int hv_map_interrupt_hcall(u64 ptid, union hv_device_id device_id,
+				  bool level, int cpu, int vector,
+				  struct hv_interrupt_entry *ret_entry)
 {
 	struct hv_input_map_device_interrupt *input;
 	struct hv_output_map_device_interrupt *output;
@@ -28,10 +37,16 @@ static int hv_map_interrupt(union hv_device_id device_id, bool level,
 	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
 	output = *this_cpu_ptr(hyperv_pcpu_output_arg);
 
-	intr_desc = &input->interrupt_descriptor;
+	if (device_id.device_type == HV_DEVICE_TYPE_LOGICAL) {
+		cpu = HV_LOGDEV_DEF_CPU;
+		vector = HV_LOGDEV_DEF_IRQ;
+	}
+
 	memset(input, 0, sizeof(*input));
-	input->partition_id = hv_current_partition_id;
+	input->partition_id = ptid;
 	input->device_id = device_id.as_uint64;
+
+	intr_desc = &input->interrupt_descriptor;
 	intr_desc->interrupt_type = HV_X64_INTERRUPT_TYPE_FIXED;
 	intr_desc->vector_count = 1;
 	intr_desc->target.vector = vector;
@@ -64,6 +79,33 @@ static int hv_map_interrupt(union hv_device_id device_id, bool level,
 
 	local_irq_restore(flags);
 
+	return status;
+}
+
+static int hv_map_interrupt(u64 ptid, union hv_device_id device_id, bool level,
+			    int cpu, int vector,
+			    struct hv_interrupt_entry *ret_entry)
+{
+	u64 status;
+	int deposit_pgs = 16;		/* don't loop forever */
+
+	while (deposit_pgs--) {
+		status = hv_map_interrupt_hcall(ptid, device_id, level, cpu,
+						vector, ret_entry);
+
+		if (hv_result(status) == HV_STATUS_INSUFFICIENT_MEMORY) {
+			status = hv_call_deposit_pages(NUMA_NO_NODE, ptid, 1);
+			if (!hv_result_success(status)) {
+				pr_err("%s deposit pages failed:%llx\n",
+				       __func__, status);
+				break;
+			}
+			continue;
+		}
+
+		break;
+	};
+
 	if (!hv_result_success(status))
 		pr_err("%s: hypercall failed, status 0x%llx\n", __func__,
 		       status);
@@ -84,7 +126,12 @@ static int hv_unmap_interrupt(union hv_device_id hv_devid,
 	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
 
 	memset(input, 0, sizeof(*input));
-	input->partition_id = hv_current_partition_id;
+
+	if (hv_devid.device_type == HV_DEVICE_TYPE_LOGICAL)
+		input->partition_id = hv_iommu_get_curr_partid();
+	else
+		input->partition_id = hv_current_partition_id;
+
 	input->device_id = hv_devid.as_uint64;
 	intr_entry = &input->interrupt_entry;
 	*intr_entry = *hvirqe;
@@ -114,7 +161,7 @@ static int get_rid_cb(struct pci_dev *pdev, u16 alias, void *data)
 	return 0;
 }
 
-union hv_device_id hv_build_pci_dev_id(struct pci_dev *pdev)
+static u64 hv_build_devid_type_pci(struct pci_dev *pdev)
 {
 	int pos;
 	union hv_device_id dev_id;
@@ -162,8 +209,7 @@ union hv_device_id hv_build_pci_dev_id(struct pci_dev *pdev)
 			u8 sec_bus, sub_bus;
 
 			dev_id.pci.source_shadow =
-					     HV_SOURCE_SHADOW_BRIDGE_BUS_RANGE;
-
+					      HV_SOURCE_SHADOW_BRIDGE_BUS_RANGE;
 			pci_read_config_byte(data.bridge, PCI_SECONDARY_BUS,
 					     &sec_bus);
 			dev_id.pci.shadow_bus_range.secondary_bus = sec_bus;
@@ -174,9 +220,59 @@ union hv_device_id hv_build_pci_dev_id(struct pci_dev *pdev)
 	}
 
 out:
-	return dev_id;
+	return dev_id.as_uint64;
 }
-EXPORT_SYMBOL_GPL(hv_build_pci_dev_id);
+
+/* Build device id for direct attached devices */
+static u64 hv_build_devid_type_logical(struct pci_dev *pdev)
+{
+	hv_pci_segment segment;
+	union hv_device_id hv_devid;
+	union hv_pci_bdf bdf = {.as_uint16 = 0};
+	struct rid_data data = {
+		.bridge = NULL,
+		.rid = PCI_DEVID(pdev->bus->number, pdev->devfn)
+	};
+
+	segment = pci_domain_nr(pdev->bus);
+	bdf.bus = PCI_BUS_NUM(data.rid);
+	bdf.device = PCI_SLOT(data.rid);
+	bdf.function = PCI_FUNC(data.rid);
+
+	hv_devid.as_uint64 = 0;
+	hv_devid.device_type = HV_DEVICE_TYPE_LOGICAL;
+	hv_devid.logical.id = (u64)segment << 16 | bdf.as_uint16;
+
+	return hv_devid.as_uint64;
+}
+
+/* Build device id after the device has been attached */
+u64 hv_build_devid_oftype(struct pci_dev *pdev, enum hv_device_type type)
+{
+	if (type == HV_DEVICE_TYPE_LOGICAL) {
+		if (hv_l1vh_partition())
+			return hv_pci_vmbus_device_id(pdev);
+		else
+			return hv_build_devid_type_logical(pdev);
+	} else if (type == HV_DEVICE_TYPE_PCI)
+		return hv_build_devid_type_pci(pdev);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(hv_build_devid_oftype);
+
+/* Build device id for the interrupt path */
+static u64 hv_build_irq_devid(struct pci_dev *pdev)
+{
+	enum hv_device_type dev_type;
+
+	if (hv_pcidev_is_attached_dev(pdev) || hv_l1vh_partition())
+		dev_type = HV_DEVICE_TYPE_LOGICAL;
+	else
+		dev_type = HV_DEVICE_TYPE_PCI;
+
+	return hv_build_devid_oftype(pdev, dev_type);
+}
 
 /**
  * hv_map_msi_interrupt() - "Map" the MSI IRQ in the hypervisor.
@@ -195,24 +291,33 @@ int hv_map_msi_interrupt(struct irq_data *data,
 	struct irq_cfg *cfg = irqd_cfg(data);
 	const cpumask_t *affinity;
 	int cpu;
-	u64 res;
+	u64 res, ptid;
 
 	msidesc = irq_data_get_msi_desc(data);
 	pdev = msi_desc_to_pci_dev(msidesc);
-	hv_devid = hv_build_pci_dev_id(pdev);
 	affinity = irq_data_get_effective_affinity_mask(data);
 	cpu = cpumask_first_and(affinity, cpu_online_mask);
+	hv_devid.as_uint64 = hv_build_irq_devid(pdev);
+
+	if (hv_devid.device_type == HV_DEVICE_TYPE_LOGICAL)
+		if (hv_pcidev_is_attached_dev(pdev))
+			ptid = hv_iommu_get_curr_partid();
+		else
+			/* Device actually on l1vh dom0, not passthru'd to vm */
+			ptid = hv_current_partition_id;
+	else
+		ptid = hv_current_partition_id;
 
 	/* prints error in case of failure */
-	res = hv_map_interrupt(hv_devid, false, cpu, cfg->vector,
+	res = hv_map_interrupt(ptid, hv_devid, false, cpu, cfg->vector,
 			       out_entry ? out_entry : &dummy);
 
 	return hv_status_to_errno(res);
 }
 EXPORT_SYMBOL_GPL(hv_map_msi_interrupt);
 
-static inline void entry_to_msi_msg(struct hv_interrupt_entry *hvirqe,
-				    struct msi_msg *msi)
+static void entry_to_msi_msg(struct hv_interrupt_entry *hvirqe,
+			     struct msi_msg *msi)
 {
 	/* High address is always 0 */
 	msi->address_hi = 0;
@@ -220,10 +325,7 @@ static inline void entry_to_msi_msg(struct hv_interrupt_entry *hvirqe,
 	msi->data = hvirqe->msi_entry.data.as_uint32;
 }
 
-static int hv_unmap_msi_interrupt(struct pci_dev *pdev,
-				  struct hv_interrupt_entry *hvirqe);
-
-static void hv_irq_compose_msi_msg(struct irq_data *data, struct msi_msg *msg)
+void hv_irq_compose_msi_msg(struct irq_data *data, struct msi_msg *msg)
 {
 	struct msi_desc *msidesc;
 	struct pci_dev *pdev;
@@ -277,13 +379,14 @@ static void hv_irq_compose_msi_msg(struct irq_data *data, struct msi_msg *msg)
 	data->chip_data = stored_entry;
 	entry_to_msi_msg(data->chip_data, msg);
 }
+EXPORT_SYMBOL_GPL(hv_irq_compose_msi_msg);
 
-static int hv_unmap_msi_interrupt(struct pci_dev *pdev,
-				  struct hv_interrupt_entry *hvirqe)
+int hv_unmap_msi_interrupt(struct pci_dev *pdev,
+			   struct hv_interrupt_entry *hvirqe)
 {
 	union hv_device_id hv_devid;
 
-	hv_devid = hv_build_pci_dev_id(pdev);
+	hv_devid.as_uint64 = hv_build_irq_devid(pdev);
 
 	return hv_unmap_interrupt(hv_devid, hvirqe);
 }
@@ -307,7 +410,7 @@ static void hv_teardown_msi_irq(struct pci_dev *pdev, struct irq_data *irqd)
 	status = hv_unmap_msi_interrupt(pdev, &old_entry);
 
 	if (status != HV_STATUS_SUCCESS)
-		pr_err("%s: hypercall failed, status 0x%llx irq:%d\n",
+		pr_err("%s: hypercall failed, status:0x%llx irq:%d\n",
 		       __func__, status, irqd->irq);
 }
 
@@ -395,6 +498,7 @@ int hv_map_ioapic_interrupt(int ioapic_id, bool level, int cpu, int vector,
 	hv_devid.device_type = HV_DEVICE_TYPE_IOAPIC;
 	hv_devid.ioapic.ioapic_id = (u8)ioapic_id;
 
-	return hv_map_interrupt(hv_devid, level, cpu, vector, entry);
+	return hv_map_interrupt(hv_current_partition_id, hv_devid, level, cpu,
+				vector, entry);
 }
 EXPORT_SYMBOL_GPL(hv_map_ioapic_interrupt);
