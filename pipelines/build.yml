@@ -120,7 +120,7 @@ stages:
     - name: BUILDING_TAG
       value: $[startsWith(variables['Build.SourceBranch'], 'refs/tags')]
     - name: BUILDING_MAIN
-      value: $[or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), eq(variables['Build.SourceBranch'], 'refs/heads/msft/mshv-stable'))]
+      value: $[or(eq(variables['Build.SourceBranch'], 'refs/heads/main-6.6'), eq(variables['Build.SourceBranch'], 'refs/heads/main'))]
     - name: SOURCES_STORAGE_URL
       value: https://lsgvirtstorage.blob.core.windows.net/dom0-mariner-sources-public
 
