@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/arm64 6.6.62.mshv1 Kernel Configuration
+# Linux/arm64 6.6.71.mshv1 Kernel Configuration
 #
 CONFIG_CC_VERSION_TEXT="gcc (GCC) 13.2.0"
 CONFIG_CC_IS_GCC=y
@@ -2300,6 +2300,7 @@ CONFIG_ARM_ARCH_TIMER_OOL_WORKAROUND=y
 CONFIG_FSL_ERRATUM_A008585=y
 CONFIG_HISILICON_ERRATUM_161010101=y
 CONFIG_ARM64_ERRATUM_858921=y
+# CONFIG_ARM_TIMER_SP804 is not set
 # end of Clock Source drivers
 
 # CONFIG_MAILBOX is not set
