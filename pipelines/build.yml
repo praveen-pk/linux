@@ -108,8 +108,6 @@ stages:
       value: $[startsWith(variables['Build.SourceBranch'], 'refs/tags')]
     - name: BUILDING_MSFT_UVM_MAIN
       value: $[eq(variables['Build.SourceBranch'], 'refs/heads/msft-uvm-main-6.6')]
-    - name: SOURCES_STORAGE_URL
-      value: https://lsgvirtstorage.blob.core.windows.net/dom0-mariner-sources-public
 
   jobs:
   - job: Kernel
@@ -418,13 +416,42 @@ stages:
       clean: true
     - template: templates/ubuntu-20.04-build.yml
 
+    - task: AzureCLI@2
+      inputs:
+        connectedServiceNameARM: lsg-virt-mi2
+        scriptType: bash
+        scriptLocation: inlineScript
+        inlineScript: |
+          set -e
+          set -x
+          export PYTHONPATH=$(Agent.BuildDirectory)/s/linux-dom0/pipelines/
+          TGZ=$(python3 -c "from lsgtools.virt.mshv import kernel; version = kernel.get_version_from_tag('$(Build.SourceBranch)'); tgz = kernel.build_tgz_name(version, 'uvm'); print(tgz);")
+          SUM="${TGZ}.sha256"
+          # TODO might move the checksum calculation to the packaging script instead
+          sha256sum "${TGZ}" | cut -d ' ' -f1 > "${SUM}"
+          for i in "${TGZ}" "${SUM}"; do
+                URL="https://$(SOURCES_STORAGE_ACCOUNT).blob.core.windows.net/$(SOURCES_STORAGE_CONTAINER)/${i}"
+                azcopy copy ${URL} ${i}
+          done
+      env:
+        AZCOPY_AUTO_LOGIN_TYPE: "AZCLI"
+        AZCOPY_TENANT_ID: $(LSG_TENANT_ID)
+      displayName: 'Fetch tarball'
+
     - bash: |
         set -e
         set -x
+        TGZ=$(realpath $(ls -1 *.tar.gz | head -1))
+        SUM=$(realpath "${TGZ}.sha256")
         git config --global user.email "$(Build.RequestedForEmail)"
         git config --global user.name "$(Build.RequestedFor)"
         pushd "$(Agent.BuildDirectory)/s/lsg-virt-mariner"
-        "$(Agent.BuildDirectory)/s/linux-dom0/pipelines/scripts/kernel-spec-update" "$(Build.SourceBranch)" "$(Build.SourceVersion)" --spec uvm
+        "$(Agent.BuildDirectory)/s/linux-dom0/pipelines/scripts/kernel-spec-update" \
+          --tgz "${TGZ}" \
+          --sha256 "${SUM}" \
+          --tag "$(Build.SourceBranch)" \
+          --rev "$(Build.SourceVersion)" \
+          --spec uvm
         # If the script above succeeded, the current checkout is now on something like autoupdate/kernel-uvm-.... branch
         # and all the updates are committed here. So lets push the branch. This part might need to be moved into the script,
         # if the branch names are to change.
@@ -446,8 +473,6 @@ stages:
           -v
         popd
       displayName: 'lsg-virt-mariner spec'
-      env:
-          SOURCES_STORAGE_URL: $(SOURCES_STORAGE_URL)
 
   - job: CHECK_SCRIPTS
     condition: not(or(eq(variables.BUILDING_MSFT_UVM_MAIN, 'true'), eq(variables.BUILDING_TAG, 'true')))
