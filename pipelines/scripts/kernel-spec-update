@@ -3,13 +3,11 @@
 __copyright__ = "Copyright (c) Microsoft Corporation."
 
 import os
-import requests
 import subprocess
 
 import _init  # noqa F401
 from lsgtools import log
 from lsgtools import cli
-from lsgtools.virt import conf
 from lsgtools.virt.mshv import kernel
 
 
@@ -34,8 +32,10 @@ def spec_opts(arg):
 arg_parser = cli.create_arg_parser(prog="kernel-spec-update",
                                    description="Update SPEC file in lsg-linux-mariner derivative repo")
 # Ref might look like refs/tags/msft/mshv-rolling/5.15.74.mshv3.
-arg_parser.add_argument("tag", action="store", help="Tag name")
-arg_parser.add_argument("rev", action="store", help="Git revision hash")
+arg_parser.add_argument("--tag", action="store", help="Tag name")
+arg_parser.add_argument("--rev", action="store", help="Git revision hash")
+arg_parser.add_argument("--tgz", action="store", help="Path to tarball file")
+arg_parser.add_argument("--sha256", action="store", help="Path to checksum file")
 arg_parser.add_argument("--specs", type=spec_opts, action="store", required=False,
                         default=def_specs, help="Comma separated list of [uvm, uvm-cvm]")
 args = arg_parser.parse_args()
@@ -43,7 +43,6 @@ log.set_verbosity(args.verbose)
 
 version = kernel.get_version_from_tag(args.tag)
 # TODO if possible, verify the passed  kernel commit hash
-# TODO for this to work locally need to retrieve the hash if not passed
 rev_hash = args.rev[:8]
 if len(rev_hash) < 8:
     log.err("Git revision '{}' is invalid".format(rev_hash))
@@ -59,35 +58,9 @@ if args.specs["uvm-cvm"]:
     derivative_branch = "{}-uvm-cvm".format(derivative_branch)
 derivative_branch = "{}-{}".format(derivative_branch, version)
 
-storage_url = os.getenv("SOURCES_STORAGE_URL")
-if storage_url is None:
-    storage_url = conf.default_storage_url
-
-tarball_name = kernel.build_tgz_name(version, "uvm")
-tarball_local_path = "/tmp/{}".format(tarball_name)
-tarball_url = "{}/{}".format(storage_url, tarball_name)
-tarball_sum_url = "{}/{}.sha256".format(storage_url, tarball_name)
-
-try:
-    # This simultaneously also serves as a download test for the tarball
-    resp = requests.get(tarball_url)
-    if not 200 == resp.status_code:
-        raise Exception(resp.content)
-    with open(tarball_local_path, 'wb') as f:
-        f.write(resp.content)
-    f.close()
-except Exception as e:
-    log.fatal("Couldn't retvieve tarball '{}'.\nException: {}".format(tarball_url, e))
-    exit(1)
-
-try:
-    resp = requests.get(tarball_sum_url)
-    tarball_sha256 = resp.content.strip().decode()
-    if not 200 == resp.status_code:
-        raise Exception(tarball_sha256)
-except Exception as e:
-    log.fatal("Couldn't retvieve the SHA256 sum file '{}'.\nException: {}").format(tarball_sum_url, e)
-    exit(1)
+tarball_name = args.tgz
+with open(args.sha256, "r") as f:
+    tarball_sha256 = f.read().strip()
 
 cmd = ["git", "checkout", "-b", derivative_branch]
 res = subprocess.run(cmd)
@@ -113,7 +86,7 @@ if args.specs["uvm"]:
             "x86": {"path": "SPECS/kernel/config_uvm_x86", "sha256": None, "kernel_arch": "x86"},
             "aarch64": {"path": "SPECS/kernel/config_uvm_aarch64", "sha256": None, "kernel_arch": "arm64"}
             }
-    kernel_conf = kernel.patch_config(tarball_local_path, kernel_conf, kernel_conf_patch, "uvm_defconfig")
+    kernel_conf = kernel.patch_config(tarball_name, kernel_conf, kernel_conf_patch, "uvm_defconfig")
     for arch in kernel_conf:
         add_cfg(kernel_conf[arch]["path"])
     # Update kernel-uvm.spec
@@ -124,7 +97,7 @@ if args.specs["uvm"]:
         "Signatures": {
             os.path.basename(kernel_conf["x86"]["path"]): kernel_conf["x86"]["sha256"],
             os.path.basename(kernel_conf["aarch64"]["path"]): kernel_conf["aarch64"]["sha256"],
-            tarball_name: tarball_sha256,
+            os.path.basename(tarball_name): tarball_sha256,
                 }
         }
     kernel.update_spec_sums(kernel_sums_path, sums_struct)
@@ -136,7 +109,7 @@ if args.specs["uvm-cvm"]:
     kernel_conf = {
             "x86": {"path": "SPECS/kernel/config_uvm_cvm_x86", "sha256": None, "kernel_arch": "x86"},
             }
-    kernel_conf = kernel.patch_config(tarball_local_path, kernel_conf, kernel_conf_patch, "uvm_defconfig")
+    kernel_conf = kernel.patch_config(tarball_name, kernel_conf, kernel_conf_patch, "uvm_defconfig")
     for arch in kernel_conf:
         add_cfg(kernel_conf[arch]["path"])
     # Update kernel-uvm-cvm.spec
@@ -146,7 +119,7 @@ if args.specs["uvm-cvm"]:
     sums_struct = {
         "Signatures": {
             os.path.basename(kernel_conf["x86"]["path"]): kernel_conf["x86"]["sha256"],
-            tarball_name: tarball_sha256,
+            os.path.basename(tarball_name): tarball_sha256,
                 }
         }
     kernel.update_spec_sums(kernel_sums_path, sums_struct)
