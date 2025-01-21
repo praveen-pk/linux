@@ -2064,6 +2064,26 @@ static long mshv_ioctl_process_pt_flags(void __user *user_arg, u64 *pt_flags,
 	return 0;
 }
 
+static long mshv_ioctl_get_host_partition_property(void __user *user_arg)
+{
+	int ret;
+	u64 property_value, property_code;
+
+	if (copy_from_user(&property_code, user_arg, sizeof(property_code)))
+		return -EFAULT;
+
+	/*
+	 * Note: In case of root partition, it returns the max GPA-width
+	 * for root's children
+	 */
+	ret = hv_call_get_partition_property(HV_PARTITION_ID_SELF,
+					     property_code, &property_value);
+	if (ret)
+		return ret;
+
+	return property_value;
+}
+
 static long
 mshv_ioctl_create_partition(void __user *user_arg, struct device *module_dev)
 {
@@ -2166,6 +2186,9 @@ static long mshv_dev_ioctl(struct file *filp, unsigned int ioctl,
 	case MSHV_CREATE_PARTITION:
 		return mshv_ioctl_create_partition((void __user *)arg,
 						misc->this_device);
+	case MSHV_GET_HOST_PARTITION_PROPERTY:
+		return mshv_ioctl_get_host_partition_property(
+			(void __user *)arg);
 	}
 
 	return -ENOTTY;

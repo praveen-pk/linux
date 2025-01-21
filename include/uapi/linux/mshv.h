@@ -86,6 +86,7 @@ struct mshv_create_partition_v2 {
 
 /* /dev/mshv */
 #define MSHV_CREATE_PARTITION	_IOW(MSHV_IOCTL, 0x00, struct mshv_create_partition)
+#define MSHV_GET_HOST_PARTITION_PROPERTY _IOR(MSHV_IOCTL, 0x01, u64)
 
 /*
  ************************
