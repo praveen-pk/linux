@@ -567,9 +567,9 @@ int hv_call_set_vp_state(u32 vp_index, u64 partition_id,
 	return ret;
 }
 
-int hv_call_map_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
-			      union hv_input_vtl input_vtl,
-			      struct page **state_page)
+static int hv_call_map_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
+				     union hv_input_vtl input_vtl,
+				     struct page **state_page)
 {
 	struct hv_input_map_vp_state_page *input;
 	struct hv_output_map_vp_state_page *output;
@@ -588,7 +588,14 @@ int hv_call_map_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
 		input->type = type;
 		input->input_vtl = input_vtl;
 
-		status = hv_do_hypercall(HVCALL_MAP_VP_STATE_PAGE, input, output);
+		if (*state_page) {
+			input->flags.map_location_provided = 1;
+			input->requested_map_location =
+				page_to_pfn(*state_page);
+		}
+
+		status = hv_do_hypercall(HVCALL_MAP_VP_STATE_PAGE, input,
+					 output);
 
 		if (hv_result(status) != HV_STATUS_INSUFFICIENT_MEMORY) {
 			if (hv_result_success(status))
@@ -614,8 +621,31 @@ int hv_call_map_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
 	return ret;
 }
 
-int hv_call_unmap_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
-				union hv_input_vtl input_vtl)
+int hv_map_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
+			 union hv_input_vtl input_vtl,
+			 struct page **state_page)
+{
+	int ret = 0;
+	struct page *allocated_page = NULL;
+
+	if (hv_l1vh_partition()) {
+		allocated_page = alloc_page(GFP_KERNEL);
+		if (!allocated_page)
+			return -ENOMEM;
+		*state_page = allocated_page;
+	}
+
+	ret = hv_call_map_vp_state_page(partition_id, vp_index, type, input_vtl,
+					state_page);
+
+	if (ret && allocated_page)
+		__free_page(allocated_page);
+
+	return ret;
+}
+
+static int hv_call_unmap_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
+				       union hv_input_vtl input_vtl)
 {
 	unsigned long flags;
 	u64 status;
@@ -640,6 +670,17 @@ int hv_call_unmap_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
 		hv_status_debug(status, "\n");
 
 	return hv_result_to_errno(status);
+}
+
+int hv_unmap_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
+			   void *page_addr, union hv_input_vtl input_vtl)
+{
+	int ret = hv_call_unmap_vp_state_page(partition_id, vp_index, type, input_vtl);
+
+	if (hv_l1vh_partition() && page_addr)
+		__free_page(virt_to_page(page_addr));
+
+	return ret;
 }
 
 int
