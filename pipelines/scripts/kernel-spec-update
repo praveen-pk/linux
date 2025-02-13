@@ -58,12 +58,18 @@ kernel_conf = kernel.patch_config(tarball_name, kernel_conf, kernel_conf_patch, 
 pem_path = "SPECS/kernel/cbl-mariner-ca-20211013.pem"
 with open(pem_path, "rb") as f:
     pem_sha256 = hashlib.sha256(f.read()).hexdigest()
-grub_cfg_path = "SPECS/kernel/mariner_mshv.cfg_x86"
-with open(grub_cfg_path, "rb") as f:
-    grub_cfg_sha256 = hashlib.sha256(f.read()).hexdigest()
-grub_menuentry_path = "SPECS/kernel/mariner_mshv_menuentry_x86"
-with open(grub_menuentry_path, "rb") as f:
-    grub_menuentry_sha256 = hashlib.sha256(f.read()).hexdigest()
+grub_cfg_path_x86_64 = "SPECS/kernel/mariner_mshv.cfg_x86_64"
+with open(grub_cfg_path_x86_64, "rb") as f:
+    grub_cfg_sha256_x86_64 = hashlib.sha256(f.read()).hexdigest()
+grub_menuentry_path_x86_64 = "SPECS/kernel/mariner_mshv_menuentry_x86_64"
+with open(grub_menuentry_path_x86_64, "rb") as f:
+    grub_menuentry_sha256_x86_64 = hashlib.sha256(f.read()).hexdigest()
+grub_cfg_path_aarch64 = "SPECS/kernel/mariner_mshv.cfg_arm64"
+with open(grub_cfg_path_aarch64, "rb") as f:
+    grub_cfg_sha256_aarch64 = hashlib.sha256(f.read()).hexdigest()
+grub_menuentry_path_aarch64 = "SPECS/kernel/mariner_mshv_menuentry_arm64"
+with open(grub_menuentry_path_aarch64, "rb") as f:
+    grub_menuentry_sha256_aarch64 = hashlib.sha256(f.read()).hexdigest()
 # Re-create signatures file
 sums_struct = {
     "Signatures": {
@@ -71,8 +77,10 @@ sums_struct = {
         os.path.basename(kernel_conf["x86"]["path"]): kernel_conf["x86"]["sha256"],
         os.path.basename(kernel_conf["aarch64"]["path"]): kernel_conf["aarch64"]["sha256"],
         os.path.basename(tarball_name): tarball_sha256,
-        os.path.basename(grub_cfg_path): grub_cfg_sha256,
-        os.path.basename(grub_menuentry_path): grub_menuentry_sha256,
+        os.path.basename(grub_cfg_path_x86_64): grub_cfg_sha256_x86_64,
+        os.path.basename(grub_menuentry_path_x86_64): grub_menuentry_sha256_x86_64,
+        os.path.basename(grub_cfg_path_aarch64): grub_cfg_sha256_aarch64,
+        os.path.basename(grub_menuentry_path_aarch64): grub_menuentry_sha256_aarch64,
             }
     }
 kernel.update_spec_sums(kernel_sums_path, sums_struct)
