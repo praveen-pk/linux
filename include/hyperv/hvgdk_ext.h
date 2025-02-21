@@ -1,6 +1,9 @@
-/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
-#ifndef _UAPI_HV_HVGDK_EXT_H
-#define _UAPI_HV_HVGDK_EXT_H
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * Type definitions for the Microsoft Hypervisor.
+ */
+#ifndef _HV_HVGDK_EXT_H
+#define _HV_HVGDK_EXT_H
 
 #include "hvgdk_mini.h"
 
@@ -37,9 +40,9 @@ enum {		/* HV_EXT_MEMORY_HEAT_HINT_TYPE */
 /* HvExtCallMemoryHeatHint hypercall */
 #define HV_EXT_MEMORY_HEAT_HINT_TYPE_COLD_DISCARD	2
 struct hv_memory_hint {		/* HV_EXT_INPUT_MEMORY_HEAT_HINT */
-	__u64 heat_type:2;	/* HV_EXTMEM_HEAT_HINT_* */
-	__u64 reserved:62;
+	u64 heat_type : 2;	/* HV_EXTMEM_HEAT_HINT_* */
+	u64 reserved : 62;
 	union hv_gpa_page_range ranges[];
 } __packed;
 
-#endif /* _UAPI_HV_HVGDK_EXT_H */
+#endif /* _HV_HVGDK_EXT_H */

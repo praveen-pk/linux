@@ -1,18 +1,16 @@
-/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Type definitions for the hypervisor guest interface.
+ * Type definitions for the Microsoft Hypervisor.
  */
-#ifndef _UAPI_HV_HVGDK_H
-#define _UAPI_HV_HVGDK_H
+#ifndef _HV_HVGDK_H
+#define _HV_HVGDK_H
 
 #include "hvgdk_mini.h"
-#if defined(__KERNEL__)
 #include "hvgdk_ext.h"
-#endif
 
 #define HVGDK_H_VERSION			(25125)
 
-#if defined(__x86_64__)
+#if IS_ENABLED(CONFIG_X86)
 
 enum hv_unimplemented_msr_action {
 	HV_UNIMPLEMENTED_MSR_ACTION_FAULT = 0,
@@ -24,18 +22,18 @@ enum hv_unimplemented_msr_action {
 
 /* Define connection identifier type. */
 union hv_connection_id {
-	__u32 asu32;
+	u32 asu32;
 	struct {
-		__u32 id:24;
-		__u32 reserved:8;
+		u32 id : 24;
+		u32 reserved : 8;
 	} __packed u;
 };
 
 struct hv_input_unmap_gpa_pages {
-	__u64 target_partition_id;
-	__u64 target_gpa_base;
-	__u32 unmap_flags;
-	__u32 padding;
+	u64 target_partition_id;
+	u64 target_gpa_base;
+	u32 unmap_flags;
+	u32 padding;
 } __packed;
 
 /* NOTE: below not really in hvgdk.h */
@@ -46,15 +44,15 @@ struct hv_input_unmap_gpa_pages {
  */
 struct hv_vmcb_enlightenments {
 	struct __packed hv_enlightenments_control {
-		__u32 nested_flush_hypercall:1;
-		__u32 msr_bitmap:1;
-		__u32 enlightened_npt_tlb: 1;
-		__u32 reserved:29;
+		u32 nested_flush_hypercall : 1;
+		u32 msr_bitmap : 1;
+		u32 enlightened_npt_tlb: 1;
+		u32 reserved : 29;
 	} __packed hv_enlightenments_control;
-	__u32 hv_vp_id;
-	__u64 hv_vm_id;
-	__u64 partition_assist_page;
-	__u64 reserved;
+	u32 hv_vp_id;
+	u64 hv_vm_id;
+	u64 partition_assist_page;
+	u64 reserved;
 } __packed;
 
-#endif /* #ifndef _UAPI_HV_HVGDK_H */
+#endif /* #ifndef _HV_HVGDK_H */
