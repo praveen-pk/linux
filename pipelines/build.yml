@@ -26,7 +26,7 @@ parameters:
   - name: run_on_cvm
     displayName: Include CVM CLH Guest testing
     type: boolean
-    default: False
+    default: True
   - name: amd_vm_size_func_cvm
     displayName: AMD VM Size - Functional tests (CVM)
     type: string
@@ -451,7 +451,7 @@ stages:
           --sha256 "${SUM}" \
           --tag "$(Build.SourceBranch)" \
           --rev "$(Build.SourceVersion)" \
-          --spec uvm
+          --spec uvm,uvm-cvm
         # If the script above succeeded, the current checkout is now on something like autoupdate/kernel-uvm-.... branch
         # and all the updates are committed here. So lets push the branch. This part might need to be moved into the script,
         # if the branch names are to change.
