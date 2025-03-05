@@ -40,7 +40,7 @@ jobs:
   - bash: |
       set -e
       set -x
-      ./pipelines/scripts/kernel-upstream-pull --out-file=$(TAG_FLAG_FILE) -vv --in-pipeline --target-branch=$(TARGET_BRANCH)
+      ./pipelines/scripts/kernel-upstream-pull --out-file=$(TAG_FLAG_FILE) -vv --in-pipeline --target-branch=$(TARGET_BRANCH) --upstream-tag=rolling-lts/mariner-3/6.6.*
     displayName: 'Pull Upstream'
 
   - bash: |

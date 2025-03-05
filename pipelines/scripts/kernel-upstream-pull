@@ -12,6 +12,7 @@ from lsgtools.virt.mshv import kernel
 
 arg_parser = cli.create_arg_parser(prog="kernel-upstream-pull",
                                    description="Pull latest LSG-linux-rolling tag and create a feature branch")
+arg_parser.add_argument("--upstream-tag", help="Upstream tag, either explicit name or a regex pattern", required=True)
 arg_parser.add_argument("--target-branch", help="Target branch to base the merge on", required=False)
 arg_parser.add_argument("--out-file", help="Write the name of the new tag into a file", required=False)
 arg_parser.add_argument("--in-pipeline", help="Set if it's a pipeline run", action="store_true", required=False)
@@ -102,7 +103,7 @@ def version_mshv_from_upstream(version_upstream):
     return ".".join(segs)
 
 
-upstream_tag = tag_get_latest("rolling-lts/mariner-3/*")
+upstream_tag = tag_get_latest(args.upstream_tag)
 log.msg("Latest tag is '{}'".format(upstream_tag))
 
 # Check if the upstream tag is already merged into the target branch
