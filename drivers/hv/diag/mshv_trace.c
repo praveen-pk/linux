@@ -94,7 +94,7 @@ EXPORT_SYMBOL_GPL(mshv_trace_buffer_complete);
 static int hv_call_unmap_event_log_buffer(enum hv_eventlog_type type,
 					  u32 index)
 {
-	union hv_input_unmap_eventlog_buffer input;
+	union hv_input_unmap_eventlog_buffer input = { 0 };
 	u64 status;
 
 	input.type = type;
@@ -122,6 +122,7 @@ static int hv_call_map_event_log_buffer(enum hv_eventlog_type type, u32 index,
 
 	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
 
+	memset(input, 0, sizeof(*input));
 	input->type = type;
 	input->buffer_index = index;
 	input->partition_id = HV_PARTITION_ID_SELF;
@@ -140,7 +141,7 @@ static int hv_call_map_event_log_buffer(enum hv_eventlog_type type, u32 index,
 static int hv_call_release_event_log_buffer(enum hv_eventlog_type type,
 					    u32 buffer_index)
 {
-	union hv_input_eventlog_release_buffer input;
+	union hv_input_eventlog_release_buffer input = { 0 };
 	u64 status;
 
 	input.type = type;
@@ -293,6 +294,7 @@ static int hv_call_initialize_event_log_buffer_group(enum hv_eventlog_type type,
 
 	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
 
+	memset(input, 0, sizeof(*input));
 	input->init.type = type;
 	input->init.mode = mode;
 	input->maximum_buffer_count = max_buffers_count;
@@ -315,7 +317,7 @@ static int hv_call_initialize_event_log_buffer_group(enum hv_eventlog_type type,
 
 static int hv_call_finalize_event_log_buffer_group(enum hv_eventlog_type type)
 {
-	union hv_input_finalize_eventlog_buffer_group input;
+	union hv_input_finalize_eventlog_buffer_group input = { 0 };
 	u64 status;
 
 	input.type = type;
@@ -366,7 +368,7 @@ free_lb:
 static int hv_call_delete_event_log_buffer(enum hv_eventlog_type type,
 					   u32 buffer_index)
 {
-	union hv_input_delete_eventlog_buffer input;
+	union hv_input_delete_eventlog_buffer input = { 0 };
 	u64 status;
 
 	input.type = type;
@@ -385,7 +387,7 @@ static int hv_call_delete_event_log_buffer(enum hv_eventlog_type type,
 static int hv_call_create_event_log_buffer(enum hv_eventlog_type type,
 					   u32 buffer_index)
 {
-	union hv_input_create_eventlog_buffer input;
+	union hv_input_create_eventlog_buffer input = { 0 };
 	u64 status;
 
 	input.type = type;
@@ -758,8 +760,8 @@ static int hv_call_set_event_group_sources(enum hv_eventlog_type type,
 	local_irq_save(flags);
 
 	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
-	memset(input, 0, sizeof(*input));
 
+	memset(input, 0, sizeof(*input));
 	input->type = type;
 	input->group_count = group_count;
 	input->configuration_flags = configuration_flags;
@@ -796,7 +798,7 @@ static int mshv_trace_state_set_sources(const struct mshv_trace_state *state,
 static int hv_call_flush_event_log_buffer(enum hv_eventlog_type type,
 					  u32 buffer_index)
 {
-	union hv_input_flush_eventlog_buffer input;
+	union hv_input_flush_eventlog_buffer input = { 0 };
 	u64 status;
 
 	input.type = type;

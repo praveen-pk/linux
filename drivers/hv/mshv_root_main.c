@@ -417,8 +417,6 @@ mshv_vp_dispatch(struct mshv_vp *vp, u32 flags,
 	output = *this_cpu_ptr(root_scheduler_output);
 
 	memset(input, 0, sizeof(*input));
-	memset(output, 0, sizeof(*output));
-
 	input->partition_id = vp->vp_partition->pt_id;
 	input->vp_index = vp->vp_index;
 	input->time_slice = 0; /* Run forever until something happens */
