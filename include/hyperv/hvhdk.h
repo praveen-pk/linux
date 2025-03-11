@@ -474,7 +474,7 @@ union hv_vp_register_page_interrupt_vectors {
 	} __packed;
 } __packed;
 
-struct hv_vp_register_page {
+struct hv_vp_register_page { /* HV_VP_REGISTER_PAGE */
 	u16 version;
 	u8 isvalid;
 	u8 rsvdz;
@@ -686,9 +686,13 @@ union hv_partition_processor_features {
 		u64 sve_v2 : 1;
 		u64 sve_v2p1 : 1;
 		u64 spec_fpacc : 1;
-
+		u64 sve_aes : 1;
+		u64 sve_bit_perm : 1;
+		u64 sve_sha3 : 1;
+		u64 sve_sm4 : 1;
+		u64 e0_pd : 1;
 		/* Remaining reserved bits */
-		u64 reserved_bank1 : 23;
+		u64 reserved_bank1 : 18;
 
 	} __packed;
 #endif
@@ -812,7 +816,18 @@ union hv_partition_processor_features {
 		u64 rfds_clear_support : 1;
 		u64 sm3_support : 1;
 		u64 sm4_support : 1;
-		u64 reserved_bank1 : 12;
+		u64 secure_avic_support : 1;
+		u64	guest_intercept_ctrl_support : 1;
+		u64	sbpb_supported : 1;
+		u64	ibpb_br_type_supported : 1;
+		u64	srso_no_supported : 1;
+		u64	srso_user_kernel_no_supported : 1;
+		u64	vrew_clear_supported : 1;
+		u64	tsa_l1_no_supported : 1;
+		u64	tsa_sq_no_supported : 1;
+		u64	lass_support : 1;
+		/* Remaining reserved bits */
+		u64 reserved_bank1 : 2;
 	} __packed;
 #endif
 };
@@ -822,7 +837,42 @@ union hv_partition_processor_xsave_features {
 		u64 xsave_support : 1;
 		u64 xsaveopt_support : 1;
 		u64 avx_support : 1;
-		u64 reserved1 : 61;
+		u64 avx2_support : 1;
+		u64 fma_support: 1;
+		u64 mpx_support: 1;
+		u64 avx512_support : 1;
+		u64 avx512_dq_support : 1;
+		u64 avx512_cd_support : 1;
+		u64 avx512_bw_support : 1;
+		u64 avx512_vl_support : 1;
+		u64 xsave_comp_support : 1;
+		u64 xsave_supervisor_support : 1;
+		u64 xcr1_support : 1;
+		u64 avx512_bitalg_support : 1;
+		u64 avx512_i_fma_support : 1;
+		u64 avx512_v_bmi_support : 1;
+		u64 avx512_v_bmi2_support : 1;
+		u64 avx512_vnni_support : 1;
+		u64 gfni_support : 1;
+		u64 vaes_support : 1;
+		u64 avx512_v_popcntdq_support : 1;
+		u64 vpclmulqdq_support : 1;
+		u64 avx512_bf16_support : 1;
+		u64 avx512_vp2_intersect_support : 1;
+		u64 avx512_fp16_support : 1;
+		u64 xfd_support : 1;
+		u64 amx_tile_support : 1;
+		u64 amx_bf16_support : 1;
+		u64 amx_int8_support : 1;
+		u64 avx_vnni_support : 1;
+		u64 avx_ifma_support : 1;
+		u64 avx_ne_convert_support : 1;
+		u64 avx_vnni_int8_support : 1;
+		u64 avx_vnni_int16_support : 1;
+		u64 avx10_1_256_support : 1;
+		u64 avx10_1_512_support : 1;
+		u64 amx_fp16_support : 1;
+		u64 reserved1 : 26;
 	} __packed;
 	u64 as_uint64;
 };
