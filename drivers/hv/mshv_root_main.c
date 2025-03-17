@@ -488,8 +488,14 @@ static bool mshv_vp_dispatch_thread_blocked(struct mshv_vp *vp)
 	return parent_vp_cntrs[VpRootDispatchThreadBlocked];
 }
 
-static int
-mshv_vp_wait_for_hv_kick(struct mshv_vp *vp)
+/*
+ * root scheduler only: when vp goes into blocked state, it just waits here.
+ * Then 3 ways to wake up:
+ *    1. kicked by hypervisor
+ *    2. interrupt injection by vmm via irqfd
+ *    3. unix signal
+ */
+static int mshv_vp_wait_for_event(struct mshv_vp *vp)
 {
 	int ret;
 
@@ -506,7 +512,11 @@ mshv_vp_wait_for_hv_kick(struct mshv_vp *vp)
 	return 0;
 }
 
-static int mshv_pre_guest_mode_work(struct mshv_vp *vp)
+/*
+ * Before sleeping or going into guest mode, check if this task has pending
+ * events, and process them.
+ */
+static int mshv_chk_process_host_events(struct mshv_vp *vp)
 {
 	const ulong work_flags = _TIF_NOTIFY_SIGNAL | _TIF_SIGPENDING |
 				 _TIF_NEED_RESCHED  | _TIF_NOTIFY_RESUME;
@@ -542,7 +552,7 @@ static long mshv_run_vp_with_root_scheduler(struct mshv_vp *vp)
 		 * for the hypervisor to clear the blocked state before
 		 * dispatching it.
 		 */
-		ret = mshv_vp_wait_for_hv_kick(vp);
+		ret = mshv_vp_wait_for_event(vp);
 		if (ret)
 			return ret;
 	}
@@ -551,11 +561,11 @@ static long mshv_run_vp_with_root_scheduler(struct mshv_vp *vp)
 		u32 flags = 0;
 		struct hv_output_dispatch_vp output;
 
-		ret = mshv_pre_guest_mode_work(vp);
+		ret = mshv_chk_process_host_events(vp);
 		if (ret)
 			break;
 
-		if (vp->run.flags.intercept_suspend)
+		if (vp->run.flags.intercept_suspended)
 			flags |= HV_DISPATCH_VP_FLAG_CLEAR_INTERCEPT_SUSPEND;
 
 		if (mshv_vp_interrupt_pending(vp))
@@ -565,7 +575,7 @@ static long mshv_run_vp_with_root_scheduler(struct mshv_vp *vp)
 		if (ret)
 			break;
 
-		vp->run.flags.intercept_suspend = 0;
+		vp->run.flags.intercept_suspended = 0;
 
 		if (output.dispatch_state == HV_VP_DISPATCH_STATE_BLOCKED) {
 			if (output.dispatch_event ==
@@ -590,12 +600,12 @@ static long mshv_run_vp_with_root_scheduler(struct mshv_vp *vp)
 				if (ret)
 					break;
 
-				ret = mshv_vp_wait_for_hv_kick(vp);
+				ret = mshv_vp_wait_for_event(vp);
 				if (ret)
 					break;
 			} else {
 				vp->run.flags.root_sched_blocked = 1;
-				ret = mshv_vp_wait_for_hv_kick(vp);
+				ret = mshv_vp_wait_for_event(vp);
 				if (ret)
 					break;
 			}
@@ -603,9 +613,9 @@ static long mshv_run_vp_with_root_scheduler(struct mshv_vp *vp)
 			/* HV_VP_DISPATCH_STATE_READY */
 			if (output.dispatch_event ==
 						HV_VP_DISPATCH_EVENT_INTERCEPT)
-				vp->run.flags.intercept_suspend = 1;
+				vp->run.flags.intercept_suspended = 1;
 		}
-	} while (!vp->run.flags.intercept_suspend);
+	} while (!vp->run.flags.intercept_suspended);
 
 	return ret;
 }
