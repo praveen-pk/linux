@@ -617,8 +617,6 @@ __init void hv_sev_init_mem_and_cpu(void)
 	 */
 	x86_platform.legacy.rtc			= 0;
 	x86_platform.legacy.reserve_bios_regions = 0;
-	x86_platform.set_wallclock		= set_rtc_noop;
-	x86_platform.get_wallclock		= get_rtc_noop;
 	x86_init.resources.probe_roms		= x86_init_noop;
 	x86_init.resources.reserve_resources	= x86_init_noop;
 	x86_init.mpparse.find_smp_config	= x86_init_noop;
