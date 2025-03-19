@@ -591,7 +591,6 @@ stages:
           amd_vm_size_func: ${{ parameters.amd_vm_size_func_cvm }}
           amd_vm_size_perf: ${{ parameters.amd_vm_size_perf_cvm }}
           run_ch_integration_tests: ${{ parameters.run_ch_integration_tests }}
-          run_ch_live_migration_tests: ${{ parameters.run_ch_live_migration_tests }}
           run_ch_perf_tests: ${{ parameters.run_ch_perf_tests }}
           linux_dom0_uvm_ref: $(Build.SourceVersion)
 
