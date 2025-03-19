@@ -6,7 +6,7 @@ parameters:
   - name: intel_vm_size_func
     displayName: Intel VM Size - Functional tests
     type: string
-    default: "Standard_D16ds_v5"
+    default: "Standard_D32ds_v5"
   - name: intel_vm_size_perf
     displayName: Intel VM Size - Perf tests
     type: string
@@ -18,7 +18,7 @@ parameters:
   - name: amd_vm_size_func
     displayName: AMD VM Size - Functional tests
     type: string
-    default: "Standard_D16ads_v5"
+    default: "Standard_D32ads_v5"
   - name: amd_vm_size_perf
     displayName: AMD VM Size - Perf tests
     type: string
@@ -30,7 +30,7 @@ parameters:
   - name: amd_vm_size_func_cvm
     displayName: AMD VM Size - Functional tests (CVM)
     type: string
-    default: "Standard_DC16ads_cc_v5"
+    default: "Standard_DC32ads_cc_v5"
   - name: amd_vm_size_perf_cvm
     displayName: AMD VM Size - Perf tests (CVM)
     type: string
