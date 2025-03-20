@@ -193,6 +193,15 @@ static inline int pvalidate(unsigned long vaddr, bool rmp_psize, bool validate)
 	if (no_rmpupdate)
 		return PVALIDATE_FAIL_NOUPDATE;
 
+	/*
+	 * If pvalidate succeeds, i.e. rc is 0, read the first and last byte
+	 * of each 4KB page to force the cache engine to clear its state.
+	 */
+	if (validate && !rc) {
+		*(volatile u8 *)vaddr;
+		*(volatile u8 *)(vaddr + PAGE_SIZE - 1);
+	}
+
 	return rc;
 }
 
