@@ -6,7 +6,7 @@ parameters:
   - name: intel_vm_size_func
     displayName: Intel VM Size - Functional tests
     type: string
-    default: "Standard_D16ds_v5"
+    default: "Standard_D32ds_v5"
   - name: intel_vm_size_perf
     displayName: Intel VM Size - Perf tests
     type: string
@@ -18,7 +18,7 @@ parameters:
   - name: amd_vm_size_func
     displayName: AMD VM Size - Functional tests
     type: string
-    default: "Standard_D16ads_v5"
+    default: "Standard_D32ads_v5"
   - name: amd_vm_size_perf
     displayName: AMD VM Size - Perf tests
     type: string
@@ -26,11 +26,11 @@ parameters:
   - name: run_on_cvm
     displayName: Include CVM CLH Guest testing
     type: boolean
-    default: False
+    default: True
   - name: amd_vm_size_func_cvm
     displayName: AMD VM Size - Functional tests (CVM)
     type: string
-    default: "Standard_DC16ads_cc_v5"
+    default: "Standard_DC32ads_cc_v5"
   - name: amd_vm_size_perf_cvm
     displayName: AMD VM Size - Perf tests (CVM)
     type: string
@@ -451,7 +451,7 @@ stages:
           --sha256 "${SUM}" \
           --tag "$(Build.SourceBranch)" \
           --rev "$(Build.SourceVersion)" \
-          --spec uvm
+          --spec uvm,uvm-cvm
         # If the script above succeeded, the current checkout is now on something like autoupdate/kernel-uvm-.... branch
         # and all the updates are committed here. So lets push the branch. This part might need to be moved into the script,
         # if the branch names are to change.
