@@ -2227,10 +2227,10 @@ DEFINE_IDTENTRY_VC_USER(exc_vmm_communication)
 
 static bool hv_raw_handle_exception(struct pt_regs *regs)
 {
-	/* Clear the no_further_signal bit */
-	sev_snp_current_doorbell_page()->pending_events.events &= 0x7fff;
-
 	check_hv_pending(regs);
+
+	/* Clear the no_further_signal bit */
+	sev_snp_current_doorbell_page()->pending_events.no_further_signal = 0;
 
 	return true;
 }
