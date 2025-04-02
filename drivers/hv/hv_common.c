@@ -30,6 +30,9 @@
 #include <hyperv/hvhdk.h>
 #include <asm/mshyperv.h>
 
+u64 hv_current_partition_id = HV_PARTITION_ID_SELF;
+EXPORT_SYMBOL_GPL(hv_current_partition_id);
+
 /*
  * hv_current_partition, ms_hyperv and hv_nested are defined here with other
  * Hyper-V specific globals so they are shared across all architectures and are
@@ -64,7 +67,7 @@ static void hv_kmsg_dump_unregister(void);
 
 static struct ctl_table_header *hv_ctl_table_hdr;
 
-int hv_status_to_errno(u64 hv_status)
+int hv_result_to_errno(u64 hv_status)
 {
 	switch (hv_result(hv_status)) {
 	case HV_STATUS_SUCCESS:
@@ -87,9 +90,9 @@ int hv_status_to_errno(u64 hv_status)
 	}
 	return -ENOTRECOVERABLE;
 }
-EXPORT_SYMBOL_GPL(hv_status_to_errno);
+EXPORT_SYMBOL_GPL(hv_result_to_errno);
 
-const char *hv_status_to_string(u64 hv_status)
+const char *hv_result_to_string(u64 hv_status)
 {
 	switch (hv_result(hv_status)) {
 	case HV_STATUS_SUCCESS:
@@ -151,7 +154,7 @@ const char *hv_status_to_string(u64 hv_status)
 	};
 	return "Unknown";
 }
-EXPORT_SYMBOL_GPL(hv_status_to_string);
+EXPORT_SYMBOL_GPL(hv_result_to_string);
 
 /*
  * Per-cpu array holding the tail pointer for the SynIC event ring buffer
@@ -378,6 +381,25 @@ static void hv_kmsg_dump_register(void)
 		hv_free_hyperv_page(hv_panic_page);
 		hv_panic_page = NULL;
 	}
+}
+
+void __init hv_get_partition_id(void)
+{
+	struct hv_output_get_partition_id *output;
+	unsigned long flags;
+	u64 status, pt_id;
+
+	local_irq_save(flags);
+	output = *this_cpu_ptr(hyperv_pcpu_input_arg);
+	status = hv_do_hypercall(HVCALL_GET_PARTITION_ID, NULL, output);
+	pt_id = output->partition_id;
+	local_irq_restore(flags);
+
+	if (hv_result_success(status))
+		hv_current_partition_id = pt_id;
+	else
+		pr_err("Hyper-V: failed to get partition ID: %#x\n",
+		       hv_result(status));
 }
 
 int __init hv_common_init(void)
@@ -715,153 +737,6 @@ u64 __weak hv_tdx_hypercall(u64 control, u64 param1, u64 param2)
 }
 EXPORT_SYMBOL_GPL(hv_tdx_hypercall);
 
-int hv_call_create_vp(int node, u64 partition_id, u32 vp_index, u32 flags)
-{
-	struct hv_create_vp *input;
-	u64 status;
-	unsigned long irq_flags;
-	int ret = HV_STATUS_SUCCESS;
-
-	/* Root VPs don't seem to need pages deposited */
-	if (partition_id != hv_current_partition_id) {
-		/* The value 90 is empirically determined. It may change. */
-		ret = hv_call_deposit_pages(node, partition_id, 90);
-		if (ret)
-			return ret;
-	}
-
-	do {
-		local_irq_save(irq_flags);
-
-		input = *this_cpu_ptr(hyperv_pcpu_input_arg);
-
-		memset(input, 0, sizeof(*input));
-		input->partition_id = partition_id;
-		input->vp_index = vp_index;
-		input->flags = flags;
-		input->subnode_type = HvSubnodeAny;
-		input->proximity_domain_info = hv_numa_node_to_pxm_info(node);
-		status = hv_do_hypercall(HVCALL_CREATE_VP, input, NULL);
-		local_irq_restore(irq_flags);
-
-		if (hv_result(status) != HV_STATUS_INSUFFICIENT_MEMORY) {
-			if (!hv_result_success(status)) {
-				pr_err("%s: vcpu %u, lp %u, %s\n", __func__,
-				       vp_index, flags, hv_status_to_string(status));
-				ret = hv_status_to_errno(status);
-			}
-			break;
-		}
-		ret = hv_call_deposit_pages(node, partition_id, 1);
-
-	} while (!ret);
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(hv_call_create_vp);
-
-/*
- * See struct hv_deposit_memory. The first u64 is partition ID, the rest
- * are GPAs.
- */
-#define HV_DEPOSIT_MAX (HV_HYP_PAGE_SIZE / sizeof(u64) - 1)
-
-/* Deposits exact number of pages. Must be called with interrupts enabled.  */
-int hv_call_deposit_pages(int node, u64 partition_id, u32 num_pages)
-{
-	struct page **pages, *page;
-	int *counts;
-	int num_allocations;
-	int i, j, page_count;
-	int order;
-	u64 status;
-	int ret;
-	u64 base_pfn;
-	struct hv_deposit_memory *input_page;
-	unsigned long flags;
-
-	if (num_pages > HV_DEPOSIT_MAX)
-		return -E2BIG;
-	if (!num_pages)
-		return 0;
-
-	/* One buffer for page pointers and counts */
-	page = alloc_page(GFP_KERNEL);
-	if (!page)
-		return -ENOMEM;
-	pages = page_address(page);
-
-	counts = kcalloc(HV_DEPOSIT_MAX, sizeof(int), GFP_KERNEL);
-	if (!counts) {
-		free_page((unsigned long)pages);
-		return -ENOMEM;
-	}
-
-	/* Allocate all the pages before disabling interrupts */
-	i = 0;
-
-	while (num_pages) {
-		/* Find highest order we can actually allocate */
-		order = 31 - __builtin_clz(num_pages);
-
-		while (1) {
-			pages[i] = alloc_pages_node(node, GFP_KERNEL, order);
-			if (pages[i])
-				break;
-			if (!order) {
-				ret = -ENOMEM;
-				num_allocations = i;
-				goto err_free_allocations;
-			}
-			--order;
-		}
-
-		split_page(pages[i], order);
-		counts[i] = 1 << order;
-		num_pages -= counts[i];
-		i++;
-	}
-	num_allocations = i;
-
-	local_irq_save(flags);
-
-	input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
-
-	memset(input_page, 0, sizeof(*input_page));
-	input_page->partition_id = partition_id;
-
-	/* Populate gpa_page_list - these will fit on the input page */
-	for (i = 0, page_count = 0; i < num_allocations; ++i) {
-		base_pfn = page_to_pfn(pages[i]);
-		for (j = 0; j < counts[i]; ++j, ++page_count)
-			input_page->gpa_page_list[page_count] = base_pfn + j;
-	}
-	status = hv_do_rep_hypercall(HVCALL_DEPOSIT_MEMORY,
-				     page_count, 0, input_page, NULL);
-	local_irq_restore(flags);
-	if (!hv_result_success(status)) {
-		pr_err("Failed to deposit pages: %s\n", hv_status_to_string(status));
-		ret = hv_status_to_errno(status);
-		goto err_free_allocations;
-	}
-
-	ret = 0;
-	goto free_buf;
-
-err_free_allocations:
-	for (i = 0; i < num_allocations; ++i) {
-		base_pfn = page_to_pfn(pages[i]);
-		for (j = 0; j < counts[i]; ++j)
-			__free_page(pfn_to_page(base_pfn + j));
-	}
-
-free_buf:
-	free_page((unsigned long)pages);
-	kfree(counts);
-	return ret;
-}
-EXPORT_SYMBOL_GPL(hv_call_deposit_pages);
-
 /*
  * Corresponding sleep states have to be initialized, in order for a subsequent
  * HVCALL_ENTER_SLEEP_STATE call to succeed. Currently only S5 state as per
@@ -902,8 +777,8 @@ static int hv_initialize_sleep_states(void)
 
 	if (!hv_result_success(status)) {
 		pr_err("%s: %s\n",
-			__func__, hv_status_to_string(status));
-		return hv_status_to_errno(status);
+			__func__, hv_result_to_string(status));
+		return hv_result_to_errno(status);
 	}
 
 	return 0;
@@ -931,8 +806,8 @@ static int hv_call_enter_sleep_state(u32 sleep_state)
 
 	if (!hv_result_success(status)) {
 		pr_err("%s: %s\n",
-			__func__, hv_status_to_string(status));
-		return hv_status_to_errno(status);
+			__func__, hv_result_to_string(status));
+		return hv_result_to_errno(status);
 	}
 
 	return 0;
@@ -999,8 +874,8 @@ int hv_retrieve_scheduler_type(enum hv_scheduler_type *out)
 	status = hv_do_hypercall(HVCALL_GET_SYSTEM_PROPERTY, input, output);
 	if (!hv_result_success(status)) {
 		local_irq_restore(flags);
-		pr_err("%s: %s\n", __func__, hv_status_to_string(status));
-		return hv_status_to_errno(status);
+		pr_err("%s: %s\n", __func__, hv_result_to_string(status));
+		return hv_result_to_errno(status);
 	}
 
 	*out = output->scheduler_type;

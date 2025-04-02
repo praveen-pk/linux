@@ -16,7 +16,7 @@ struct hv_u128 {
 	u64 high_part;
 } __packed;
 
-/* NOTE: when adding below, update hv_status_to_string() */
+/* NOTE: when adding below, update hv_result_to_string() */
 #define HV_STATUS_SUCCESS			    0x0
 #define HV_STATUS_INVALID_HYPERCALL_CODE	    0x2
 #define HV_STATUS_INVALID_HYPERCALL_INPUT	    0x3
@@ -199,7 +199,7 @@ struct hv_tsc_emulation_control {	 /* HV_TSC_INVARIANT_CONTROL */
 
 #endif /* CONFIG_X86 */
 
-struct hv_get_partition_id {	 /* HV_OUTPUT_GET_PARTITION_ID */
+struct hv_output_get_partition_id {
 	u64 partition_id;
 } __packed;
 
