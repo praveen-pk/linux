@@ -72,10 +72,10 @@ extern u64 hv_current_partition_id;
 extern void * __percpu *hyperv_pcpu_input_arg;
 extern void * __percpu *hyperv_pcpu_output_arg;
 
-extern u64 hv_do_hypercall(u64 control, void *inputaddr, void *outputaddr);
-extern u64 hv_do_fast_hypercall8(u16 control, u64 input8);
-extern u64 hv_do_fast_hypercall16(u16 control, u64 input1, u64 input2);
-extern u64 hv_do_fast_nested_hypercall8(u16 control, u64 input8);
+u64 hv_do_hypercall(u64 control, void *inputaddr, void *outputaddr);
+u64 hv_do_fast_hypercall8(u16 control, u64 input8);
+u64 hv_do_fast_hypercall16(u16 control, u64 input1, u64 input2);
+u64 hv_do_fast_nested_hypercall8(u16 control, u64 input8);
 
 bool hv_isolation_type_snp(void);
 bool hv_isolation_type_tdx(void);
@@ -338,6 +338,18 @@ static inline int cpumask_to_vpset_skip(struct hv_vpset *vpset,
 {
 	return __cpumask_to_vpset(vpset, cpus, func);
 }
+
+#define _hv_status_fmt(fmt) "%s: Hyper-V status: %#x = %s: " fmt
+#define hv_status_printk(level, status, fmt, ...) \
+do { \
+	u64 __status = (status); \
+	pr_##level(_hv_status_fmt(fmt), __func__, hv_result(__status), \
+		   hv_result_to_string(__status), ##__VA_ARGS__); \
+} while (0)
+#define hv_status_err(status, fmt, ...) \
+	hv_status_printk(err, status, fmt, ##__VA_ARGS__)
+#define hv_status_debug(status, fmt, ...) \
+	hv_status_printk(debug, status, fmt, ##__VA_ARGS__)
 
 int hv_result_to_errno(u64 hv_status);
 const char *hv_result_to_string(u64 hv_status);

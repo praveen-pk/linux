@@ -2,9 +2,9 @@
 /*
  * Copyright (c) 2024, Microsoft Corporation.
  *
- * This file contains functions that are called from one or more modules: ROOT,
- * DIAG, or VTL. If any of these modules are configured to build, this file is
- * built and just statically linked in.
+ * This file contains functions that will be called from one or more modules.
+ * If any of these modules are configured to build, this file is built and just
+ * statically linked in.
  *
  * Authors: Microsoft Linux virtualization team
  */
@@ -13,6 +13,8 @@
 #include <linux/mm.h>
 #include <asm/mshyperv.h>
 #include <linux/resume_user_mode.h>
+
+#include "mshv.h"
 
 #define HV_GET_REGISTER_BATCH_SIZE	\
 	(HV_HYP_PAGE_SIZE / sizeof(union hv_register_value))
@@ -83,7 +85,7 @@ int hv_call_set_vp_registers(
 	u16 completed = 0;
 	unsigned long remaining = count;
 	int rep_count;
-	u64 status;
+	u64 status = HV_STATUS_SUCCESS;
 	unsigned long flags;
 
 	local_irq_save(flags);

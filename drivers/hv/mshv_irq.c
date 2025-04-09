@@ -2,8 +2,7 @@
 /*
  * Copyright (c) 2023, Microsoft Corporation.
  *
- * Authors:
- *   Vineeth Remanan Pillai <viremana@linux.microsoft.com>
+ * Authors: Microsoft Linux virtualization team
  */
 
 #include <linux/kernel.h>
@@ -12,11 +11,7 @@
 #include <asm/mshyperv.h>
 
 #include "mshv_eventfd.h"
-#include "mshv.h"
 #include "mshv_root.h"
-
-MODULE_AUTHOR("Microsoft");
-MODULE_LICENSE("GPL");
 
 /* called from the ioctl code, user wants to update the guest irq table */
 int mshv_update_routing_table(struct mshv_partition *partition,
@@ -99,8 +94,8 @@ mshv_ret_girq_entry(struct mshv_partition *partition, u32 irqnum)
 	struct mshv_girq_routing_table *girq_tbl;
 
 	girq_tbl = srcu_dereference_check(partition->pt_girq_tbl,
-				     &partition->pt_irq_srcu,
-				     lockdep_is_held(&partition->pt_irq_lock));
+					  &partition->pt_irq_srcu,
+					  lockdep_is_held(&partition->pt_irq_lock));
 	if (!girq_tbl || irqnum >= girq_tbl->num_rt_entries) {
 		/*
 		 * Premature register_irqfd, setting valid_entry = 0

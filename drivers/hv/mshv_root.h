@@ -14,6 +14,7 @@
 #include <linux/wait.h>
 #include <linux/hashtable.h>
 #include <linux/dev_printk.h>
+#include <hyperv/hvhdk.h>
 #include <uapi/linux/mshv.h>
 
 /*
@@ -35,14 +36,13 @@ struct mshv_vp {
 	struct hv_message *vp_intercept_msg_page;
 	void *vp_ghcb_page;
 	struct hv_stats_page *vp_stats_pages[2];
-	struct hv_register_assoc *vp_registers;
 	struct {
 		atomic64_t vp_signaled_count;
 		struct {
 			u64 intercept_suspended: 1;
 			u64 root_sched_blocked: 1; /* root scheduler only */
 			u64 root_sched_dispatched: 1; /* root scheduler only */
-			u64 reserved: 62;
+			u64 reserved: 61;
 		} flags;
 		unsigned int kicked_by_hv;
 		wait_queue_head_t vp_suspend_queue;
@@ -53,31 +53,21 @@ struct mshv_vp {
 };
 
 #define vp_fmt(fmt) "p%lluvp%u: " fmt
-#define vp_dev(v) ((v)->vp_partition->pt_module_dev)
-#define vp_emerg(v, fmt, ...) \
-	dev_emerg(vp_dev(v), vp_fmt(fmt), (v)->vp_partition->pt_id, \
-		  (v)->vp_index, ##__VA_ARGS__)
-#define vp_crit(v, fmt, ...) \
-	dev_crit(vp_dev(v), vp_fmt(fmt), (v)->vp_partition->pt_id, \
-		 (v)->vp_index, ##__VA_ARGS__)
-#define vp_alert(v, fmt, ...) \
-	dev_alert(vp_dev(v), vp_fmt(fmt), (v)->vp_partition->pt_id, \
-		  (v)->vp_index, ##__VA_ARGS__)
-#define vp_err(v, fmt, ...) \
-	dev_err(vp_dev(v), vp_fmt(fmt), (v)->vp_partition->pt_id, \
-		(v)->vp_index, ##__VA_ARGS__)
-#define vp_warn(v, fmt, ...) \
-	dev_warn(vp_dev(v), vp_fmt(fmt), (v)->vp_partition->pt_id, \
-		 (v)->vp_index, ##__VA_ARGS__)
-#define vp_notice(v, fmt, ...) \
-	dev_notice(vp_dev(v), vp_fmt(fmt), (v)->vp_partition->pt_id, \
-		   (v)->vp_index, ##__VA_ARGS__)
-#define vp_info(v, fmt, ...) \
-	dev_info(vp_dev(v), vp_fmt(fmt), (v)->vp_partition->pt_id, \
-		 (v)->vp_index, ##__VA_ARGS__)
-#define vp_dbg(v, fmt, ...) \
-	dev_dbg(vp_dev(v), vp_fmt(fmt), (v)->vp_partition->pt_id, \
-		(v)->vp_index, ##__VA_ARGS__)
+#define vp_devprintk(level, v, fmt, ...) \
+do { \
+	const struct mshv_vp *__vp = (v); \
+	const struct mshv_partition *__pt = __vp->vp_partition; \
+	dev_##level(__pt->pt_module_dev, vp_fmt(fmt), __pt->pt_id, \
+		    __vp->vp_index, ##__VA_ARGS__); \
+} while (0)
+#define vp_emerg(v, fmt, ...)	vp_devprintk(emerg, v, fmt, ##__VA_ARGS__)
+#define vp_crit(v, fmt, ...)	vp_devprintk(crit, v, fmt, ##__VA_ARGS__)
+#define vp_alert(v, fmt, ...)	vp_devprintk(alert, v, fmt, ##__VA_ARGS__)
+#define vp_err(v, fmt, ...)	vp_devprintk(err, v, fmt, ##__VA_ARGS__)
+#define vp_warn(v, fmt, ...)	vp_devprintk(warn, v, fmt, ##__VA_ARGS__)
+#define vp_notice(v, fmt, ...)	vp_devprintk(notice, v, fmt, ##__VA_ARGS__)
+#define vp_info(v, fmt, ...)	vp_devprintk(info, v, fmt, ##__VA_ARGS__)
+#define vp_dbg(v, fmt, ...)	vp_devprintk(dbg, v, fmt, ##__VA_ARGS__)
 
 struct mshv_mem_region {
 	struct hlist_node hnode;
@@ -119,8 +109,8 @@ struct mshv_partition {
 	struct hlist_head pt_devices;
 
 	/*
-	 * Since MSHV does not support more than one async hypercall in flight
-	 * for a single partition, it is okay to define per partition
+	 * MSHV does not support more than one async hypercall in flight
+	 * for a single partition. Thus, it is okay to define per partition
 	 * async hypercall status.
 	 */
 	struct completion async_hypercall;
@@ -145,23 +135,20 @@ struct mshv_partition {
 };
 
 #define pt_fmt(fmt) "p%llu: " fmt
-#define pt_dev(p) ((p)->pt_module_dev)
-#define pt_emerg(p, fmt, ...) \
-	dev_emerg(pt_dev(p), pt_fmt(fmt), (p)->pt_id, ##__VA_ARGS__)
-#define pt_crit(p, fmt, ...) \
-	dev_crit(pt_dev(p), pt_fmt(fmt), (p)->pt_id, ##__VA_ARGS__)
-#define pt_alert(p, fmt, ...) \
-	dev_alert(pt_dev(p), pt_fmt(fmt), (p)->pt_id, ##__VA_ARGS__)
-#define pt_err(p, fmt, ...) \
-	dev_err(pt_dev(p), pt_fmt(fmt), (p)->pt_id, ##__VA_ARGS__)
-#define pt_warn(p, fmt, ...) \
-	dev_warn(pt_dev(p), pt_fmt(fmt), (p)->pt_id, ##__VA_ARGS__)
-#define pt_notice(p, fmt, ...) \
-	dev_notice(pt_dev(p), pt_fmt(fmt), (p)->pt_id, ##__VA_ARGS__)
-#define pt_info(p, fmt, ...) \
-	dev_info(pt_dev(p), pt_fmt(fmt), (p)->pt_id, ##__VA_ARGS__)
-#define pt_dbg(p, fmt, ...) \
-	dev_dbg(pt_dev(p), pt_fmt(fmt), (p)->pt_id, ##__VA_ARGS__)
+#define pt_devprintk(level, p, fmt, ...) \
+do { \
+	const struct mshv_partition *__pt = (p); \
+	dev_##level(__pt->pt_module_dev, pt_fmt(fmt), __pt->pt_id, \
+		    ##__VA_ARGS__); \
+} while (0)
+#define pt_emerg(p, fmt, ...)	pt_devprintk(emerg, p, fmt, ##__VA_ARGS__)
+#define pt_crit(p, fmt, ...)	pt_devprintk(crit, p, fmt, ##__VA_ARGS__)
+#define pt_alert(p, fmt, ...)	pt_devprintk(alert, p, fmt, ##__VA_ARGS__)
+#define pt_err(p, fmt, ...)	pt_devprintk(err, p, fmt, ##__VA_ARGS__)
+#define pt_warn(p, fmt, ...)	pt_devprintk(warn, p, fmt, ##__VA_ARGS__)
+#define pt_notice(p, fmt, ...)	pt_devprintk(notice, p, fmt, ##__VA_ARGS__)
+#define pt_info(p, fmt, ...)	pt_devprintk(info, p, fmt, ##__VA_ARGS__)
+#define pt_dbg(p, fmt, ...)	pt_devprintk(dbg, p, fmt, ##__VA_ARGS__)
 
 struct mshv_lapic_irq {
 	u32 lapic_vector;
@@ -262,10 +249,6 @@ struct mshv_partition *mshv_partition_get(struct mshv_partition *partition);
 void mshv_partition_put(struct mshv_partition *partition);
 struct mshv_partition *mshv_partition_find(u64 partition_id) __must_hold(RCU);
 
-extern struct mshv_root mshv_root;
-extern enum hv_scheduler_type hv_scheduler_type;
-extern u8 __percpu **hv_synic_eventring_tail;
-
 #ifdef CONFIG_DEBUG_FS
 extern int __init mshv_debugfs_init(void);
 extern void mshv_debugfs_exit(void);
@@ -298,5 +281,134 @@ void mshv_vfio_ops_exit(void);
 long mshv_partition_ioctl_create_device(struct mshv_partition *partition,
 					void __user *user_args);
 void mshv_destroy_devices(struct mshv_partition *partition);
+
+/* hypercalls */
+int hv_call_withdraw_memory(u64 count, int node, u64 partition_id);
+int hv_call_create_partition(u64 flags,
+			     struct hv_partition_creation_properties creation_properties,
+			     union hv_partition_isolation_properties isolation_properties,
+			     u64 *partition_id);
+int hv_call_initialize_partition(u64 partition_id);
+int hv_call_finalize_partition(u64 partition_id);
+int hv_call_delete_partition(u64 partition_id);
+int hv_call_map_mmio_pages(u64 partition_id, u64 gfn, u64 mmio_spa, u64 numpgs);
+int hv_call_map_gpa_pages(u64 partition_id, u64 gpa_target, u64 page_count,
+			  u32 flags, struct page **pages);
+int hv_call_unmap_gpa_pages(u64 partition_id, u64 gpa_target, u64 page_count,
+			    u32 flags);
+int hv_call_delete_vp(u64 partition_id, u32 vp_index);
+int hv_call_assert_virtual_interrupt(u64 partition_id, u32 vector,
+				     u64 dest_addr,
+				     union hv_interrupt_control control);
+int hv_call_clear_virtual_interrupt(u64 partition_id);
+int hv_call_get_gpa_access_states(u64 partition_id, u32 count, u64 gpa_base_pfn,
+				  union hv_gpa_page_access_state_flags state_flags,
+				  int *written_total,
+				  union hv_gpa_page_access_state *states);
+int hv_call_install_intercept(u64 partition_id, u32 access_type,
+			      enum hv_intercept_type intercept_type,
+			      union hv_intercept_parameters intercept_parameter);
+#ifdef HV_SUPPORTS_VP_STATE
+int hv_call_get_vp_state(u32 vp_index, u64 partition_id,
+			 struct hv_vp_state_data state_data,
+			 /* Choose between pages and ret_output */
+			 u64 page_count, struct page **pages,
+			 union hv_output_get_vp_state *ret_output);
+int hv_call_set_vp_state(u32 vp_index, u64 partition_id,
+			 /* Choose between pages and bytes */
+			 struct hv_vp_state_data state_data, u64 page_count,
+			 struct page **pages, u32 num_bytes, u8 *bytes);
+#endif
+
+int hv_map_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
+			 union hv_input_vtl input_vtl,
+			 struct page **state_page);
+int hv_unmap_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
+			   void *page_addr,
+			   union hv_input_vtl input_vtl);
+int hv_call_set_partition_property(u64 partition_id, u64 property_code,
+				   u64 property_value,
+				   void (*completion_handler)(void * /* data */,
+							      u64 * /* status */),
+				   void *completion_data);
+int hv_call_translate_virtual_address(u32 vp_index, u64 partition_id, u64 flags,
+				      u64 gva, u64 *gpa,
+				      union hv_translate_gva_result *result);
+int hv_call_get_vp_cpuid_values(u32 vp_index, u64 partition_id,
+				union hv_get_vp_cpuid_values_flags values_flags,
+				struct hv_cpuid_leaf_info *info,
+				union hv_output_get_vp_cpuid_values *result);
+int hv_call_create_port(u64 port_partition_id, union hv_port_id port_id,
+			u64 connection_partition_id, struct hv_port_info *port_info,
+			u8 port_vtl, u8 min_connection_vtl, int node);
+int hv_call_delete_port(u64 port_partition_id, union hv_port_id port_id);
+int hv_call_connect_port(u64 port_partition_id, union hv_port_id port_id,
+			 u64 connection_partition_id,
+			 union hv_connection_id connection_id,
+			 struct hv_connection_info *connection_info,
+			 u8 connection_vtl, int node);
+int hv_call_disconnect_port(u64 connection_partition_id,
+			    union hv_connection_id connection_id);
+int hv_call_notify_port_ring_empty(u32 sint_index);
+#ifdef HV_SUPPORTS_REGISTER_INTERCEPT
+int hv_call_register_intercept_result(u32 vp_index, u64 partition_id,
+				      enum hv_intercept_type intercept_type,
+				      union hv_register_intercept_result_parameters *params);
+#endif
+int hv_call_signal_event_direct(u32 vp_index,
+				u64 partition_id,
+				u8 vtl,
+				u8 sint,
+				u16 flag_number,
+				u8* newly_signaled);
+int hv_call_post_message_direct(u32 vp_index,
+				u64 partition_id,
+				u8 vtl,
+				u32 sint_index,
+				u8* message);
+int hv_map_stats_page(enum hv_stats_object_type type,
+		      const union hv_stats_object_identity *identity,
+		      void **addr);
+int hv_unmap_stats_page(enum hv_stats_object_type type, void *page_addr,
+			const union hv_stats_object_identity *identity);
+int hv_call_modify_spa_host_access(u64 partition_id, struct page **page_list,
+				   u64 spa_list_size, u32 host_access,
+				   u32 flags, u8 acquire);
+int hv_call_import_isolated_pages(u64 partition_id, u64 *pages, u64 num_pages,
+				  enum hv_isolated_page_type page_type,
+				  enum hv_isolated_page_size page_size,
+				  void (*completion_handler)(void * /* data */,
+							     u64 * /* status */),
+				  void *completion_data);
+int hv_call_complete_isolated_import(u64 partition_id,
+				     union hv_partition_complete_isolated_import_data *import_data,
+				     void (*completion_handler)(void * /* data */,
+								u64 * /* status */),
+				     void *completion_data);
+int hv_call_read_gpa(u32 vp_index, u64 partition_id,
+		     union hv_access_gpa_control_flags flags, u64 gpa_base,
+		     u8 *data, u32 bytes_count,
+		     union hv_access_gpa_result *result);
+int hv_call_write_gpa(u32 vp_index, u64 partition_id,
+		      union hv_access_gpa_control_flags flags, u64 gpa_base,
+		      u8 *data, u32 bytes_count,
+		      union hv_access_gpa_result *result);
+
+#ifdef HV_SUPPORTS_SEV_SNP_GUESTS
+int hv_call_issue_psp_guest_request(u64 partition_id, u64 req_pfn, u64 rsp_pfn,
+				    void (*completion_handler)(void * /* data */,
+							       u64 * /* status */),
+				    void *completion_data);
+#endif /* HV_SUPPORTS_SEV_SNP_GUESTS */
+
+#if IS_ENABLED(CONFIG_MSHV_DIAG)
+void mshv_trace_buffer_complete(const struct hv_eventlog_message_payload *msg);
+#else
+static inline void mshv_trace_buffer_complete(const struct hv_eventlog_message_payload *msg) {}
+#endif /* CONFIG_MSHV_DIAG */
+
+extern struct mshv_root mshv_root;
+extern enum hv_scheduler_type hv_scheduler_type;
+extern u8 * __percpu *hv_synic_eventring_tail;
 
 #endif /* _MSHV_ROOT_H_ */

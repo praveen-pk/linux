@@ -4,14 +4,7 @@
  *
  * Hypercall helper functions used by the mshv_root module.
  *
- * Authors:
- *   Nuno Das Neves <nunodasneves@linux.microsoft.com>
- *   Wei Liu <wei.liu@kernel.org>
- *   Jinank Jain <jinankjain@microsoft.com>
- *   Vineeth Remanan Pillai <viremana@linux.microsoft.com>
- *   Asher Kariv <askariv@microsoft.com>
- *   Muminul Islam <Muminul.Islam@microsoft.com>
- *   Anatol Belski <anbelski@linux.microsoft.com>
+ * Authors: Microsoft Linux virtualization team
  */
 
 #include <linux/kernel.h>
@@ -19,11 +12,12 @@
 #include <asm/mshyperv.h>
 
 #include <trace/events/mshv.h>
-#include "mshv.h"
+#include "mshv_root.h"
 
 /* Determined empirically */
 #define HV_INIT_PARTITION_DEPOSIT_PAGES 208
 #define HV_MAP_GPA_DEPOSIT_PAGES	256
+#define HV_UMAP_GPA_PAGES		512
 
 #define HV_PAGE_COUNT_2M_ALIGNED(pg_count) (!((pg_count) & (0x200 - 1)))
 
@@ -71,10 +65,9 @@ int hv_call_withdraw_memory(u64 count, int node, u64 partition_id)
 
 		memset(input_page, 0, sizeof(*input_page));
 		input_page->partition_id = partition_id;
-		status = hv_do_rep_hypercall(
-			HVCALL_WITHDRAW_MEMORY,
-			min(remaining, HV_WITHDRAW_BATCH_SIZE), 0, input_page,
-			output_page);
+		status = hv_do_rep_hypercall(HVCALL_WITHDRAW_MEMORY,
+					     min(remaining, HV_WITHDRAW_BATCH_SIZE),
+					     0, input_page, output_page);
 
 		local_irq_restore(flags);
 
@@ -123,7 +116,7 @@ int hv_call_create_partition(
 		input->compatibility_version = HV_COMPATIBILITY_21_H2;
 
 		memcpy(&input->partition_creation_properties, &creation_properties,
-			sizeof(creation_properties));
+		       sizeof(creation_properties));
 
 		memcpy(&input->isolation_properties, &isolation_properties,
 		       sizeof(isolation_properties));
@@ -159,17 +152,14 @@ int hv_call_initialize_partition(u64 partition_id)
 
 	input.partition_id = partition_id;
 
-	ret = hv_call_deposit_pages(
-				NUMA_NO_NODE,
-				partition_id,
-				HV_INIT_PARTITION_DEPOSIT_PAGES);
+	ret = hv_call_deposit_pages(NUMA_NO_NODE, partition_id,
+				    HV_INIT_PARTITION_DEPOSIT_PAGES);
 	if (ret)
 		return ret;
 
 	do {
-		status = hv_do_fast_hypercall8(
-				HVCALL_INITIALIZE_PARTITION,
-				*(u64 *)&input);
+		status = hv_do_fast_hypercall8(HVCALL_INITIALIZE_PARTITION,
+					       *(u64 *)&input);
 
 		if (hv_result(status) != HV_STATUS_INSUFFICIENT_MEMORY) {
 			if (!hv_result_success(status))
@@ -192,9 +182,8 @@ int hv_call_finalize_partition(u64 partition_id)
 	u64 status;
 
 	input.partition_id = partition_id;
-	status = hv_do_fast_hypercall8(
-			HVCALL_FINALIZE_PARTITION,
-			*(u64 *)&input);
+	status = hv_do_fast_hypercall8(HVCALL_FINALIZE_PARTITION,
+				       *(u64 *)&input);
 
 	if (!hv_result_success(status))
 		pr_err("%s: %s\n", __func__, hv_result_to_string(status));
@@ -244,6 +233,7 @@ static int hv_do_map_gpa_hcall(u64 partition_id, u64 gfn, u64 page_struct_count,
 			       __func__, page_count);
 			return -EINVAL;
 		}
+
 		large_shift = HV_HYP_LARGE_PAGE_SHIFT - HV_HYP_PAGE_SHIFT;
 		page_count >>= large_shift;
 	}
@@ -365,7 +355,7 @@ int hv_call_unmap_gpa_pages(
 
 	while (done < page_count) {
 		ulong completed, remain = page_count - done;
-		int rep_count = min(remain, HV_MAP_GPA_BATCH_SIZE);
+		int rep_count = min(remain, HV_UMAP_GPA_PAGES);
 
 		local_irq_save(irq_flags);
 		input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
@@ -374,8 +364,8 @@ int hv_call_unmap_gpa_pages(
 		input_page->target_partition_id = partition_id;
 		input_page->target_gpa_base = gfn + (done << large_shift);
 		input_page->unmap_flags = flags;
-		status = hv_do_rep_hypercall(
-			HVCALL_UNMAP_GPA_PAGES, rep_count, 0, input_page, NULL);
+		status = hv_do_rep_hypercall(HVCALL_UNMAP_GPA_PAGES, rep_count,
+					     0, input_page, NULL);
 		local_irq_restore(irq_flags);
 
 		completed = hv_repcomp(status);
@@ -435,10 +425,10 @@ int hv_call_get_gpa_access_states(
 		for (i = 0; i < completed; ++i)
 			states[i].as_uint8 = output_page[i].as_uint8;
 
+		local_irq_restore(flags);
 		states += completed;
 		*written_total += completed;
 		remaining -= completed;
-		local_irq_restore(flags);
 	}
 
 	return hv_result_to_errno(status);
@@ -593,15 +583,10 @@ int hv_call_get_vp_state(
 	return ret;
 }
 
-int hv_call_set_vp_state(
-		u32 vp_index,
-		u64 partition_id,
-		struct hv_vp_state_data state_data,
-		/* Choose between pages and bytes */
-		u64 page_count,
-		struct page **pages,
-		u32 num_bytes,
-		u8 *bytes)
+int hv_call_set_vp_state(u32 vp_index, u64 partition_id,
+			 /* Choose between pages and bytes */
+			 struct hv_vp_state_data state_data, u64 page_count,
+			 struct page **pages, u32 num_bytes, u8 *bytes)
 {
 	struct hv_input_set_vp_state *input;
 	u64 status;
@@ -866,14 +851,10 @@ out:
 int
 hv_call_clear_virtual_interrupt(u64 partition_id)
 {
-	unsigned long flags;
 	int status;
 
-	local_irq_save(flags);
 	status = hv_do_fast_hypercall8(HVCALL_CLEAR_VIRTUAL_INTERRUPT,
-				       partition_id) &
-			HV_HYPERCALL_RESULT_MASK;
-	local_irq_restore(flags);
+				       partition_id);
 
 	if (status != HV_STATUS_SUCCESS) {
 		pr_err("%s: %s\n", __func__, hv_result_to_string(status));
@@ -906,20 +887,18 @@ hv_call_create_port(u64 port_partition_id, union hv_port_id port_id,
 		input->port_vtl = port_vtl;
 		input->min_connection_vtl = min_connection_vtl;
 		input->proximity_domain_info = hv_numa_node_to_pxm_info(node);
-		status = hv_do_hypercall(HVCALL_CREATE_PORT, input,
-					NULL) & HV_HYPERCALL_RESULT_MASK;
+		status = hv_do_hypercall(HVCALL_CREATE_PORT, input, NULL);
 		local_irq_restore(flags);
-		if (status == HV_STATUS_SUCCESS)
+		if (hv_result_success(status))
 			break;
 
-		if (status != HV_STATUS_INSUFFICIENT_MEMORY) {
+		if (hv_result(status) != HV_STATUS_INSUFFICIENT_MEMORY) {
 			pr_err("%s: %s\n",
 			       __func__, hv_result_to_string(status));
 			ret = hv_result_to_errno(status);
 			break;
 		}
-		ret = hv_call_deposit_pages(NUMA_NO_NODE,
-				port_partition_id, 1);
+		ret = hv_call_deposit_pages(NUMA_NO_NODE, port_partition_id, 1);
 
 	} while (!ret);
 
@@ -930,17 +909,13 @@ int
 hv_call_delete_port(u64 port_partition_id, union hv_port_id port_id)
 {
 	union hv_input_delete_port input = { 0 };
-	unsigned long flags;
 	int status;
 
-	local_irq_save(flags);
 	input.port_partition_id = port_partition_id;
 	input.port_id = port_id;
 	status = hv_do_fast_hypercall16(HVCALL_DELETE_PORT,
 					input.as_uint64[0],
-					input.as_uint64[1]) &
-			HV_HYPERCALL_RESULT_MASK;
-	local_irq_restore(flags);
+					input.as_uint64[1]);
 
 	if (status != HV_STATUS_SUCCESS) {
 		pr_err("%s: %s\n", __func__, hv_result_to_string(status));
@@ -973,21 +948,20 @@ hv_call_connect_port(u64 port_partition_id, union hv_port_id port_id,
 		input->connection_info = *connection_info;
 		input->connection_vtl = connection_vtl;
 		input->proximity_domain_info = hv_numa_node_to_pxm_info(node);
-		status = hv_do_hypercall(HVCALL_CONNECT_PORT, input,
-					NULL) & HV_HYPERCALL_RESULT_MASK;
+		status = hv_do_hypercall(HVCALL_CONNECT_PORT, input, NULL);
 
 		local_irq_restore(flags);
-		if (status == HV_STATUS_SUCCESS)
+		if (hv_result_success(status))
 			break;
 
-		if (status != HV_STATUS_INSUFFICIENT_MEMORY) {
+		if (hv_result(status) != HV_STATUS_INSUFFICIENT_MEMORY) {
 			pr_err("%s: %s\n",
 			       __func__, hv_result_to_string(status));
 			ret = hv_result_to_errno(status);
 			break;
 		}
 		ret = hv_call_deposit_pages(NUMA_NO_NODE,
-				connection_partition_id, 1);
+					    connection_partition_id, 1);
 	} while (!ret);
 
 	return ret;
@@ -998,18 +972,14 @@ hv_call_disconnect_port(u64 connection_partition_id,
 			union hv_connection_id connection_id)
 {
 	union hv_input_disconnect_port input = { 0 };
-	unsigned long flags;
 	int status;
 
-	local_irq_save(flags);
 	input.connection_partition_id = connection_partition_id;
 	input.connection_id = connection_id;
 	input.is_doorbell = 1;
 	status = hv_do_fast_hypercall16(HVCALL_DISCONNECT_PORT,
 					input.as_uint64[0],
-					input.as_uint64[1]) &
-			HV_HYPERCALL_RESULT_MASK;
-	local_irq_restore(flags);
+					input.as_uint64[1]);
 
 	if (status != HV_STATUS_SUCCESS) {
 		pr_err("%s: %s\n", __func__, hv_result_to_string(status));
@@ -1023,15 +993,11 @@ int
 hv_call_notify_port_ring_empty(u32 sint_index)
 {
 	union hv_input_notify_port_ring_empty input = { 0 };
-	unsigned long flags;
 	int status;
 
-	local_irq_save(flags);
 	input.sint_index = sint_index;
 	status = hv_do_fast_hypercall8(HVCALL_NOTIFY_PORT_RING_EMPTY,
-					input.as_uint64) &
-			HV_HYPERCALL_RESULT_MASK;
-	local_irq_restore(flags);
+				       input.as_uint64);
 
 	if (status != HV_STATUS_SUCCESS) {
 		pr_err("%s: %s\n", __func__, hv_result_to_string(status));
@@ -1374,20 +1340,16 @@ int hv_call_modify_spa_host_access(u64 partition_id, struct page **pages,
 
 	while (done < page_count) {
 		ulong i, completed, remain = page_count - done;
-		int rep_count = min(
-			remain,
-			HV_MODIFY_SPARSE_SPA_PAGE_HOST_ACCESS_MAX_PAGE_COUNT);
+		int rep_count = min(remain,
+				    HV_MODIFY_SPARSE_SPA_PAGE_HOST_ACCESS_MAX_PAGE_COUNT);
 
 		local_irq_save(irq_flags);
 		input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
-		/*
-		 * This is required to make sure that reserved field is set to
-		 * zero, because MSHV has a check to make sure reserved bits are
-		 * set to zero.
-		 */
+
 		memset(input_page, 0, sizeof(*input_page));
 		/* Only set the partition id if you are making the pages
-		 * exclusive */
+		 * exclusive
+		 */
 		if (flags & HV_MODIFY_SPA_PAGE_HOST_ACCESS_MAKE_EXCLUSIVE)
 			input_page->partition_id = partition_id;
 		input_page->flags = flags;
