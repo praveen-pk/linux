@@ -396,7 +396,7 @@ int hv_call_get_gpa_access_states(
 	int completed = 0;
 	unsigned long remaining = count;
 	int rep_count, i;
-	u64 status;
+	u64 status = 0;
 	unsigned long flags;
 
 	*written_total = 0;
@@ -1206,7 +1206,7 @@ hv_call_map_stats_page(enum hv_stats_object_type type,
 	struct hv_input_map_stats_page *input;
 	struct hv_output_map_stats_page *output;
 	u64 status, pfn;
-	int ret;
+	int ret = 0;
 
 	do {
 		local_irq_save(flags);
