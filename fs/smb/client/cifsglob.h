@@ -160,12 +160,6 @@ enum upcall_target_enum {
 	UPTARGET_APP, /* upcall to the application namespace which did the mount */
 };
 
-enum upcall_target_enum {
-	UPTARGET_UNSPECIFIED, /* not specified, defaults to app */
-	UPTARGET_MOUNT, /* upcall to the mount namespace */
-	UPTARGET_APP, /* upcall to the application namespace which did the mount */
-};
-
 enum cifs_reparse_type {
 	CIFS_REPARSE_TYPE_NFS,
 	CIFS_REPARSE_TYPE_WSL,
