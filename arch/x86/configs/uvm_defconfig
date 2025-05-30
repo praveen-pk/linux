@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/x86_64 6.6.82.mshv2 Kernel Configuration
+# Linux/x86_64 6.6.92.mshv1 Kernel Configuration
 #
 CONFIG_CC_VERSION_TEXT="gcc (GCC) 13.2.0"
 CONFIG_CC_IS_GCC=y
@@ -486,6 +486,7 @@ CONFIG_CPU_SRSO=y
 # CONFIG_GDS_FORCE_MITIGATION is not set
 CONFIG_MITIGATION_RFDS=y
 CONFIG_MITIGATION_SPECTRE_BHI=y
+CONFIG_MITIGATION_ITS=y
 CONFIG_ARCH_HAS_ADD_PAGES=y
 
 #
@@ -1426,8 +1427,6 @@ CONFIG_FAILOVER=y
 #
 # Device Drivers
 #
-CONFIG_HAVE_EISA=y
-# CONFIG_EISA is not set
 CONFIG_HAVE_PCI=y
 CONFIG_PCI=y
 CONFIG_PCI_DOMAINS=y
