@@ -9,6 +9,7 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <asm/mshyperv.h>
+#include <trace/events/mshv.h>
 
 #include <trace/events/mshv.h>
 
