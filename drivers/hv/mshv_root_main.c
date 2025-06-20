@@ -968,6 +968,10 @@ mshv_partition_ioctl_create_vp(struct mshv_partition *partition,
 	if (hv_parent_partition())
 		memcpy(vp->vp_stats_pages, stats_pages, sizeof(stats_pages));
 
+	ret = mshv_debugfs_vp_create(vp);
+	if (ret)
+		goto put_partition;
+
 	/*
 	 * Keep anon_inode_getfd last: it installs fd in the file struct and
 	 * thus makes the state accessible in user space.
@@ -975,7 +979,7 @@ mshv_partition_ioctl_create_vp(struct mshv_partition *partition,
 	ret = anon_inode_getfd("mshv_vp", &mshv_vp_fops, vp,
 			       O_RDWR | O_CLOEXEC);
 	if (ret < 0)
-		goto put_partition;
+		goto remove_debugfs_vp;
 
 	/* already exclusive with the partition mutex for all ioctls */
 	partition->pt_vp_count++;
@@ -983,6 +987,8 @@ mshv_partition_ioctl_create_vp(struct mshv_partition *partition,
 
 	return ret;
 
+remove_debugfs_vp:
+	mshv_debugfs_vp_remove(vp);
 put_partition:
 	mshv_partition_put(partition);
 free_vp:
@@ -1557,13 +1563,18 @@ mshv_partition_ioctl_initialize(struct mshv_partition *partition)
 
 	ret = hv_call_initialize_partition(partition->pt_id);
 	if (ret)
-		goto withdraw_mem;
+		return ret;
+
+	ret = mshv_debugfs_partition_create(partition);
+	if (ret)
+		goto finalize_partition;
 
 	partition->pt_initialized = true;
 
 	return 0;
 
-withdraw_mem:
+finalize_partition:
+	hv_call_finalize_partition(partition->pt_id);
 	hv_call_withdraw_memory(U64_MAX, NUMA_NO_NODE, partition->pt_id);
 
 	return ret;
@@ -1742,6 +1753,8 @@ static void destroy_partition(struct mshv_partition *partition)
 			if (!vp)
 				continue;
 
+			mshv_debugfs_vp_remove(vp);
+
 			if (hv_parent_partition())
 				mshv_vp_stats_unmap(partition->pt_id, vp->vp_index);
 
@@ -1771,6 +1784,8 @@ static void destroy_partition(struct mshv_partition *partition)
 
 			partition->pt_vp_array[i] = NULL;
 		}
+
+		mshv_debugfs_partition_remove(partition);
 
 		/* Deallocates and unmaps everything including vcpus, GPA mappings etc */
 		hv_call_finalize_partition(partition->pt_id);
@@ -2243,6 +2258,7 @@ static int __init mshv_l1vh_partition_init(struct device *dev)
 
 static void mshv_root_partition_exit(void)
 {
+	mshv_debugfs_exit();
 	unregister_reboot_notifier(&mshv_reboot_nb);
 	root_scheduler_deinit();
 }
@@ -2262,8 +2278,14 @@ static int __init mshv_root_partition_init(struct device *dev)
 	if (err)
 		goto root_sched_deinit;
 
+	err = mshv_debugfs_init();
+	if (err)
+		goto unregister_reboot_notifier;
+
 	return 0;
 
+unregister_reboot_notifier:
+	unregister_reboot_notifier(&mshv_reboot_nb);
 root_sched_deinit:
 	root_scheduler_deinit();
 	return err;

@@ -51,6 +51,9 @@ struct mshv_vp {
 		unsigned int kicked_by_hv;
 		wait_queue_head_t vp_suspend_queue;
 	} run;
+#ifdef CONFIG_DEBUG_FS
+	struct dentry *vp_debugfs_dentry;
+#endif
 };
 
 #define vp_fmt(fmt) "p%lluvp%u: " fmt
@@ -128,6 +131,10 @@ struct mshv_partition {
 	u64 isolation_type;
 	bool import_completed;
 	bool pt_initialized;
+#ifdef CONFIG_DEBUG_FS
+	struct dentry *pt_debugfs_dentry;
+	struct dentry *pt_debugfs_vp_dentry;
+#endif
 };
 
 #define pt_fmt(fmt) "p%llu: " fmt
@@ -303,6 +310,33 @@ int hv_call_unmap_stat_page(enum hv_stats_object_type type,
 int hv_call_modify_spa_host_access(u64 partition_id, struct page **pages,
 				   u64 page_struct_count, u32 host_access,
 				   u32 flags, u8 acquire);
+
+#ifdef CONFIG_DEBUG_FS
+extern int __init mshv_debugfs_init(void);
+extern void mshv_debugfs_exit(void);
+
+extern int mshv_debugfs_partition_create(struct mshv_partition *partition);
+extern void mshv_debugfs_partition_remove(struct mshv_partition *partition);
+extern int mshv_debugfs_vp_create(struct mshv_vp *vp);
+extern void mshv_debugfs_vp_remove(struct mshv_vp *vp);
+#else
+static inline int __init mshv_debugfs_init(void)
+{
+	return 0;
+}
+static inline void mshv_debugfs_exit(void) { }
+
+static inline int mshv_debugfs_partition_create(struct mshv_partition *partition)
+{
+	return 0;
+}
+static inline void mshv_debugfs_partition_remove(struct mshv_partition *partition) { }
+static inline int mshv_debugfs_vp_create(struct mshv_vp *vp)
+{
+	return 0;
+}
+static inline void mshv_debugfs_vp_remove(struct mshv_vp *vp) { }
+#endif
 
 extern struct mshv_root mshv_root;
 extern enum hv_scheduler_type hv_scheduler_type;
