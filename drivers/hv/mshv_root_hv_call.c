@@ -77,6 +77,8 @@ int hv_call_withdraw_memory(u64 count, int node, u64 partition_id)
 		if (!hv_result_success(status)) {
 			if (hv_result(status) == HV_STATUS_NO_RESOURCES)
 				status = HV_STATUS_SUCCESS;
+			else
+				hv_status_debug(status, "\n");
 			break;
 		}
 
@@ -121,6 +123,8 @@ int hv_call_create_partition(u64 flags,
 		if (hv_result(status) != HV_STATUS_INSUFFICIENT_MEMORY) {
 			if (hv_result_success(status))
 				*partition_id = output->partition_id;
+			else
+				hv_status_debug(status, "\n");
 			local_irq_restore(irq_flags);
 			ret = hv_result_to_errno(status);
 			break;
@@ -153,6 +157,8 @@ int hv_call_initialize_partition(u64 partition_id)
 					       *(u64 *)&input);
 
 		if (hv_result(status) != HV_STATUS_INSUFFICIENT_MEMORY) {
+			if (!hv_result_success(status))
+				hv_status_debug(status, "\n");
 			ret = hv_result_to_errno(status);
 			break;
 		}
@@ -173,6 +179,9 @@ int hv_call_finalize_partition(u64 partition_id)
 	status = hv_do_fast_hypercall8(HVCALL_FINALIZE_PARTITION,
 				       *(u64 *)&input);
 
+	if (!hv_result_success(status))
+		hv_status_debug(status, "\n");
+
 	trace_mshv_hvcall_finalize_partition(status, partition_id);
 
 	return hv_result_to_errno(status);
@@ -185,6 +194,9 @@ int hv_call_delete_partition(u64 partition_id)
 
 	input.partition_id = partition_id;
 	status = hv_do_fast_hypercall8(HVCALL_DELETE_PARTITION, *(u64 *)&input);
+
+	if (!hv_result_success(status))
+		hv_status_debug(status, "\n");
 
 	trace_mshv_hvcall_delete_partition(status, partition_id);
 
@@ -205,8 +217,10 @@ static int hv_do_map_gpa_hcall(u64 partition_id, u64 gfn, u64 page_struct_count,
 		return -EINVAL;
 
 	if (flags & HV_MAP_GPA_LARGE_PAGE) {
-		if (mmio_spa)
+		if (mmio_spa) {
+			pr_debug("HV_MAP_GPA_LARGE_PAGE not supported with mmio\n");
 			return -EINVAL;
+		}
 
 		if (!HV_PAGE_COUNT_2M_ALIGNED(page_count))
 			return -EINVAL;
@@ -257,6 +271,8 @@ static int hv_do_map_gpa_hcall(u64 partition_id, u64 gfn, u64 page_struct_count,
 				break;
 
 		} else if (!hv_result_success(status)) {
+			hv_status_debug(status, "Completed %u/%llu\n",
+					done, page_count);
 			ret = hv_result_to_errno(status);
 			break;
 		}
@@ -333,6 +349,8 @@ int hv_call_unmap_gpa_pages(u64 partition_id, u64 gfn, u64 page_count_4k,
 
 		completed = hv_repcomp(status);
 		if (!hv_result_success(status)) {
+			hv_status_debug(status, "Completed %u/%llu\n",
+					done, page_count);
 			ret = hv_result_to_errno(status);
 			break;
 		}
@@ -370,6 +388,8 @@ int hv_call_get_gpa_access_states(u64 partition_id, u32 count, u64 gpa_base_pfn,
 		status = hv_do_rep_hypercall(HVCALL_GET_GPA_PAGES_ACCESS_STATES, rep_count,
 					     0, input_page, output_page);
 		if (!hv_result_success(status)) {
+			hv_status_debug(status, "Completed %li/%u\n",
+					count - remaining, count);
 			local_irq_restore(flags);
 			break;
 		}
@@ -404,6 +424,9 @@ int hv_call_assert_virtual_interrupt(u64 partition_id, u32 vector,
 	status = hv_do_hypercall(HVCALL_ASSERT_VIRTUAL_INTERRUPT, input, NULL);
 	local_irq_restore(flags);
 
+	if (!hv_result_success(status))
+		hv_status_debug(status, "\n");
+
 	return hv_result_to_errno(status);
 }
 
@@ -417,6 +440,9 @@ int hv_call_delete_vp(u64 partition_id, u32 vp_index)
 
 	status = hv_do_fast_hypercall16(HVCALL_DELETE_VP,
 					input.as_uint64[0], input.as_uint64[1]);
+
+	if (!hv_result_success(status))
+		hv_status_debug(status, "\n");
 
 	return hv_result_to_errno(status);
 }
@@ -461,7 +487,9 @@ int hv_call_get_vp_state(u32 vp_index, u64 partition_id,
 		status = hv_do_hypercall(control, input, output);
 
 		if (hv_result(status) != HV_STATUS_INSUFFICIENT_MEMORY) {
-			if (hv_result_success(status) && ret_output)
+			if (!hv_result_success(status))
+				hv_status_debug(status, "\n");
+			else if (ret_output)
 				memcpy(ret_output, output, sizeof(*output));
 
 			local_irq_restore(flags);
@@ -524,6 +552,8 @@ int hv_call_set_vp_state(u32 vp_index, u64 partition_id,
 		status = hv_do_hypercall(control, input, NULL);
 
 		if (hv_result(status) != HV_STATUS_INSUFFICIENT_MEMORY) {
+			if (!hv_result_success(status))
+				hv_status_debug(status, "\n");
 			local_irq_restore(flags);
 			ret = hv_result_to_errno(status);
 			break;
@@ -563,6 +593,11 @@ int hv_call_map_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
 		if (hv_result(status) != HV_STATUS_INSUFFICIENT_MEMORY) {
 			if (hv_result_success(status))
 				*state_page = pfn_to_page(output->map_location);
+			else
+				hv_status_debug(status,
+						"page_type=%u vp_index=%u partition_id=%llu\n",
+						type, vp_index, partition_id);
+
 			local_irq_restore(flags);
 			ret = hv_result_to_errno(status);
 			break;
@@ -601,6 +636,9 @@ int hv_call_unmap_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
 
 	local_irq_restore(flags);
 
+	if (!hv_result_success(status))
+		hv_status_debug(status, "\n");
+
 	return hv_result_to_errno(status);
 }
 
@@ -611,6 +649,9 @@ hv_call_clear_virtual_interrupt(u64 partition_id)
 
 	status = hv_do_fast_hypercall8(HVCALL_CLEAR_VIRTUAL_INTERRUPT,
 				       partition_id);
+
+	if (!hv_result_success(status))
+		hv_status_debug(status, "\n");
 
 	return hv_result_to_errno(status);
 }
@@ -644,6 +685,7 @@ hv_call_create_port(u64 port_partition_id, union hv_port_id port_id,
 			break;
 
 		if (hv_result(status) != HV_STATUS_INSUFFICIENT_MEMORY) {
+			hv_status_debug(status, "\n");
 			ret = hv_result_to_errno(status);
 			break;
 		}
@@ -665,6 +707,9 @@ hv_call_delete_port(u64 port_partition_id, union hv_port_id port_id)
 	status = hv_do_fast_hypercall16(HVCALL_DELETE_PORT,
 					input.as_uint64[0],
 					input.as_uint64[1]);
+
+	if (!hv_result_success(status))
+		hv_status_debug(status, "\n");
 
 	return hv_result_to_errno(status);
 }
@@ -698,6 +743,7 @@ hv_call_connect_port(u64 port_partition_id, union hv_port_id port_id,
 			break;
 
 		if (hv_result(status) != HV_STATUS_INSUFFICIENT_MEMORY) {
+			hv_status_debug(status, "\n");
 			ret = hv_result_to_errno(status);
 			break;
 		}
@@ -722,6 +768,9 @@ hv_call_disconnect_port(u64 connection_partition_id,
 					input.as_uint64[0],
 					input.as_uint64[1]);
 
+	if (!hv_result_success(status))
+		hv_status_debug(status, "\n");
+
 	return hv_result_to_errno(status);
 }
 
@@ -734,6 +783,9 @@ hv_call_notify_port_ring_empty(u32 sint_index)
 	input.sint_index = sint_index;
 	status = hv_do_fast_hypercall8(HVCALL_NOTIFY_PORT_RING_EMPTY,
 				       input.as_uint64);
+
+	if (!hv_result_success(status))
+		hv_status_debug(status, "\n");
 
 	return hv_result_to_errno(status);
 }
@@ -765,6 +817,8 @@ int hv_call_map_stat_page(enum hv_stats_object_type type,
 			ret = hv_result_to_errno(status);
 			if (hv_result_success(status))
 				break;
+			else
+				hv_status_debug(status, "\n");
 			return ret;
 		}
 
@@ -795,6 +849,9 @@ int hv_call_unmap_stat_page(enum hv_stats_object_type type,
 
 	status = hv_do_hypercall(HVCALL_UNMAP_STATS_PAGE, input, NULL);
 	local_irq_restore(flags);
+
+	if (!hv_result_success(status))
+		hv_status_debug(status, "\n");
 
 	return hv_result_to_errno(status);
 }
@@ -854,8 +911,12 @@ int hv_call_modify_spa_host_access(u64 partition_id, struct page **pages,
 
 		completed = hv_repcomp(status);
 
-		if (!hv_result_success(status))
+		if (!hv_result_success(status)) {
+			hv_status_debug(status,
+					"Completed %u/%llu, spa host access may be in invalid state\n",
+					done, page_count);
 			return hv_result_to_errno(status);
+		}
 
 		done += completed;
 	}
