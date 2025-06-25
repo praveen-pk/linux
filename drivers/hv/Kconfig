@@ -55,6 +55,8 @@ config HYPERV_BALLOON
 	help
 	  Select this option to enable Hyper-V Balloon driver.
 
+source "drivers/hv/dxgkrnl/Kconfig"
+
 config MSHV_ROOT
 	tristate "Microsoft Hyper-V root partition APIs driver"
 	depends on HYPERV && (X86_64 || ARM64)
