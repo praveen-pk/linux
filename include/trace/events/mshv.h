@@ -302,7 +302,7 @@ TRACE_EVENT(mshv_run_vp_entry,
 	TP_fast_assign(
 		__entry->partition_id = partition_id;
 		__entry->vp_index = vp_index;
-		__assign_str(scheduler, scheduler);
+		__assign_str(scheduler);
 	),
 	TP_printk("partition_id=%llu vp_index=%u, scheduler=%s",
 		__entry->partition_id,
@@ -442,8 +442,8 @@ TRACE_EVENT(mshv_update_routing_table,
 );
 
 TRACE_EVENT(mshv_map_user_memory,
-		TP_PROTO(u64 partition_id, u64 start_uaddr, u64 start_gfn, u64 nr_pages, u32 map_flags, u64 is_ram, long ret),
-		TP_ARGS(partition_id, start_uaddr, start_gfn, nr_pages, map_flags, is_ram, ret),
+		TP_PROTO(u64 partition_id, u64 start_uaddr, u64 start_gfn, u64 nr_pages, u32 map_flags, long ret),
+		TP_ARGS(partition_id, start_uaddr, start_gfn, nr_pages, map_flags, ret),
 
 	TP_STRUCT__entry(
 		__field(u64, partition_id)
@@ -451,7 +451,6 @@ TRACE_EVENT(mshv_map_user_memory,
 		__field(u64, start_gfn)
 		__field(u64, nr_pages)
 		__field(u32, map_flags)
-		__field(bool, is_ram)
 		__field(long, ret)
 	),
 
@@ -461,17 +460,15 @@ TRACE_EVENT(mshv_map_user_memory,
 		__entry->start_gfn = start_gfn;
 		__entry->nr_pages = nr_pages;
 		__entry->map_flags = map_flags;
-		__entry->is_ram = is_ram;
 		__entry->ret = ret;
 	),
 
-	TP_printk("partition_id=%llu start_uaddr=0x%llx start_gfn=0x%llx nr_pages=%llu map_flags=0x%x is_ram=%d ret=%ld",
+	TP_printk("partition_id=%llu start_uaddr=0x%llx start_gfn=0x%llx nr_pages=%llu map_flags=0x%x ret=%ld",
 		__entry->partition_id,
 		__entry->start_uaddr,
 		__entry->start_gfn,
 		__entry->nr_pages,
 		__entry->map_flags,
-		__entry->is_ram,
 		__entry->ret
 	)
 );

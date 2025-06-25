@@ -11,6 +11,8 @@
 #include <linux/mm.h>
 #include <asm/mshyperv.h>
 
+#include <trace/events/mshv.h>
+
 #include "mshv_root.h"
 
 /* Determined empirically */
@@ -82,6 +84,8 @@ int hv_call_withdraw_memory(u64 count, int node, u64 partition_id)
 	}
 	free_page((unsigned long)output_page);
 
+	trace_mshv_hvcall_withdraw_memory(status, partition_id);
+
 	return hv_result_to_errno(status);
 }
 
@@ -126,6 +130,8 @@ int hv_call_create_partition(u64 flags,
 					    hv_current_partition_id, 1);
 	} while (!ret);
 
+	trace_mshv_hvcall_create_partition(status, (ret ? 0 : (*partition_id)), flags);
+
 	return ret;
 }
 
@@ -153,6 +159,8 @@ int hv_call_initialize_partition(u64 partition_id)
 		ret = hv_call_deposit_pages(NUMA_NO_NODE, partition_id, 1);
 	} while (!ret);
 
+	trace_mshv_hvcall_initialize_partition(status, partition_id);
+
 	return ret;
 }
 
@@ -165,6 +173,8 @@ int hv_call_finalize_partition(u64 partition_id)
 	status = hv_do_fast_hypercall8(HVCALL_FINALIZE_PARTITION,
 				       *(u64 *)&input);
 
+	trace_mshv_hvcall_finalize_partition(status, partition_id);
+
 	return hv_result_to_errno(status);
 }
 
@@ -175,6 +185,8 @@ int hv_call_delete_partition(u64 partition_id)
 
 	input.partition_id = partition_id;
 	status = hv_do_fast_hypercall8(HVCALL_DELETE_PARTITION, *(u64 *)&input);
+
+	trace_mshv_hvcall_delete_partition(status, partition_id);
 
 	return hv_result_to_errno(status);
 }
@@ -560,6 +572,9 @@ int hv_call_map_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
 
 		ret = hv_call_deposit_pages(NUMA_NO_NODE, partition_id, 1);
 	} while (!ret);
+
+	trace_mshv_hvcall_map_vp_state_page(status, partition_id, vp_index,
+					    type);
 
 	return ret;
 }
