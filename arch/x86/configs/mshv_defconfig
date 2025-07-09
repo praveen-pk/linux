@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/x86_64 6.6.93.mshv2 Kernel Configuration
+# Linux/x86_64 6.6.96.mshv1 Kernel Configuration
 #
 CONFIG_CC_VERSION_TEXT="gcc (GCC) 13.2.0"
 CONFIG_CC_IS_GCC=y
@@ -5600,7 +5600,6 @@ CONFIG_MXM_WMI=m
 # CONFIG_X86_PLATFORM_DRIVERS_HP is not set
 # CONFIG_WIRELESS_HOTKEY is not set
 # CONFIG_IBM_RTL is not set
-# CONFIG_LENOVO_YMC is not set
 # CONFIG_SENSORS_HDAPS is not set
 # CONFIG_THINKPAD_ACPI is not set
 # CONFIG_THINKPAD_LMI is not set
