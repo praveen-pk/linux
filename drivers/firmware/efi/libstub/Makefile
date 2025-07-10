@@ -88,6 +88,7 @@ lib-$(CONFIG_RISCV)		+= kaslr.o riscv.o riscv-stub.o
 lib-$(CONFIG_LOONGARCH)		+= loongarch.o loongarch-stub.o
 ifdef CONFIG_X86_64
 lib-$(CONFIG_MSHV_ROOT)	+= x86-efi-mshv.o
+UBSAN_SANITIZE_x86-efi-mshv.o := n
 endif
 CFLAGS_arm32-stub.o		:= -DTEXT_OFFSET=$(TEXT_OFFSET)
 
