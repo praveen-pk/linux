@@ -567,6 +567,12 @@ int hv_call_set_vp_state(u32 vp_index, u64 partition_id,
 	return ret;
 }
 
+static bool mshv_use_overlay_gpfn(void)
+{
+	return hv_l1vh_partition() &&
+	       mshv_root.vmm_caps.vmm_can_provide_overlay_gpfn;
+}
+
 static int hv_call_map_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
 				     union hv_input_vtl input_vtl,
 				     struct page **state_page)
@@ -628,7 +634,7 @@ int hv_map_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
 	int ret = 0;
 	struct page *allocated_page = NULL;
 
-	if (hv_l1vh_partition()) {
+	if (mshv_use_overlay_gpfn()) {
 		allocated_page = alloc_page(GFP_KERNEL);
 		if (!allocated_page)
 			return -ENOMEM;
@@ -677,7 +683,7 @@ int hv_unmap_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
 {
 	int ret = hv_call_unmap_vp_state_page(partition_id, vp_index, type, input_vtl);
 
-	if (hv_l1vh_partition() && page_addr)
+	if (mshv_use_overlay_gpfn() && page_addr)
 		__free_page(virt_to_page(page_addr));
 
 	return ret;
@@ -995,7 +1001,7 @@ int hv_map_stats_page(enum hv_stats_object_type type,
 	if (!addr)
 		return -EINVAL;
 
-	if (hv_l1vh_partition()) {
+	if (mshv_use_overlay_gpfn()) {
 		allocated_page = alloc_page(GFP_KERNEL);
 		if (!allocated_page)
 			return -ENOMEM;
@@ -1044,7 +1050,7 @@ int hv_unmap_stats_page(enum hv_stats_object_type type, void *page_addr,
 
 	ret = hv_call_unmap_stats_page(type, identity);
 
-	if (hv_l1vh_partition() && page_addr)
+	if (mshv_use_overlay_gpfn() && page_addr)
 		__free_page(virt_to_page(page_addr));
 
 	return ret;
