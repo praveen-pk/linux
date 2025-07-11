@@ -291,6 +291,8 @@ int hv_map_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
 int hv_unmap_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
 			   void *page_addr,
 			   union hv_input_vtl input_vtl);
+int hv_call_get_partition_property_ex(u64 partition_id, u64 property_code, u64 arg,
+				      void *property_value, size_t property_value_sz);
 int hv_call_create_port(u64 port_partition_id, union hv_port_id port_id,
 			u64 connection_partition_id, struct hv_port_info *port_info,
 			u8 port_vtl, u8 min_connection_vtl, int node);
