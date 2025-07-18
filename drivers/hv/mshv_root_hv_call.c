@@ -655,6 +655,12 @@ int hv_call_set_vp_state(u32 vp_index, u64 partition_id,
 
 #endif
 
+static bool mshv_use_overlay_gpfn(void)
+{
+	return hv_l1vh_partition() &&
+	       mshv_root.vmm_caps.vmm_can_provide_overlay_gpfn;
+}
+
 static int hv_call_map_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
 				     union hv_input_vtl input_vtl,
 				     struct page **state_page)
@@ -716,7 +722,7 @@ int hv_map_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
 	int ret = 0;
 	struct page *allocated_page = NULL;
 
-	if (hv_l1vh_partition()) {
+	if (mshv_use_overlay_gpfn()) {
 		allocated_page = alloc_page(GFP_KERNEL);
 		if (!allocated_page) {
 			pr_err("%s: Failed to allocate VP state page vp_index=%u, partition_id=%llu\n",
@@ -769,10 +775,41 @@ int hv_unmap_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
 {
 	int ret = hv_call_unmap_vp_state_page(partition_id, vp_index, type, input_vtl);
 
-	if (hv_l1vh_partition() && page_addr)
+	if (mshv_use_overlay_gpfn() && page_addr)
 		__free_page(virt_to_page(page_addr));
 
 	return ret;
+}
+
+int
+hv_call_get_partition_property_ex(u64 partition_id, u64 property_code, u64 arg,
+				  void *property_value, size_t property_value_sz)
+{
+	u64 status;
+	unsigned long flags;
+	struct hv_input_get_partition_property_ex *input;
+	struct hv_output_get_partition_property_ex *output;
+
+	local_irq_save(flags);
+	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
+	output = *this_cpu_ptr(hyperv_pcpu_output_arg);
+
+	memset(input, 0, sizeof(*input));
+	input->partition_id = partition_id;
+	input->property_code = property_code;
+	input->arg = arg;
+	status = hv_do_hypercall(HVCALL_GET_PARTITION_PROPERTY_EX, input, output);
+
+	if (!hv_result_success(status)) {
+		pr_err("%s: error %s\n", __func__, hv_result_to_string(status));
+		local_irq_restore(flags);
+		return hv_result_to_errno(status);
+	}
+	memcpy(property_value, &output->property_value, property_value_sz);
+
+	local_irq_restore(flags);
+
+	return 0;
 }
 
 int hv_call_set_partition_property(
@@ -1300,7 +1337,7 @@ int hv_map_stats_page(enum hv_stats_object_type type,
 	if (!addr)
 		return -EINVAL;
 
-	if (hv_l1vh_partition()) {
+	if (mshv_use_overlay_gpfn()) {
 		allocated_page = alloc_page(GFP_KERNEL);
 		if (!allocated_page) {
 			pr_err("%s: Failed to allocate stats page type=%u\n",
@@ -1353,7 +1390,7 @@ int hv_unmap_stats_page(enum hv_stats_object_type type, void *page_addr,
 
 	ret = hv_call_unmap_stats_page(type, identity);
 
-	if (hv_l1vh_partition() && page_addr)
+	if (mshv_use_overlay_gpfn() && page_addr)
 		__free_page(virt_to_page(page_addr));
 
 	return ret;
