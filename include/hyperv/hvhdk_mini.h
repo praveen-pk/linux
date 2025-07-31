@@ -142,6 +142,7 @@ enum hv_system_property {
 	/* Add more values when needed */
 	HV_SYSTEM_PROPERTY_SCHEDULER_TYPE = 15,
 	HV_DYNAMIC_PROCESSOR_FEATURE_PROPERTY = 21,
+	HV_SYSTEM_PROPERTY_DIAGNOSTICS_LOG_BUFFERS = 28,
 };
 
 enum hv_dynamic_processor_feature_property {
@@ -162,9 +163,16 @@ struct hv_input_get_system_property {
 	};
 } __packed;
 
+/* HV_SYSTEM_DIAG_LOG_BUFFER_CONFIG */
+struct	hv_system_diag_log_buffer_config {
+	u32 buffer_count;
+	u32 buffer_size_in_pages;
+} __packed;
+
 struct hv_output_get_system_property {
 	union {
 		u32 scheduler_type; /* enum hv_scheduler_type */
+		struct hv_system_diag_log_buffer_config hv_diagbuf_info;
 #if IS_ENABLED(CONFIG_X86)
 		u64 hv_processor_feature_value;
 #endif
