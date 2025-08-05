@@ -6753,6 +6753,7 @@ CONFIG_HYPERV=y
 CONFIG_HYPERV_UTILS=y
 CONFIG_HYPERV_BALLOON=y
 CONFIG_MSHV_ROOT=y
+# CONFIG_MSHV_DIAG is not set
 # end of Microsoft Hyper-V guest support
 
 #
