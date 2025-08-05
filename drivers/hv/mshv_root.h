@@ -342,6 +342,12 @@ static inline int mshv_debugfs_vp_create(struct mshv_vp *vp)
 static inline void mshv_debugfs_vp_remove(struct mshv_vp *vp) { }
 #endif
 
+#if IS_ENABLED(CONFIG_MSHV_DIAG)
+void mshv_trace_buffer_complete(const struct hv_eventlog_message_payload *msg);
+#else
+static inline void mshv_trace_buffer_complete(const struct hv_eventlog_message_payload *msg) {}
+#endif /* CONFIG_MSHV_DIAG */
+
 extern struct mshv_root mshv_root;
 extern enum hv_scheduler_type hv_scheduler_type;
 extern u8 * __percpu *hv_synic_eventring_tail;
