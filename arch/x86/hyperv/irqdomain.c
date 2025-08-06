@@ -288,14 +288,12 @@ int hv_map_msi_interrupt(struct irq_data *data,
 	union hv_device_id hv_devid;
 	struct hv_interrupt_entry dummy;
 	struct irq_cfg *cfg = irqd_cfg(data);
-	const cpumask_t *affinity;
 	int cpu;
 	u64 res, ptid;
 
 	msidesc = irq_data_get_msi_desc(data);
 	pdev = msi_desc_to_pci_dev(msidesc);
-	affinity = irq_data_get_effective_affinity_mask(data);
-	cpu = cpumask_first_and(affinity, cpu_online_mask);
+	cpu = cpumask_first(irq_data_get_effective_affinity_mask(data));
 	hv_devid.as_uint64 = hv_build_irq_devid(pdev);
 
 	if (hv_devid.device_type == HV_DEVICE_TYPE_LOGICAL)
