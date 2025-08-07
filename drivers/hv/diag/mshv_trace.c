@@ -17,6 +17,7 @@
 #include <hyperv/hvtrapi.h>
 #include <asm/mshyperv.h>
 
+#include "../mshv.h"
 #include "mshv_diag.h"
 
 struct mshv_trace_buffer {
@@ -60,7 +61,7 @@ static struct mshv_trace_buffer *mshv_trace_next_buffer(u32 next_buffer_index)
 	return &mshv_trace_state->tbs[next_buffer_index];
 }
 
-void mshv_trace_buffer_complete(const struct hv_eventlog_message_payload *msg)
+static void mshv_trace_buffer_complete(const struct hv_eventlog_message_payload *msg)
 {
 	struct mshv_trace_state *state = mshv_trace_state;
 	struct mshv_trace *trace;
@@ -89,7 +90,6 @@ void mshv_trace_buffer_complete(const struct hv_eventlog_message_payload *msg)
 
 	wake_up(&trace->events_queue);
 }
-EXPORT_SYMBOL_GPL(mshv_trace_buffer_complete);
 
 static int hv_call_unmap_event_log_buffer(enum hv_eventlog_type type,
 					  u32 index)
@@ -596,11 +596,13 @@ static int mshv_trace_state_create(struct mshv_trace_state **statep,
 	enum hv_eventlog_type type = HV_EVENT_LOG_TYPE_LOCAL_DIAGNOSTICS;
 	int err;
 
+	register_mshv_trcbuf_complete_cb(mshv_trace_buffer_complete);
+
 	err = mshv_trace_buffers_group_init(cfg, type, &state);
 	if (err) {
 		pr_err("%s: failed to initialize trace buffer group: %d\n",
 		       __func__, err);
-		return err;
+		goto unregister_cb;
 	}
 
 	err = mshv_trace_buffers_create(state);
@@ -625,6 +627,8 @@ delete_tbs:
 	(void)mshv_trace_buffers_delete(state);
 finalize_state:
 	(void)mshv_trace_buffers_group_fini(state);
+unregister_cb:
+	register_mshv_trcbuf_complete_cb(NULL);
 	return err;
 }
 
@@ -642,6 +646,7 @@ static int mshv_trace_state_destroy(struct mshv_trace_state **statep)
 
 	*statep = NULL;
 
+	register_mshv_trcbuf_complete_cb(NULL);
 	return 0;
 }
 
