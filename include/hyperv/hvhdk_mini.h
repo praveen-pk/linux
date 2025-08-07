@@ -285,6 +285,33 @@ union hv_gpa_page_access_state {
 	u8 as_uint8;
 } __packed;
 
+struct hv_partition_event_root_crashdump_input {
+	__u32 crashdump_action; /* enum hv_crashdump_action */
+} __packed;
+
+struct hv_partition_event_commit_processor_indices_input {
+	__u32 schedulable_processor_count;
+} __packed;
+
+union hv_partition_event_input {
+	struct hv_partition_event_root_crashdump_input crashdump_input;
+	struct hv_partition_event_commit_processor_indices_input
+		commit_lp_indices_input;
+};
+
+enum hv_partition_event {
+	HV_PARTITION_EVENT_DEBUG_DEVICE_AVAILABLE = 1,
+	HV_PARTITION_EVENT_ROOT_CRASHDUMP = 2,
+	HV_PARTITION_EVENT_ACPI_REENABLED = 3,
+	HV_PARTITION_ALL_LOGICAL_PROCESSORS_STARTED = 4,
+	HV_PARTITION_COMMIT_LP_INDICES = 5,
+};
+
+struct hv_input_notify_partition_event {
+	__u32 event; /* enum hv_partition_event */
+	union hv_partition_event_input input;
+} __packed;
+
 struct hv_lp_startup_status {
 	u64 hv_status;
 	u64 substatus1;
