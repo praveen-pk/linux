@@ -25,7 +25,9 @@
 
 #include <asm/mshyperv.h>
 #include <hyperv/hvtrapi.h>
+
 #include "../mshv.h"
+#include "mshv_diag.h"
 
 static size_t MSHV_TICKS_PER_SEC = NSEC_PER_SEC/100; /* 1 tick is 100 ns long in mshv */
 
@@ -223,7 +225,7 @@ static ssize_t diaglog_fop_read(struct file *file, char __user *ubuf,
 	return numrd;
 }
 
-int diaglog_fop_release(struct inode *inode, struct file *filp)
+static int diaglog_fop_release(struct inode *inode, struct file *filp)
 {
 	kfree(filp->private_data);
 	filp->private_data = NULL;

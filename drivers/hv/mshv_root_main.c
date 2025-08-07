@@ -2877,8 +2877,6 @@ static int __init mshv_parent_partition_init(void)
 
 	return 0;
 
-destroy_irqds_wq:
-	mshv_irqfd_wq_cleanup();
 exit_debugfs:
 	mshv_debugfs_exit();
 exit_partition:
