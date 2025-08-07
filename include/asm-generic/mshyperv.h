@@ -20,6 +20,7 @@
 #include <linux/types.h>
 #include <linux/atomic.h>
 #include <linux/bitops.h>
+#include <linux/ioport.h>
 #include <acpi/acpi_numa.h>
 #include <linux/cpumask.h>
 #include <linux/nmi.h>
@@ -242,6 +243,9 @@ void hv_identify_partition_type(void);
 void *hv_alloc_hyperv_page(void);
 void *hv_alloc_hyperv_zeroed_page(void);
 void hv_free_hyperv_page(void *addr);
+
+void __init hv_dump_mshv_memory(void);
+void __init hv_mark_resources(void);
 
 /**
  * hv_cpu_number_to_vp_number() - Map CPU to VP.
