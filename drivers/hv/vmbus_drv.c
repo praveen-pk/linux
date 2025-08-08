@@ -2683,7 +2683,6 @@ static struct platform_driver vmbus_platform_driver = {
 
 static void hv_kexec_handler(void)
 {
-	hv_stimer_global_cleanup();
 	vmbus_initiate_unload(false);
 	/* Make sure conn_state is set as hv_synic_cleanup checks for it */
 	mb();
@@ -2749,14 +2748,22 @@ static struct syscore_ops hv_synic_syscore_ops = {
 	.resume = hv_synic_resume,
 };
 
-static int __init hv_acpi_init(void)
+static bool hv_vmbus_skip(void)
+{
+	if (hv_root_partition() && !hv_nested)
+		return true;
+
+	return false;
+}
+
+static int __init hv_vmbus_init(void)
 {
 	int ret;
 
 	if (!hv_is_hyperv_initialized())
 		return -ENODEV;
 
-	if (hv_root_partition() && !hv_nested)
+	if (hv_vmbus_skip())
 		return 0;
 
 	/*
@@ -2802,9 +2809,12 @@ cleanup:
 	return ret;
 }
 
-static void __exit vmbus_exit(void)
+static void __exit hv_vmbus_exit(void)
 {
 	int cpu;
+
+	if (hv_vmbus_skip())
+		return;
 
 	unregister_syscore_ops(&hv_synic_syscore_ops);
 
@@ -2848,5 +2858,5 @@ static void __exit vmbus_exit(void)
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("Microsoft Hyper-V VMBus Driver");
 
-subsys_initcall(hv_acpi_init);
-module_exit(vmbus_exit);
+subsys_initcall(hv_vmbus_init);
+module_exit(hv_vmbus_exit);

@@ -141,7 +141,7 @@ int hv_call_create_partition(u64 flags,
 
 int hv_call_initialize_partition(u64 partition_id)
 {
-	struct hv_input_initialize_partition input;
+	struct hv_input_initialize_partition input = { 0 };
 	u64 status;
 	int ret;
 
@@ -172,7 +172,7 @@ int hv_call_initialize_partition(u64 partition_id)
 
 int hv_call_finalize_partition(u64 partition_id)
 {
-	struct hv_input_finalize_partition input;
+	struct hv_input_finalize_partition input = { 0 };
 	u64 status;
 
 	input.partition_id = partition_id;
@@ -189,7 +189,7 @@ int hv_call_finalize_partition(u64 partition_id)
 
 int hv_call_delete_partition(u64 partition_id)
 {
-	struct hv_input_delete_partition input;
+	struct hv_input_delete_partition input = { 0 };
 	u64 status;
 
 	input.partition_id = partition_id;
@@ -236,6 +236,7 @@ static int hv_do_map_gpa_hcall(u64 partition_id, u64 gfn, u64 page_struct_count,
 		local_irq_save(irq_flags);
 		input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
 
+		memset(input_page, 0, sizeof(*input_page));
 		input_page->target_partition_id = partition_id;
 		input_page->target_gpa_base = gfn + (done << large_shift);
 		input_page->map_flags = flags;
@@ -340,6 +341,7 @@ int hv_call_unmap_gpa_pages(u64 partition_id, u64 gfn, u64 page_count_4k,
 		local_irq_save(irq_flags);
 		input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
 
+		memset(input_page, 0, sizeof(*input_page));
 		input_page->target_partition_id = partition_id;
 		input_page->target_gpa_base = gfn + (done << large_shift);
 		input_page->unmap_flags = flags;
@@ -380,6 +382,7 @@ int hv_call_get_gpa_access_states(u64 partition_id, u32 count, u64 gpa_base_pfn,
 		input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
 		output_page = *this_cpu_ptr(hyperv_pcpu_output_arg);
 
+		memset(input_page, 0, sizeof(*input_page));
 		input_page->partition_id = partition_id;
 		input_page->hv_gpa_page_number = gpa_base_pfn + *written_total;
 		input_page->flags = state_flags;
@@ -416,6 +419,7 @@ int hv_call_assert_virtual_interrupt(u64 partition_id, u32 vector,
 
 	local_irq_save(flags);
 	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
+
 	memset(input, 0, sizeof(*input));
 	input->partition_id = partition_id;
 	input->vector = vector;
@@ -472,9 +476,8 @@ int hv_call_get_vp_state(u32 vp_index, u64 partition_id,
 		local_irq_save(flags);
 		input = *this_cpu_ptr(hyperv_pcpu_input_arg);
 		output = *this_cpu_ptr(hyperv_pcpu_output_arg);
-		memset(input, 0, sizeof(*input));
-		memset(output, 0, sizeof(*output));
 
+		memset(input, 0, sizeof(*input));
 		input->partition_id = partition_id;
 		input->vp_index = vp_index;
 		input->state_data = state_data;
@@ -534,8 +537,8 @@ int hv_call_set_vp_state(u32 vp_index, u64 partition_id,
 	do {
 		local_irq_save(flags);
 		input = *this_cpu_ptr(hyperv_pcpu_input_arg);
-		memset(input, 0, sizeof(*input));
 
+		memset(input, 0, sizeof(*input));
 		input->partition_id = partition_id;
 		input->vp_index = vp_index;
 		input->state_data = state_data;
@@ -589,6 +592,7 @@ static int hv_call_map_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
 		input = *this_cpu_ptr(hyperv_pcpu_input_arg);
 		output = *this_cpu_ptr(hyperv_pcpu_output_arg);
 
+		memset(input, 0, sizeof(*input));
 		input->partition_id = partition_id;
 		input->vp_index = vp_index;
 		input->type = type;
@@ -662,7 +666,6 @@ static int hv_call_unmap_vp_state_page(u64 partition_id, u32 vp_index, u32 type,
 	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
 
 	memset(input, 0, sizeof(*input));
-
 	input->partition_id = partition_id;
 	input->vp_index = vp_index;
 	input->type = type;
@@ -748,8 +751,8 @@ hv_call_create_port(u64 port_partition_id, union hv_port_id port_id,
 	do {
 		local_irq_save(flags);
 		input = *this_cpu_ptr(hyperv_pcpu_input_arg);
-		memset(input, 0, sizeof(*input));
 
+		memset(input, 0, sizeof(*input));
 		input->port_partition_id = port_partition_id;
 		input->port_id = port_id;
 		input->connection_partition_id = connection_partition_id;
@@ -806,6 +809,7 @@ hv_call_connect_port(u64 port_partition_id, union hv_port_id port_id,
 	do {
 		local_irq_save(flags);
 		input = *this_cpu_ptr(hyperv_pcpu_input_arg);
+
 		memset(input, 0, sizeof(*input));
 		input->port_partition_id = port_partition_id;
 		input->port_id = port_id;
@@ -1098,8 +1102,10 @@ int hv_call_modify_spa_host_access(u64 partition_id, struct page **pages,
 		for (i = 0; i < rep_count; i++) {
 			u64 index = (done + i) << large_shift;
 
-			if (index >= page_struct_count)
+			if (index >= page_struct_count) {
+				local_irq_restore(irq_flags);
 				return -EINVAL;
+			}
 
 			input_page->spa_page_list[i] =
 						page_to_pfn(pages[index]);

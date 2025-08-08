@@ -141,6 +141,7 @@ enum hv_snp_status {
 
 enum hv_system_property {
 	/* Add more values when needed */
+	HV_SYSTEM_PROPERTY_SLEEP_STATE = 3,
 	HV_SYSTEM_PROPERTY_SCHEDULER_TYPE = 15,
 	HV_DYNAMIC_PROCESSOR_FEATURE_PROPERTY = 21,
 	HV_SYSTEM_PROPERTY_DIAGNOSTICS_LOG_BUFFERS = 28,
@@ -193,6 +194,38 @@ struct hv_input_map_stats_page {
 	u32 type; /* enum hv_stats_object_type */
 	u32 padding;
 	union hv_stats_object_identity identity;
+} __packed;
+
+enum hv_sleep_state {
+	HV_SLEEP_STATE_S1	= 1,
+	HV_SLEEP_STATE_S2	= 2,
+	HV_SLEEP_STATE_S3	= 3,
+	HV_SLEEP_STATE_S4	= 4,
+	HV_SLEEP_STATE_S5	= 5,
+	/*
+	 * After hypervisor has received this, any follow up sleep
+	 * state registration requests will be rejected.
+	 */
+	HV_SLEEP_STATE_LOCK	= 6
+};
+
+struct hv_input_enter_sleep_state {    /* HV_INPUT_ENTER_SLEEP_STATE */
+	u32 sleep_state;      /* enum hv_sleep_state */
+} __packed;
+
+struct hv_sleep_state_info {
+	u32 sleep_state; /* enum hv_sleep_state */
+	u8 pm1a_slp_typ;
+	u8 pm1b_slp_typ;
+} __packed;
+
+struct hv_input_set_system_property {
+       u32 property_id; /* enum hv_system_property */
+       u32 reserved;
+       union {
+               /* More fields to be filled in when needed */
+               struct hv_sleep_state_info set_sleep_state_info;
+       };
 } __packed;
 
 struct hv_input_map_stats_page2 {
@@ -285,6 +318,33 @@ union hv_gpa_page_access_state {
 	u8 as_uint8;
 } __packed;
 
+struct hv_partition_event_root_crashdump_input {
+	__u32 crashdump_action; /* enum hv_crashdump_action */
+} __packed;
+
+struct hv_partition_event_commit_processor_indices_input {
+	__u32 schedulable_processor_count;
+} __packed;
+
+union hv_partition_event_input {
+	struct hv_partition_event_root_crashdump_input crashdump_input;
+	struct hv_partition_event_commit_processor_indices_input
+		commit_lp_indices_input;
+};
+
+enum hv_partition_event {
+	HV_PARTITION_EVENT_DEBUG_DEVICE_AVAILABLE = 1,
+	HV_PARTITION_EVENT_ROOT_CRASHDUMP = 2,
+	HV_PARTITION_EVENT_ACPI_REENABLED = 3,
+	HV_PARTITION_ALL_LOGICAL_PROCESSORS_STARTED = 4,
+	HV_PARTITION_COMMIT_LP_INDICES = 5,
+};
+
+struct hv_input_notify_partition_event {
+	__u32 event; /* enum hv_partition_event */
+	union hv_partition_event_input input;
+} __packed;
+
 struct hv_lp_startup_status {
 	u64 hv_status;
 	u64 substatus1;
@@ -303,6 +363,17 @@ struct hv_input_add_logical_processor {
 
 struct hv_output_add_logical_processor {
 	struct hv_lp_startup_status startup_status;
+} __packed;
+
+struct hv_input_get_logical_processor_run_time {
+	u32 lp_index;
+} __packed;
+
+struct hv_output_get_logical_processor_run_time { /* HV_OUTPUT_GET_LOGICAL_PROCESSOR_RUN_TIME */
+	u64 global_time;
+	u64 local_run_time;
+	u64 rsvdz0;
+	u64 hypervisor_time;
 } __packed;
 
 enum {	/* HV_SUBNODE_TYPE */

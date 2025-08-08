@@ -20,6 +20,7 @@
 #include <linux/types.h>
 #include <linux/atomic.h>
 #include <linux/bitops.h>
+#include <linux/ioport.h>
 #include <acpi/acpi_numa.h>
 #include <linux/cpumask.h>
 #include <linux/nmi.h>
@@ -243,6 +244,9 @@ void *hv_alloc_hyperv_page(void);
 void *hv_alloc_hyperv_zeroed_page(void);
 void hv_free_hyperv_page(void *addr);
 
+void __init hv_dump_mshv_memory(void);
+void __init hv_mark_resources(void);
+
 /**
  * hv_cpu_number_to_vp_number() - Map CPU to VP.
  * @cpu_number: CPU number in Linux terms
@@ -343,6 +347,9 @@ u64 hv_tdx_hypercall(u64 control, u64 param1, u64 param2);
 void hyperv_cleanup(void);
 bool hv_query_ext_cap(u64 cap_query);
 void hv_setup_dma_ops(struct device *dev, bool coherent);
+int hv_sleep_notifiers_register(void);
+int hv_retrieve_scheduler_type(enum hv_scheduler_type *out);
+
 #else /* CONFIG_HYPERV */
 static inline void hv_identify_partition_type(void) {}
 static inline bool hv_is_hyperv_initialized(void) { return false; }
@@ -371,6 +378,8 @@ static inline bool hv_parent_partition(void)
 }
 int hv_call_deposit_pages(int node, u64 partition_id, u32 num_pages);
 int hv_call_add_logical_proc(int node, u32 lp_index, u32 acpi_id);
+int hv_call_notify_all_processors_started(void);
+bool hv_lp_exists(u32 lp_index);
 int hv_call_create_vp(int node, u64 partition_id, u32 vp_index, u32 flags);
 
 #else /* CONFIG_MSHV_ROOT */
@@ -384,6 +393,14 @@ static inline int hv_call_deposit_pages(int node, u64 partition_id, u32 num_page
 static inline int hv_call_add_logical_proc(int node, u32 lp_index, u32 acpi_id)
 {
 	return -EOPNOTSUPP;
+}
+static inline int hv_call_notify_all_processors_started(void)
+{
+	return -EOPNOTSUPP;
+}
+static inline bool hv_lp_exists(u32 lp_index)
+{
+	return false;
 }
 static inline int hv_call_create_vp(int node, u64 partition_id, u32 vp_index, u32 flags)
 {

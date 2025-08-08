@@ -28,12 +28,15 @@
 #include <linux/crash_dump.h>
 #include <linux/panic_notifier.h>
 #include <linux/vmalloc.h>
+#include <linux/hmm.h>
 
 #include <trace/events/mshv.h>
 
 #include "mshv_eventfd.h"
 #include "mshv.h"
 #include "mshv_root.h"
+
+#define MSHV_MAP_FAULT_IN_PAGES			HPAGE_PMD_NR
 
 MODULE_AUTHOR("Microsoft");
 MODULE_LICENSE("GPL");
@@ -58,6 +61,13 @@ static int mshv_vp_mmap(struct file *file, struct vm_area_struct *vma);
 static vm_fault_t mshv_vp_fault(struct vm_fault *vmf);
 static int mshv_init_async_handler(struct mshv_partition *partition);
 static void mshv_async_hvcall_handler(void *data, u64 *status);
+static long mshv_vp_set_explicit_suspend(const struct mshv_vp *vp);
+static int mshv_vp_clear_explicit_suspend(struct mshv_vp *vp);
+static struct mshv_mem_region
+	*mshv_partition_region_by_gfn(struct mshv_partition *pt, u64 gfn);
+static int mshv_region_remap_pages(struct mshv_mem_region *region,
+				   u32 map_flags, u64 page_offset,
+				   u64 page_count);
 
 static const union hv_input_vtl input_vtl_zero;
 static const union hv_input_vtl input_vtl_normal = {
@@ -295,110 +305,270 @@ static int mshv_set_vp_registers(u32 vp_index, u64 partition_id, u16 count,
 					count, input_vtl_zero, registers);
 }
 
-/*
- * Explicit guest vCPU suspend is asynchronous by nature (as it is requested by
- * dom0 vCPU for guest vCPU) and thus it can race with "intercept" suspend,
- * done by the hypervisor.
- * "Intercept" suspend leads to asynchronous message delivery to dom0 which
- * should be awaited to keep the VP loop consistent (i.e. no message pending
- * upon VP resume).
- * VP intercept suspend can't be done when the VP is explicitly suspended
- * already, and thus can be only two possible race scenarios:
- *   1. implicit suspend bit set -> explicit suspend bit set -> message sent
- *   2. implicit suspend bit set -> message sent -> explicit suspend bit set
- * Checking for implicit suspend bit set after explicit suspend request has
- * succeeded in either case allows us to reliably identify, if there is a
- * message to receive and deliver to VMM.
+#ifdef CONFIG_X86_64
+
+#if defined(CONFIG_MMU_NOTIFIER)
+/**
+ * mshv_region_hmm_fault_and_lock - Handle HMM faults and lock the memory region
+ * @region: Pointer to the memory region structure
+ * @range: Pointer to the HMM range structure
+ *
+ * This function performs the following steps:
+ * 1. Reads the notifier sequence for the HMM range.
+ * 2. Acquires a read lock on the memory map.
+ * 3. Handles HMM faults for the specified range.
+ * 4. Releases the read lock on the memory map.
+ * 5. If successful, locks the memory region mutex.
+ * 6. Verifies if the notifier sequence has changed during the operation.
+ *    If it has, releases the mutex and returns -EBUSY to match with
+ *    hmm_range_fault() return code for repeating.
+ *
+ * Return: 0 on success, a negative error code otherwise.
  */
-static int
-mshv_suspend_vp(const struct mshv_vp *vp, bool *message_in_flight)
+static int mshv_region_hmm_fault_and_lock(struct mshv_mem_region *region,
+					  struct hmm_range *range)
 {
-	struct hv_register_assoc explicit_suspend = {
-		.name = HV_REGISTER_EXPLICIT_SUSPEND
-	};
-	struct hv_register_assoc intercept_suspend = {
-		.name = HV_REGISTER_INTERCEPT_SUSPEND
-	};
-	union hv_explicit_suspend_register *es =
-		&explicit_suspend.value.explicit_suspend;
-	union hv_intercept_suspend_register *is =
-		&intercept_suspend.value.intercept_suspend;
 	int ret;
 
-	es->suspended = 1;
-
-	ret = mshv_set_vp_registers(vp->vp_index, vp->vp_partition->pt_id,
-				    1, &explicit_suspend);
-	if (ret) {
-		vp_err(vp, "Failed to explicitly suspend vCPU\n");
+	range->notifier_seq = mmu_interval_read_begin(range->notifier);
+	mmap_read_lock(region->memreg_mni.mm);
+	ret = hmm_range_fault(range);
+	mmap_read_unlock(region->memreg_mni.mm);
+	if (ret)
 		return ret;
+
+	mutex_lock(&region->memreg_mutex);
+
+	if (mmu_interval_read_retry(range->notifier, range->notifier_seq)) {
+		mutex_unlock(&region->memreg_mutex);
+		cond_resched();
+		return -EBUSY;
 	}
 
+	return 0;
+}
+
+/**
+ * mshv_region_range_fault - Handle memory range faults for a given region.
+ * @region: Pointer to the memory region structure.
+ * @page_offset: Offset of the page within the region.
+ * @page_count: Number of pages to handle.
+ *
+ * This function resolves memory faults for a specified range of pages
+ * within a memory region. It uses HMM (Heterogeneous Memory Management)
+ * to fault in the required pages and updates the region's page array.
+ *
+ * Return: 0 on success, negative error code on failure.
+ */
+static int mshv_region_range_fault(struct mshv_mem_region *region,
+				   u64 page_offset, u64 page_count)
+{
+	struct hmm_range range = {
+		.notifier = &region->memreg_mni,
+		.default_flags = HMM_PFN_REQ_FAULT | HMM_PFN_REQ_WRITE,
+	};
+	unsigned long *pfns;
+	int ret;
+	u64 i;
+
+	pfns = kmalloc_array(page_count, sizeof(unsigned long), GFP_KERNEL);
+	if (!pfns)
+		return -ENOMEM;
+
+	range.hmm_pfns = pfns;
+	range.start = region->start_uaddr + page_offset * HV_HYP_PAGE_SIZE;
+	range.end = range.start + page_count * HV_HYP_PAGE_SIZE;
+
+	do {
+		ret = mshv_region_hmm_fault_and_lock(region, &range);
+	} while (ret == -EBUSY);
+
+	if (ret)
+		goto out;
+
+	for (i = 0; i < page_count; i++)
+		region->pages[page_offset + i] = hmm_pfn_to_page(pfns[i]);
+
+	if (PageHuge(region->pages[page_offset]))
+		region->flags.large_pages = true;
+
+	ret = mshv_region_remap_pages(region, region->hv_map_flags,
+				      page_offset, page_count);
+
+	mutex_unlock(&region->memreg_mutex);
+out:
+	kfree(pfns);
+	return ret;
+}
+#else /* CONFIG_MMU_NOTIFIER */
+static int mshv_region_range_fault(struct mshv_mem_region *region,
+				   u64 page_offset, u64 page_count)
+{
+	return -ENODEV;
+}
+#endif /* CONFIG_MMU_NOTIFIER */
+
+static bool mshv_region_handle_gfn_fault(struct mshv_mem_region *region, u64 gfn)
+{
+	u64 page_offset, page_count;
+	int ret;
+
+	if (WARN_ON_ONCE(region->flags.range_pinned))
+		return false;
+
+	/* Align the page offset to the nearest MSHV_MAP_FAULT_IN_PAGES. */
+	page_offset = ALIGN_DOWN(gfn - region->start_gfn,
+				 MSHV_MAP_FAULT_IN_PAGES);
+
+	/* Map more pages than requested to reduce the number of faults. */
+	page_count = min(region->nr_pages - page_offset,
+			 MSHV_MAP_FAULT_IN_PAGES);
+
+	ret = mshv_region_range_fault(region, page_offset, page_count);
+
+	WARN_ONCE(ret,
+		  "p%llu: GPA intercept failed: region %#llx-%#llx, gfn %#llx, page_offset %llu, page_count %llu\n",
+		  region->partition->pt_id, region->start_uaddr,
+		  region->start_uaddr + (region->nr_pages << HV_HYP_PAGE_SHIFT),
+		  gfn, page_offset, page_count);
+
+	return !ret;
+}
+
+/**
+ * mshv_handle_gpa_intercept - Handle GPA (Guest Physical Address) intercepts.
+ * @vp: Pointer to the virtual processor structure.
+ *
+ * This function processes GPA intercepts by identifying the memory region
+ * corresponding to the intercepted GPA, aligning the page offset, and
+ * mapping the required pages. It ensures that the region is valid and
+ * handles faults efficiently by mapping multiple pages at once.
+ *
+ * Return: true if the intercept was handled successfully, false otherwise.
+ */
+static bool mshv_handle_gpa_intercept(struct mshv_vp *vp)
+{
+	struct mshv_partition *p = vp->vp_partition;
+	struct mshv_mem_region *region;
+	struct hv_x64_memory_intercept_message *msg;
+	u64 gfn;
+
+	msg = (struct hv_x64_memory_intercept_message *)
+		vp->vp_intercept_msg_page->u.payload;
+
+	gfn = HVPFN_DOWN(msg->guest_physical_address);
+
+	region = mshv_partition_region_by_gfn(p, gfn);
+	if (!region)
+		return false;
+
+	if (WARN_ON_ONCE(!region->flags.memreg_isram))
+		return false;
+
+	if (WARN_ON_ONCE(region->flags.range_pinned))
+		return false;
+
+	return mshv_region_handle_gfn_fault(region, gfn);
+}
+
+#else	/* CONFIG_X86_64 */
+
+static bool mshv_handle_gpa_intercept(struct mshv_vp *vp) { return false; }
+
+#endif	/* CONFIG_X86_64 */
+
+static long mshv_vp_clear_intercept_suspend(struct mshv_vp *vp)
+{
+	struct hv_register_assoc susp_reg = {
+		.name = HV_REGISTER_INTERCEPT_SUSPEND,
+		.value.intercept_suspend.suspended = 0,
+	};
+	long ret;
+
+	ret = mshv_set_vp_registers(vp->vp_index, vp->vp_partition->pt_id,
+				    1, &susp_reg);
+
+	trace_mshv_root_sched_unsuspend_vp(ret, vp->vp_partition->pt_id,
+					   vp->vp_index);
+	if (ret)
+		vp_err(vp, "Failed to unsuspend\n");
+
+	vp->run.flags.intercept_suspended = 0;
+
+	return ret;
+}
+
+static long mshv_vp_msg_pending(struct mshv_vp *vp, bool *msg_in_flight)
+{
+	struct hv_register_assoc susp_reg = {
+		.name = HV_REGISTER_INTERCEPT_SUSPEND
+	};
+	long ret;
+
 	ret = mshv_get_vp_registers(vp->vp_index, vp->vp_partition->pt_id,
-				    1, &intercept_suspend);
+				    1, &susp_reg);
 	if (ret) {
 		vp_err(vp, "Failed to get intercept suspend state\n");
 		return ret;
 	}
 
-	*message_in_flight = is->suspended;
-
+	*msg_in_flight = susp_reg.value.intercept_suspend.suspended;
 	return 0;
 }
 
 /*
- * This function is used when VPs are scheduled by the hypervisor's
- * scheduler.
+ * This function either runs or resumes a vcpu using core or classic scheduler
+ * of the hypervisor. There are three ways to exit out of this function:
+ *   1. The vcpu was intercept suspended, meaning hypervisor has a message for
+ *	the vmm to process. The vcpu can not run again until intercept cleared.
+ *   2. The thread got woken up via Unix signal.
+ *   3. An error, eg failed hypercall, occured.
  *
- * Caller has to make sure the registers contain cleared
- * HV_REGISTER_INTERCEPT_SUSPEND and HV_REGISTER_EXPLICIT_SUSPEND registers
- * exactly in this order (the hypervisor clears them sequentially) to avoid
- * potential invalid clearing a newly arrived HV_REGISTER_INTERCEPT_SUSPEND
- * after VP is released from HV_REGISTER_EXPLICIT_SUSPEND in case of the
- * opposite order.
+ * Since the vp register page is flushed only in case of intercept suspend or
+ * explicit suspend, we do explicit suspend in case of the Unix signal so the
+ * register page is valid and vmm can examine it. Resuming then happens by
+ * clearing either. Also, a new vp is created in explicit suspend state.
  */
 static long mshv_run_vp_with_hyp_scheduler(struct mshv_vp *vp)
 {
 	long ret;
-	struct hv_register_assoc suspend_regs[2] = {
-			{ .name = HV_REGISTER_INTERCEPT_SUSPEND },
-			{ .name = HV_REGISTER_EXPLICIT_SUSPEND }
-	};
-	size_t count = ARRAY_SIZE(suspend_regs);
 
-	/* Resume VP execution */
-	ret = mshv_set_vp_registers(vp->vp_index, vp->vp_partition->pt_id,
-				    count, suspend_regs);
-	if (ret) {
-		vp_err(vp, "Failed to resume vp execution. %lx\n", ret);
+	/* Resume VP execution, or run it for the first time */
+	if (vp->run.flags.intercept_suspended)
+		ret = mshv_vp_clear_intercept_suspend(vp);
+	else
+		ret = mshv_vp_clear_explicit_suspend(vp);
+	if (ret)
 		return ret;
-	}
 
 	ret = wait_event_interruptible(vp->run.vp_suspend_queue,
 				       vp->run.kicked_by_hv == 1);
 	if (ret) {
 		bool message_in_flight;
 
-		/*
-		 * Otherwise the waiting was interrupted by a signal: suspend
-		 * the vCPU explicitly and copy message in flight (if any).
-		 */
-		ret = mshv_suspend_vp(vp, &message_in_flight);
+		/* Got signal, stop the vp and keep hyp from running it again */
+		ret = mshv_vp_set_explicit_suspend(vp);
 		if (ret)
 			return ret;
 
-		/* Return if no message in flight */
+		/* Check after suspend if there was a message in transit */
+		ret = mshv_vp_msg_pending(vp, &message_in_flight);
+		if (ret)
+			return ret;
+
 		if (!message_in_flight)
 			return -EINTR;
 
 		/* Wait for the message in flight. */
 		wait_event(vp->run.vp_suspend_queue, vp->run.kicked_by_hv == 1);
+
+		/* cpu in intercept suspend state, we can clear explicit susp */
+		ret = mshv_vp_clear_explicit_suspend(vp);
+		if (ret)
+			return ret;
 	}
 
-	/*
-	 * Reset the flag to make the wait_event call above work
-	 * next time.
-	 */
+	vp->run.flags.intercept_suspended = 1;
 	vp->run.kicked_by_hv = 0;
 
 	return 0;
@@ -417,8 +587,6 @@ mshv_vp_dispatch(struct mshv_vp *vp, u32 flags,
 	output = *this_cpu_ptr(root_scheduler_output);
 
 	memset(input, 0, sizeof(*input));
-	memset(output, 0, sizeof(*output));
-
 	input->partition_id = vp->vp_partition->pt_id;
 	input->vp_index = vp->vp_index;
 	input->time_slice = 0; /* Run forever until something happens */
@@ -442,6 +610,24 @@ mshv_vp_dispatch(struct mshv_vp *vp, u32 flags,
 		       hv_result_to_string(status));
 
 	return hv_result_to_errno(status);
+}
+
+static long mshv_vp_set_explicit_suspend(const struct mshv_vp *vp)
+{
+	struct hv_register_assoc susp_reg = {
+		.name = HV_REGISTER_EXPLICIT_SUSPEND,
+		.value.explicit_suspend.suspended = 1,
+	};
+	long ret;
+
+	ret = mshv_set_vp_registers(vp->vp_index, vp->vp_partition->pt_id,
+				    1, &susp_reg);
+	if (ret) {
+		vp_err(vp, "Failed to explicitly suspend vCPU\n");
+		return ret;
+	}
+
+	return 0;
 }
 
 static int
@@ -490,8 +676,14 @@ static bool mshv_vp_dispatch_thread_blocked(struct mshv_vp *vp)
 	return parent_vp_cntrs[VpRootDispatchThreadBlocked];
 }
 
-static int
-mshv_vp_wait_for_hv_kick(struct mshv_vp *vp)
+/*
+ * root scheduler only: when vp goes into blocked state, it just waits here.
+ * Then 3 ways to wake up:
+ *    1. kicked by hypervisor
+ *    2. interrupt injection by vmm via irqfd
+ *    3. unix signal
+ */
+static int mshv_vp_wait_for_event(struct mshv_vp *vp)
 {
 	int ret;
 
@@ -508,7 +700,11 @@ mshv_vp_wait_for_hv_kick(struct mshv_vp *vp)
 	return 0;
 }
 
-static int mshv_pre_guest_mode_work(struct mshv_vp *vp)
+/*
+ * Before going into guest mode, check if this task has pending events, and
+ * process them.
+ */
+static int mshv_chk_process_host_events(struct mshv_vp *vp)
 {
 	const ulong work_flags = _TIF_NOTIFY_SIGNAL | _TIF_SIGPENDING |
 				 _TIF_NEED_RESCHED  | _TIF_NOTIFY_RESUME;
@@ -538,13 +734,8 @@ static long mshv_run_vp_with_root_scheduler(struct mshv_vp *vp)
 {
 	long ret;
 
-	if (vp->run.flags.root_sched_blocked) {
-		/*
-		 * Dispatch state of this VP is blocked. Need to wait
-		 * for the hypervisor to clear the blocked state before
-		 * dispatching it.
-		 */
-		ret = mshv_vp_wait_for_hv_kick(vp);
+	if (!vp->run.flags.intercept_suspended) {
+		ret = mshv_vp_clear_explicit_suspend(vp);
 		if (ret)
 			return ret;
 	}
@@ -553,11 +744,21 @@ static long mshv_run_vp_with_root_scheduler(struct mshv_vp *vp)
 		u32 flags = 0;
 		struct hv_output_dispatch_vp output;
 
-		ret = mshv_pre_guest_mode_work(vp);
+		/*
+		 * If the dispatch state of this vp is blocked, wait for the
+		 * hypervisor to clear it before dispatching the vp.
+		 */
+		if (vp->run.flags.root_sched_blocked) {
+			ret = mshv_vp_wait_for_event(vp);
+			if (ret)
+				break;
+		}
+
+		ret = mshv_chk_process_host_events(vp);
 		if (ret)
 			break;
 
-		if (vp->run.flags.intercept_suspend)
+		if (vp->run.flags.intercept_suspended)
 			flags |= HV_DISPATCH_VP_FLAG_CLEAR_INTERCEPT_SUSPEND;
 
 		if (mshv_vp_interrupt_pending(vp))
@@ -567,7 +768,7 @@ static long mshv_run_vp_with_root_scheduler(struct mshv_vp *vp)
 		if (ret)
 			break;
 
-		vp->run.flags.intercept_suspend = 0;
+		vp->run.flags.intercept_suspended = 0;
 
 		if (output.dispatch_state == HV_VP_DISPATCH_STATE_BLOCKED) {
 			if (output.dispatch_event ==
@@ -582,38 +783,49 @@ static long mshv_run_vp_with_root_scheduler(struct mshv_vp *vp)
 				/*
 				 * Need to clear explicit suspend before
 				 * dispatching.
-				 * Explicit suspend is either:
-				 * - set right after the first VP dispatch or
-				 * - set explicitly via hypercall
-				 * Since the latter case is not yet supported,
+				 * Since VP cancelling is not yet supported,
 				 * simply clear it here.
 				 */
 				ret = mshv_vp_clear_explicit_suspend(vp);
 				if (ret)
 					break;
 
-				ret = mshv_vp_wait_for_hv_kick(vp);
+				ret = mshv_vp_wait_for_event(vp);
 				if (ret)
 					break;
 			} else {
 				vp->run.flags.root_sched_blocked = 1;
-				ret = mshv_vp_wait_for_hv_kick(vp);
-				if (ret)
-					break;
 			}
 		} else {
 			/* HV_VP_DISPATCH_STATE_READY */
 			if (output.dispatch_event ==
 						HV_VP_DISPATCH_EVENT_INTERCEPT)
-				vp->run.flags.intercept_suspend = 1;
+				vp->run.flags.intercept_suspended = 1;
 		}
-	} while (!vp->run.flags.intercept_suspend);
+	} while (!vp->run.flags.intercept_suspended);
+
+	if (!vp->run.flags.intercept_suspended) {
+		long rc = mshv_vp_set_explicit_suspend(vp);
+
+		/* don't override ret, it could be status from signal */
+		if (rc)
+			ret = rc;
+	}
 
 	return ret;
 }
 
 static_assert(sizeof(struct hv_message) <= MSHV_RUN_VP_BUF_SZ,
 	      "sizeof(struct hv_message) must not exceed MSHV_RUN_VP_BUF_SZ");
+
+static bool mshv_vp_handle_intercept(struct mshv_vp *vp)
+{
+	switch (vp->vp_intercept_msg_page->header.message_type) {
+	case HVMSG_GPA_INTERCEPT:
+		return mshv_handle_gpa_intercept(vp);
+	}
+	return false;
+}
 
 static long mshv_vp_ioctl_run_vp(struct mshv_vp *vp, void __user *ret_msg)
 {
@@ -623,10 +835,12 @@ static long mshv_vp_ioctl_run_vp(struct mshv_vp *vp, void __user *ret_msg)
 	schednm = hv_scheduler_type == HV_SCHEDULER_TYPE_ROOT ? "root" : "hv";
 	trace_mshv_run_vp_entry(vp->vp_partition->pt_id, vp->vp_index, schednm);
 
-	if (hv_scheduler_type == HV_SCHEDULER_TYPE_ROOT)
-		rc = mshv_run_vp_with_root_scheduler(vp);
-	else
-		rc = mshv_run_vp_with_hyp_scheduler(vp);
+	do {
+		if (hv_scheduler_type == HV_SCHEDULER_TYPE_ROOT)
+			rc = mshv_run_vp_with_root_scheduler(vp);
+		else
+			rc = mshv_run_vp_with_hyp_scheduler(vp);
+	} while (rc == 0 && mshv_vp_handle_intercept(vp));
 
 	if (rc)
 		return rc;
@@ -1200,14 +1414,9 @@ mshv_region_populate_pages(struct mshv_mem_region *region,
 		 * with the FOLL_LONGTERM flag does a large temporary
 		 * allocation of contiguous memory.
 		 */
-		if (region->flags.range_pinned)
-			ret = pin_user_pages_fast(userspace_addr,
-						  nr_pages,
-						  FOLL_WRITE | FOLL_LONGTERM,
-						  pages);
-		else
-			ret = -EOPNOTSUPP;
-
+		ret = pin_user_pages_fast(userspace_addr, nr_pages,
+					  FOLL_WRITE | FOLL_LONGTERM,
+					  pages);
 		if (ret < 0)
 			goto release_pages;
 	}
@@ -1257,6 +1466,108 @@ mshv_partition_region_by_uaddr(struct mshv_partition *partition, u64 uaddr)
 	return NULL;
 }
 
+#if defined(CONFIG_MMU_NOTIFIER)
+static void mshv_region_movable_fini(struct mshv_mem_region *region)
+{
+	if (region->flags.range_pinned)
+		return;
+
+	mmu_interval_notifier_remove(&region->memreg_mni);
+}
+
+/**
+ * mshv_region_invalidate - Invalidate a memory region
+ * @mni: Pointer to the mmu_interval_notifier structure
+ * @range: Pointer to the mmu_notifier_range structure
+ * @cur_seq: Current sequence number for the interval notifier
+ *
+ * This function invalidates a memory region by remapping its pages with
+ * no access permissions. It locks the region's mutex to ensure thread safety
+ * and updates the sequence number for the interval notifier. If the range
+ * is blockable, it uses a blocking lock; otherwise, it attempts a non-blocking
+ * lock and returns false if unsuccessful.
+ *
+ * Return: true if the region was successfully invalidated, false otherwise.
+ */
+static bool mshv_region_invalidate(struct mmu_interval_notifier *mni,
+				   const struct mmu_notifier_range *range,
+				   unsigned long cur_seq)
+{
+	struct mshv_mem_region *region = container_of(mni,
+						struct mshv_mem_region,
+						memreg_mni);
+	u64 page_offset, page_count;
+	unsigned long mstart, mend;
+	int ret;
+
+	if (!mmget_not_zero(mni->mm))
+		return true;
+
+	if (mmu_notifier_range_blockable(range)) {
+		mutex_lock(&region->memreg_mutex);
+	} else if (!mutex_trylock(&region->memreg_mutex)) {
+		mmput(mni->mm);
+		return false;
+	}
+
+	mmu_interval_set_seq(mni, cur_seq);
+
+	mstart = max(range->start, region->start_uaddr);
+	mend = min(range->end, region->start_uaddr +
+		   (region->nr_pages << HV_HYP_PAGE_SHIFT));
+
+	page_offset = HVPFN_DOWN(mstart - region->start_uaddr);
+	page_count = HVPFN_DOWN(mend - mstart);
+
+	ret = mshv_region_remap_pages(region, HV_MAP_GPA_NO_ACCESS,
+				      page_offset, page_count);
+
+	WARN_ONCE(ret,
+		  "Failed to invalidate region %#llx-%#llx (range %#lx-%#lx, event: %u, pages %#llx-%#llx, mm: %#llx): %d\n",
+		  region->start_uaddr,
+		  region->start_uaddr + (region->nr_pages << HV_HYP_PAGE_SHIFT),
+		  range->start, range->end, range->event,
+		  page_offset, page_offset + page_count - 1, (u64)range->mm, ret);
+
+	memset(region->pages + page_offset, 0,
+	       page_count * sizeof(struct page *));
+
+	mutex_unlock(&region->memreg_mutex);
+	mmput(mni->mm);
+
+	return true;
+}
+
+static const struct mmu_interval_notifier_ops mshv_region_mni_ops = {
+	.invalidate = mshv_region_invalidate,
+};
+
+static bool mshv_region_movable_init(struct mshv_mem_region *region)
+{
+	int ret;
+
+	ret = mmu_interval_notifier_insert(&region->memreg_mni, current->mm,
+					   region->start_uaddr,
+					   region->nr_pages << HV_HYP_PAGE_SHIFT,
+					   &mshv_region_mni_ops);
+	if (ret)
+		return false;
+
+	mutex_init(&region->memreg_mutex);
+
+	return true;
+}
+#else
+static inline void mshv_region_movable_fini(struct mshv_mem_region *region)
+{
+}
+
+static inline bool mshv_region_movable_init(struct mshv_mem_region *region)
+{
+	return false;
+}
+#endif
+
 /*
  * NB: caller checks and makes sure mem->size is page aligned
  * Returns: 0 with regionpp updated on success, or -errno
@@ -1289,9 +1600,14 @@ static int mshv_partition_create_region(struct mshv_partition *partition,
 	if (mem->flags & BIT(MSHV_SET_MEM_BIT_EXECUTABLE))
 		region->hv_map_flags |= HV_MAP_GPA_EXECUTABLE;
 
-	/* Note: large_pages flag populated when we pin the pages */
-	if (!is_mmio)
-		region->flags.range_pinned = true;
+	/* Note: large_pages flag populated when pages are allocated. */
+	if (!is_mmio) {
+		region->flags.memreg_isram = true;
+
+		if (mshv_partition_encrypted(partition) ||
+		    !mshv_region_movable_init(region))
+			region->flags.range_pinned = true;
+	}
 
 	region->partition = partition;
 
@@ -1300,12 +1616,20 @@ static int mshv_partition_create_region(struct mshv_partition *partition,
 	return 0;
 }
 
-/*
- * Map guest ram. if snp, make sure to release that from the host first
- * Side Effects: In case of failure, pages are unpinned when feasible.
+/**
+ * mshv_handle_pinned_region - Handle pinned memory regions
+ * @region: Pointer to the memory region structure
+ *
+ * This function processes memory regions that are explicitly marked as pinned.
+ * Pinned regions are preallocated, mapped upfront, and do not rely on fault-based
+ * population. The function ensures the region is properly populated, handles
+ * encryption requirements for SNP partitions if applicable, maps the region,
+ * and performs necessary sharing or eviction operations based on the mapping
+ * result.
+ *
+ * Return: 0 on success, negative error code on failure.
  */
-static int
-mshv_partition_mem_region_map(struct mshv_mem_region *region)
+static int mshv_handle_pinned_region(struct mshv_mem_region *region)
 {
 	struct mshv_partition *partition = region->partition;
 	int ret;
@@ -1403,9 +1727,16 @@ mshv_map_user_memory(struct mshv_partition *partition,
 	if (is_mmio)
 		ret = hv_call_map_mmio_pages(partition->pt_id, mem.guest_pfn,
 					     mmio_pfn, HVPFN_DOWN(mem.size));
+	else if (region->flags.range_pinned)
+		ret = mshv_handle_pinned_region(region);
 	else
-		ret = mshv_partition_mem_region_map(region);
-
+		/*
+		 * For non-pinned regions, remap with no access to let the
+		 * hypervisor track dirty pages, enabling precopy live
+		 * migration.
+		 */
+		ret = mshv_region_remap_pages(region, HV_MAP_GPA_NO_ACCESS,
+					       0, region->nr_pages);
 	if (ret)
 		goto errout;
 
@@ -1423,13 +1754,62 @@ errout:
 	return ret;
 }
 
+static void mshv_partition_destroy_region(struct mshv_mem_region *region)
+{
+	struct mshv_partition *partition = region->partition;
+	u64 page_offset, page_count;
+	u32 unmap_flags = 0;
+	int ret;
+
+	hlist_del(&region->hnode);
+
+	if (region->flags.memreg_isram)
+		mshv_region_movable_fini(region);
+
+	if (mshv_partition_encrypted(partition)) {
+		ret = mshv_partition_region_share(region);
+		if (ret) {
+			pt_err(partition,
+			       "Failed to regain access to memory, unpinning user pages will fail and crash the host error: %d\n",
+			       ret);
+			return;
+		}
+	}
+
+	if (region->flags.large_pages)
+		unmap_flags |= HV_UNMAP_GPA_LARGE_PAGE;
+
+	/*
+	 * Unmap only the mapped pages to optimize performance,
+	 * especially for large memory regions.
+	 */
+	for (page_offset = 0; page_offset < region->nr_pages; page_offset += page_count) {
+		page_count = 1;
+		if (!region->pages[page_offset])
+			continue;
+
+		for (; page_count < region->nr_pages - page_offset; page_count++) {
+			if (!region->pages[page_offset + page_count])
+				break;
+		}
+
+		/* ignore unmap failures and continue as process may be exiting */
+		hv_call_unmap_gpa_pages(partition->pt_id,
+					region->start_gfn + page_offset,
+					page_count, unmap_flags);
+	}
+
+	mshv_region_evict(region);
+
+	vfree(region);
+}
+
 /* Called for unmapping both the guest ram and the mmio space */
 static long
 mshv_unmap_user_memory(struct mshv_partition *partition,
 		       struct mshv_user_mem_region mem)
 {
 	struct mshv_mem_region *region;
-	u32 unmap_flags = 0;
 
 	if (!(mem.flags & BIT(MSHV_SET_MEM_BIT_UNMAP)))
 		return -EINVAL;
@@ -1444,18 +1824,7 @@ mshv_unmap_user_memory(struct mshv_partition *partition,
 	    region->nr_pages != HVPFN_DOWN(mem.size))
 		return -EINVAL;
 
-	hlist_del(&region->hnode);
-
-	if (region->flags.large_pages)
-		unmap_flags |= HV_UNMAP_GPA_LARGE_PAGE;
-
-	/* ignore unmap failures and continue as process may be exiting */
-	hv_call_unmap_gpa_pages(partition->pt_id, region->start_gfn,
-				region->nr_pages, unmap_flags);
-
-	mshv_region_evict(region);
-
-	vfree(region);
+	mshv_partition_destroy_region(region);
 	return 0;
 }
 
@@ -1799,11 +2168,6 @@ remove_partition(struct mshv_partition *partition)
  */
 static void destroy_partition(struct mshv_partition *partition)
 {
-	struct mshv_vp *vp;
-	struct mshv_mem_region *region;
-	int i, ret;
-	struct hlist_node *n;
-
 	if (refcount_read(&partition->pt_ref_count)) {
 		pt_err(partition,
 		       "Attempt to destroy partition but refcount > 0\n");
@@ -1813,6 +2177,11 @@ static void destroy_partition(struct mshv_partition *partition)
 	trace_mshv_destroy_partition(partition->pt_id);
 
 	if (partition->pt_initialized) {
+		struct mshv_mem_region *region;
+		struct hlist_node *n;
+		struct mshv_vp *vp;
+		int i;
+
 		/*
 		 * We only need to drain signals for root scheduler. This should be
 		 * done before removing the partition from the partition list.
@@ -1862,6 +2231,10 @@ static void destroy_partition(struct mshv_partition *partition)
 			partition->pt_vp_array[i] = NULL;
 		}
 
+		hlist_for_each_entry_safe(region, n, &partition->pt_mem_regions,
+					  hnode)
+			mshv_partition_destroy_region(region);
+
 		mshv_debugfs_partition_remove(partition);
 
 		/* Deallocates and unmaps everything including vcpus, GPA mappings etc */
@@ -1871,26 +2244,6 @@ static void destroy_partition(struct mshv_partition *partition)
 	}
 
 	remove_partition(partition);
-
-	/* Remove regions, regain access to the memory and unpin the pages */
-	hlist_for_each_entry_safe(region, n, &partition->pt_mem_regions,
-				  hnode) {
-		hlist_del(&region->hnode);
-
-		if (mshv_partition_encrypted(partition)) {
-			ret = mshv_partition_region_share(region);
-			if (ret) {
-				pt_err(partition,
-				       "Failed to regain access to memory, unpinning user pages will fail and crash the host error: %d\n",
-				      ret);
-				return;
-			}
-		}
-
-		mshv_region_evict(region);
-
-		vfree(region);
-	}
 
 	/* Withdraw and free all pages we deposited */
 	hv_call_withdraw_memory(U64_MAX, NUMA_NO_NODE, partition->pt_id);
@@ -1991,6 +2344,77 @@ static long mshv_ioctl_process_pt_flags(void __user *user_arg, u64 *pt_flags,
 	disabled_procs->cet_ss_support = 0;
 	disabled_procs->smep_support = 0;
 	disabled_procs->rdtscp_support = 0;
+	disabled_procs->tsc_invariant_support = 0;
+	disabled_procs->sse3_support = 0;
+	disabled_procs->lahf_sahf_support = 0;
+	disabled_procs->ssse3_support = 0;
+	disabled_procs->sse4_1_support = 0;
+	disabled_procs->sse4_2_support = 0;
+	disabled_procs->sse4a_support = 0;
+	disabled_procs->xop_support = 0;
+	disabled_procs->pop_cnt_support = 0;
+	disabled_procs->cmpxchg16b_support = 0;
+	disabled_procs->altmovcr8_support = 0;
+	disabled_procs->lzcnt_support = 0;
+	disabled_procs->mis_align_sse_support = 0;
+	disabled_procs->mmx_ext_support = 0;
+	disabled_procs->amd3dnow_support = 0;
+	disabled_procs->extended_amd3dnow_support = 0;
+	disabled_procs->aes_support = 0;
+	disabled_procs->pclmulqdq_support = 0;
+	disabled_procs->pcid_support = 0;
+	disabled_procs->fma4_support = 0;
+	disabled_procs->f16c_support = 0;
+	disabled_procs->rd_rand_support = 0;
+	disabled_procs->rd_wr_fs_gs_support = 0;
+	disabled_procs->enhanced_fast_string_support = 0;
+	disabled_procs->bmi1_support = 0;
+	disabled_procs->bmi2_support = 0;
+	disabled_procs->hle_support_deprecated = 0;
+	disabled_procs->rtm_support_deprecated = 0;
+	disabled_procs->movbe_support = 0;
+	disabled_procs->npiep1_support = 0;
+	disabled_procs->dep_x87_fpu_save_support = 0;
+	disabled_procs->rd_seed_support = 0;
+	disabled_procs->adx_support = 0;
+	disabled_procs->intel_prefetch_support = 0;
+	disabled_procs->smap_support = 0;
+	disabled_procs->hle_support = 0;
+	disabled_procs->rtm_support = 0;
+	disabled_procs->invpcid_support = 0;
+	disabled_procs->ibrs_support = 0;
+	disabled_procs->stibp_support = 0;
+	disabled_procs->mdd_support = 0;
+	disabled_procs->ibpb_support = 0;
+	disabled_procs->l1dcache_flush_support = 0;
+	disabled_procs->virt_spec_ctrl_support = 0;
+	disabled_procs->mb_clear_support = 0;
+	disabled_procs->tsx_ctrl_support = 0;
+	disabled_procs->clflushopt_support = 0;
+	disabled_procs->rdcl_no_support = 0;
+	disabled_procs->ibrs_all_support = 0;
+	disabled_procs->page_1gb_support = 0;
+	disabled_procs->skip_l1df_support = 0;
+	disabled_procs->ssb_no_support = 0;
+	disabled_procs->mbs_no_support = 0;
+	disabled_procs->taa_no_support = 0;
+	disabled_procs->fb_clear_support = 0;
+	disabled_procs->gds_no_support = 0;
+	disabled_procs->bhi_no_support = 0;
+	disabled_procs->bhi_dis_support = 0;
+	disabled_procs->btc_no_support = 0;
+	disabled_procs->mitigation_ctrl_support = 0;
+	disabled_procs->rfds_no_support = 0;
+	disabled_procs->rfds_clear_support = 0;
+	disabled_procs->unrestricted_guest_support = 0;
+	disabled_procs->fast_short_rep_mov_support = 0;
+	disabled_procs->rsb_a_no_support = 0;
+	disabled_procs->rd_pid_support = 0;
+	disabled_procs->umip_support = 0;
+	disabled_procs->vmx_exception_inject_support = 0;
+	disabled_procs->rdpru_support = 0;
+	disabled_procs->mbec_support = 0;
+	disabled_procs->psfd_support = 0;
 
 	/* Enable default XSave features that are known to be supported*/
 	disabled_xsave = &cr_props->disabled_processor_xsave_features;
@@ -2037,6 +2461,25 @@ static long mshv_ioctl_process_pt_flags(void __user *user_arg, u64 *pt_flags,
 		isol_props->isolation_type = HV_PARTITION_ISOLATION_TYPE_SNP;
 		break;
 	}
+
+	return 0;
+}
+
+static long mshv_ioctl_get_host_partition_property(void __user *user_args)
+{
+	struct mshv_partition_property args;
+	long ret;
+
+	if (copy_from_user(&args, user_args, sizeof(args)))
+		return -EFAULT;
+
+	ret = hv_call_get_partition_property(HV_PARTITION_ID_SELF,
+					     args.property_code, &args.property_value);
+	if (ret)
+		return ret;
+
+	if (copy_to_user(user_args, &args, sizeof(args)))
+		return -EFAULT;
 
 	return 0;
 }
@@ -2143,6 +2586,9 @@ static long mshv_dev_ioctl(struct file *filp, unsigned int ioctl,
 	case MSHV_CREATE_PARTITION:
 		return mshv_ioctl_create_partition((void __user *)arg,
 						misc->this_device);
+	case MSHV_GET_HOST_PARTITION_PROPERTY:
+		return mshv_ioctl_get_host_partition_property(
+			(void __user *)arg);
 	}
 
 	return -ENOTTY;
@@ -2177,35 +2623,6 @@ static const char *scheduler_type_to_string(enum hv_scheduler_type type)
 	default:
 		return "unknown scheduler";
 	};
-}
-
-/* TODO move this to hv_common.c when needed outside */
-static int __init hv_retrieve_scheduler_type(enum hv_scheduler_type *out)
-{
-	struct hv_input_get_system_property *input;
-	struct hv_output_get_system_property *output;
-	unsigned long flags;
-	u64 status;
-
-	local_irq_save(flags);
-	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
-	output = *this_cpu_ptr(hyperv_pcpu_output_arg);
-
-	memset(input, 0, sizeof(*input));
-	memset(output, 0, sizeof(*output));
-	input->property_id = HV_SYSTEM_PROPERTY_SCHEDULER_TYPE;
-
-	status = hv_do_hypercall(HVCALL_GET_SYSTEM_PROPERTY, input, output);
-	if (!hv_result_success(status)) {
-		local_irq_restore(flags);
-		pr_err("%s: %s\n", __func__, hv_result_to_string(status));
-		return hv_result_to_errno(status);
-	}
-
-	*out = output->scheduler_type;
-	local_irq_restore(flags);
-
-	return 0;
 }
 
 /* Retrieve and stash the supported scheduler type */
@@ -2460,8 +2877,6 @@ static int __init mshv_parent_partition_init(void)
 
 	return 0;
 
-destroy_irqds_wq:
-	mshv_irqfd_wq_cleanup();
 exit_debugfs:
 	mshv_debugfs_exit();
 exit_partition:

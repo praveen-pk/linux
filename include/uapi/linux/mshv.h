@@ -84,8 +84,21 @@ struct mshv_create_partition_v2 {
 #endif
 } __packed;
 
+/**
+ * struct mshv_partition_property: arg for get/set_partition_property
+ * @property_code: code of the property
+ * @property_value: value of the property
+ * 
+ * Returns: same as the struct
+ */
+struct mshv_partition_property {
+	__u64 property_code;
+	__u64 property_value;
+};
+
 /* /dev/mshv */
 #define MSHV_CREATE_PARTITION	_IOW(MSHV_IOCTL, 0x00, struct mshv_create_partition)
+#define MSHV_GET_HOST_PARTITION_PROPERTY _IOWR(MSHV_IOCTL, 0x01, struct mshv_partition_property)
 
 /*
  ************************

@@ -39,11 +39,22 @@
 /* Is Linux running on nested Microsoft Hypervisor */
 bool hv_nested;
 struct ms_hyperv_info ms_hyperv;
-bool mshv_loader_new;
 
 /* Used in modules via hv_do_hypercall(): see arch/x86/include/asm/mshyperv.h */
 bool hyperv_paravisor_present __ro_after_init;
 EXPORT_SYMBOL_GPL(hyperv_paravisor_present);
+
+static bool hv_minroot_nodes_defined __initdata;
+static nodemask_t hv_minroot_nodes __initdata;
+
+static int hv_lp_to_cpu[NR_CPUS] __initdata;
+/* CPUs that don't have a root VP on them. */
+static struct cpumask root_vps_absent_mask __initdata;
+
+static struct {
+	bool is_valid;
+	int vps_per_node[MAX_NUMNODES];
+} minroot_cfg;
 
 #if IS_ENABLED(CONFIG_HYPERV)
 static inline unsigned int hv_get_nested_msr(unsigned int reg)
@@ -216,8 +227,12 @@ void hv_remove_crash_handler(void)
 #ifdef CONFIG_KEXEC_CORE
 static void hv_machine_shutdown(void)
 {
-	if (kexec_in_progress && hv_kexec_handler)
-		hv_kexec_handler();
+	if (kexec_in_progress) {
+		hv_stimer_global_cleanup();
+
+		if (hv_kexec_handler)
+			hv_kexec_handler();
+	}
 
 	/*
 	 * Call hv_cpu_die() on all the CPUs, otherwise later the hypervisor
@@ -368,6 +383,40 @@ static unsigned long hv_get_tsc_khz(void)
 	return freq / 1000;
 }
 
+static int __init hv_parse_root_vp_nodes(char *arg)
+{
+	char *tok;
+	int node, ret;
+
+	if (strcmp(arg, "all") == 0) {
+		nodes_setall(hv_minroot_nodes);
+	} else {
+		while ((tok = strsep(&arg, ",")) != NULL) {
+			ret = kstrtoint(tok, 10, &node);
+			if (ret) {
+				pr_warn("Hyper-V: invalid format for hv_minroot_nodes: %s\n",
+						arg);
+				return 0;
+
+			}
+
+			if (!node_possible(node)) {
+				pr_warn("Hyper-V: ignoring invalid node %u specified in hv_minroot_nodes.\n",
+						node);
+				continue;
+			}
+
+			node_set(node, hv_minroot_nodes);
+		}
+	}
+
+	if (nodes_weight(hv_minroot_nodes) > 0)
+		hv_minroot_nodes_defined = true;
+
+	return 0;
+}
+early_param("hv_minroot_nodes", hv_parse_root_vp_nodes);
+
 #if defined(CONFIG_SMP) && IS_ENABLED(CONFIG_HYPERV)
 static void __init hv_smp_prepare_boot_cpu(void)
 {
@@ -380,7 +429,7 @@ static void __init hv_smp_prepare_boot_cpu(void)
 static int apicids[NR_CPUS] __initdata;
 
 /* find the next smallest apicid in the unsorted array of size NR_CPUS */
-static int __init next_smallest_apicid(int apicids[], int curr)
+static int __init next_smallest_apicid(int apicids[], int curr, int *cpu)
 {
 	int i, found = INT_MAX;
 
@@ -388,19 +437,177 @@ static int __init next_smallest_apicid(int apicids[], int curr)
 		if (apicids[i] <= curr)
 			continue;
 
-		if (apicids[i] < found)
+		if (apicids[i] < found) {
 			found = apicids[i];
+			*cpu = i;
+		}
 	}
 
 	return found;
 }
 
-/*  
- * On a 4 core, single node, with HT, linux numbers cpus as: 
+static void __init prepare_minroot_cfg(unsigned int max_cpus)
+{
+	unsigned int node, num_nodes;
+	unsigned int present_cpus = num_present_cpus();
+
+	if (max_cpus >= present_cpus)
+		return;
+
+	if (max_cpus % __max_threads_per_core != 0) {
+		pr_warn("Hyper-V: minroot: number of root VPs should be a multiple of threads per core\n");
+		goto invalid_config;
+	}
+
+	num_nodes = num_online_nodes();
+
+	/*
+	 * If the hv_root_vp_nodes option is specified, spread the root VPs
+	 * evenly across the specified nodes. Otherwise, fill up nodes in order
+	 * until we run out of root VPs.
+	 */
+	if (hv_minroot_nodes_defined) {
+		int vps_per_node;
+		int bsp_node = numa_cpu_node(raw_smp_processor_id());
+
+		if (bsp_node == NUMA_NO_NODE)
+			bsp_node = 0;
+
+		if (!node_isset(bsp_node, hv_minroot_nodes)) {
+			pr_warn("Hyper-V: minroot: hv_minroot_nodes must contain BSP's node\n");
+			goto invalid_config;
+		}
+
+		nodes_and(hv_minroot_nodes, hv_minroot_nodes, node_online_map);
+
+		num_nodes = nodes_weight(hv_minroot_nodes);
+		vps_per_node = max_cpus / num_nodes;
+		if (vps_per_node % __max_threads_per_core != 0) {
+			pr_warn("Hyper-V: minroot: number of root VPs per node should be a multiple of threads per core\n");
+			goto invalid_config;
+		}
+
+		for_each_online_node(node) {
+			if (!node_isset(node, hv_minroot_nodes))
+				continue;
+
+			minroot_cfg.vps_per_node[node] = vps_per_node;
+		}
+	} else {
+		int remaining = max_cpus;
+		int cpus_per_node = present_cpus / num_nodes;
+
+		for_each_online_node(node) {
+			minroot_cfg.vps_per_node[node] =
+					min(remaining, cpus_per_node);
+
+			if (minroot_cfg.vps_per_node[node]
+					% __max_threads_per_core != 0) {
+				pr_warn("Hyper-V: minroot: number of root VPs in a node should be a multiple of threads per core\n");
+				goto invalid_config;
+			}
+
+			remaining -= minroot_cfg.vps_per_node[node];
+
+			if (!remaining)
+				break;
+		}
+	}
+
+	minroot_cfg.is_valid = true;
+	return;
+
+invalid_config:
+	pr_warn("Hyper-V: invalid minroot configuration. Ignoring.\n");
+}
+
+static bool __init root_vp_allowed_on_node(int node)
+{
+	if (!hv_minroot_nodes_defined)
+		return true;
+
+	return node_isset(node, hv_minroot_nodes);
+}
+
+static bool __init can_create_root_vp(int cpu, int *vps_added)
+{
+	int node;
+
+	if (!minroot_cfg.is_valid)
+		return true;
+
+	node = numa_cpu_node(cpu);
+	if (node == NUMA_NO_NODE)
+		node = 0;
+
+	return root_vp_allowed_on_node(node)
+		&& vps_added[node] < minroot_cfg.vps_per_node[node];
+}
+
+static void __init hv_create_root_vps(unsigned int max_cpus, bool kexec)
+{
+	unsigned int present_cpus = num_present_cpus();
+	unsigned int lpidx, vpidx, node;
+	int *vps_added;
+	int ret;
+
+	prepare_minroot_cfg(max_cpus);
+
+	if (minroot_cfg.is_valid)
+		pr_info("Hyper-V: booting in minroot configuration");
+
+	vps_added = kcalloc(num_online_nodes(), sizeof(*vps_added), GFP_KERNEL);
+	BUG_ON(!vps_added);
+
+	vpidx = 1;
+	vps_added[0] = 1;
+	for (lpidx = 1; lpidx < present_cpus; ++lpidx) {
+		int cpu = hv_lp_to_cpu[lpidx];
+
+		node = numa_cpu_node(cpu);
+		if (node == NUMA_NO_NODE)
+			node = 0;
+
+		if (!can_create_root_vp(cpu, vps_added)) {
+			/*
+			 * As per the provided minroot config, we can't create a
+			 * root VP on this CPU. Mark it as not-present so that
+			 * the core boot code doesn't try to bring it online
+			 * (which will fail). Later in smp_cpus_done(), we will
+			 * set it as present so as to reflect the actual state
+			 * of the system: these CPUs exist but are offline.
+			 */
+			cpumask_set_cpu(cpu, &root_vps_absent_mask);
+			set_cpu_present(cpu, false);
+			continue;
+		}
+
+		if (!kexec) {
+			/*
+			 * hv_call_create_vp() uses the node number to construct
+			 * hv_proximity_domain_info which is an input to the
+			 * create VP hypercall. However, when creating root VPs,
+			 * the hypervisor ignores the proximity domain info and
+			 * instead uses the LP index to figure out NUMA node
+			 * info. So, we can simply pass NUMA_NO_NODE here.
+			 */
+			/* params: node num, domid, vp index, lp index */
+			ret = hv_call_create_vp(NUMA_NO_NODE,
+					hv_current_partition_id, vpidx, lpidx);
+			BUG_ON(ret);
+		}
+
+		++vpidx;
+		++vps_added[node];
+	}
+}
+
+/*
+ * On a 4 core, single node, with HT, linux numbers cpus as:
  *     [0]c0 ht0   [1]c1 ht0   [2]c2 ht0   [3]c3 ht0
  *     [4]c0 ht1   [5]c1 ht1   [6]c2 ht1   [7]c3 ht1
  *
- * On a 4 core, two nodes, with HT, linux numbers cpus as: 
+ * On a 4 core, two nodes, with HT, linux numbers cpus as:
  *     [0]n0 c0 h0    [1]n1 c0 ht0  [2]n0 c3 ht0 ......
  *
  * MSHV wants vcpus/vpidxs: [0]c0 ht0, [1]c0 ht1, [2]c1 ht0, [3]c1 ht1 ....
@@ -410,7 +617,7 @@ static int __init next_smallest_apicid(int apicids[], int curr)
  *
  * Other requirements are:
  *  - LPs must be added in only lpindex order, with any lapic ids for any lp
- *  - VPs can be created in any vp index order as long as the HT siblings 
+ *  - VPs can be created in any vp index order as long as the HT siblings
  *    match.
  *
  * To achieve above, we add LPs in order of apic ids.
@@ -418,8 +625,9 @@ static int __init next_smallest_apicid(int apicids[], int curr)
 static void __init hv_smp_prepare_cpus(unsigned int max_cpus)
 {
 #ifdef CONFIG_X86_64
-	s16 node;
-	int i, lpidx, ret, ccpu = raw_smp_processor_id();
+	s16 node = 0;
+	int i, lpidx, ret, cpu, ccpu = raw_smp_processor_id();
+	bool kexec = false;
 #endif
 	native_smp_prepare_cpus(max_cpus);
 
@@ -432,8 +640,16 @@ static void __init hv_smp_prepare_cpus(unsigned int max_cpus)
 		return;
 	}
 
+	/* If AP LPs exist, we are in kexec kernel and VPs already exist */
+	if (num_present_cpus() == 1)
+		return;
+
 #ifdef CONFIG_X86_64
 	BUG_ON(ccpu != 0);
+
+	/* If AP LPs exist, we are in kexec kernel and VPs already exist */
+	if (hv_lp_exists(1))
+		kexec = true;
 
 	for (i = 0; i < NR_CPUS; i++)
 		apicids[i] = INT_MAX;
@@ -446,32 +662,59 @@ static void __init hv_smp_prepare_cpus(unsigned int max_cpus)
 		apicids[i] = cpu_physical_id(i);
 	}
 
-	i = next_smallest_apicid(apicids, 0);
+	i = next_smallest_apicid(apicids, 0, &cpu);
+
 	for (lpidx = 1; i != INT_MAX; lpidx++) {
+#ifdef CONFIG_NUMA
 		node = __apicid_to_node[i];
 		if (node == NUMA_NO_NODE)
 			node = 0;
+#endif
 
-		/* params: node num, lp index, apic id */
-		ret = hv_call_add_logical_proc(node, lpidx, i);
-		BUG_ON(ret);
+		if (!kexec) {
+			/* params: node num, lp index, apic id */
+			ret = hv_call_add_logical_proc(node, lpidx, i);
+			BUG_ON(ret);
+		}
 
-		i = next_smallest_apicid(apicids, i);
+		hv_lp_to_cpu[lpidx] = cpu;
+
+		i = next_smallest_apicid(apicids, i, &cpu);
 	}
 
-	lpidx = 1;	   /* skip BSP cpu 0 */
-	for_each_present_cpu(i) {
-		if (i == 0)
-			continue;
-
-		/* params: node num, domid, vp index, lp index */
-		ret = hv_call_create_vp(numa_cpu_node(i), 
-					hv_current_partition_id, lpidx, lpidx);
-		BUG_ON(ret);
-		lpidx++;
+	/*
+	 * We should only call this hypercall once we have added all the logical
+	 * processors to the root partition.
+	 *
+	 * This is a strict requirement for CVM because without this hypercall
+	 * MSHV won't expose support for launching SEV-SNP enabled guest.
+	 *
+	 * We can also invoke this hypercall for non-CVM usecase as well. There
+	 * is no side effect because of this hypercall.
+	 */
+	if (!kexec) {
+		ret = hv_call_notify_all_processors_started();
+		WARN_ON(ret);
 	}
+
+	hv_create_root_vps(max_cpus, kexec);
 
 #endif /* #ifdef CONFIG_X86_64 */
+}
+
+static void __init hv_smp_cpus_done(unsigned int max_cpus)
+{
+#ifdef CONFIG_X86_64
+	unsigned int cpu;
+
+	/* see the comment in hv_create_root_vps(). */
+	if (minroot_cfg.is_valid) {
+		for_each_cpu(cpu, &root_vps_absent_mask)
+			set_cpu_present(cpu, true);
+	}
+#endif
+
+	native_smp_cpus_done(max_cpus);
 }
 #endif /* #if defined(CONFIG_SMP) && IS_ENABLED(CONFIG_HYPERV) */
 
@@ -526,156 +769,6 @@ static void __init __maybe_unused hv_preset_lpj(void)
 	preset_lpj = lpj;
 }
 
-#define HV_MAX_RESVD_RANGES 32
-static int hv_resvd_ranges[HV_MAX_RESVD_RANGES] = {
-					[0 ... HV_MAX_RESVD_RANGES-1] = -1};
-static struct resource hv_mshv_res[HV_MAX_RESVD_RANGES];
-static u32 ranges_nr;
-
-/*
- * Parse "hyperv_resvd_new=<size>!<address>,<size>!<address>,...", specifying a
- * list of memory ranges that are reserved by the loader for the hypervisor.
- */
-static int __init hv_parse_hyperv_resvd_new(char *arg)
-{
-	unsigned long long region_start, region_sz;
-	int i = 0;
-	char *curr = arg;
-
-	mshv_loader_new = true;
-
-	if (is_kdump_kernel())
-		return 0;
-
-	while (*curr != 0) {
-		region_sz = simple_strtoull(curr, &curr, 16);
-		if (!region_sz) {
-			pr_err("Hyper-V: invalid format for hyperv_resvd_new: %s\n", arg);
-			BUG();
-		}
-
-		if (*curr != '!') {
-			pr_err("Hyper-V: invalid format for hyperv_resvd_new: %s\n", arg);
-			BUG();
-		}
-
-		++curr;
-
-		region_start = simple_strtoull(curr, &curr, 16);
-		if (region_start == 0) {
-			pr_err("Hyper-V: invalid format for hyperv_resvd_new: %s\n", arg);
-			BUG();
-		}
-
-		memblock_reserve(region_start, region_sz);
-
-		hv_mshv_res[i].name = "Hypervisor Code and Data";
-		hv_mshv_res[i].flags = IORESOURCE_BUSY | IORESOURCE_SYSTEM_RAM;
-		hv_mshv_res[i].start = region_start;
-		hv_mshv_res[i].end = region_start + region_sz - 1;
-
-		if (*curr == ',')
-			++curr;
-
-		++i;
-	}
-
-	ranges_nr = i;
-
-	return 0;
-}
-early_param("hyperv_resvd_new", hv_parse_hyperv_resvd_new);
-
-/*
- * Parse eg "hyperv_resvd=3,7,20" where 3, 7, and 20 are indexes into the e820
- * table for ranges that are reserved by the loader for the hypervisor
- */
-static int __init hv_parse_hyperv_resvd(char *arg)
-{
-	int idx, max = ARRAY_SIZE(hv_resvd_ranges);
-	int i = 0;
-
-	mshv_loader_new = false;
-
-	if (is_kdump_kernel())
-		return 0;
-
-	if (hv_resvd_ranges[0] != -1) {
-		pr_err("Hyper-V: multile hyperv_resvd not supported\n");
-		return 0;
-	}
-
-	while (get_option(&arg, &idx)) {
-		if (i >= max) {
-			pr_err("Hyper-V: resvd ranges tbl full %d\n", idx);
-			break;
-		}
-
-		hv_resvd_ranges[i++] = idx;
-	}
-
-	return 0;
-}
-early_param("hyperv_resvd", hv_parse_hyperv_resvd);
-
-/*
- * Reserve memory that the hypervisor is using early on. The ranges are marked
- * reserved by a custom bootloader, change that to usable and reserve that
- * range. Note, the bootloader sanitizes the e820 before passing on here.
- */
-static void __init hv_resv_mshv_memory(void)
-{
-	u64 start, end, size;
-	int i, idx, max = ARRAY_SIZE(hv_resvd_ranges);
-
-	for (i = 0; i < max && hv_resvd_ranges[i] != -1; i++) {
-
-		idx = hv_resvd_ranges[i];
-		if (idx < 0 || idx >= e820_table->nr_entries) {
-			pr_info("Hyper-V: invalid resvd idx %d\n", idx);
-			continue;
-		}
-
-		start = e820_table->entries[idx].addr;
-		size = e820_table->entries[idx].size;
-		end = start + size - 1;
-
-		memblock_reserve(start, size);
-		e820_table->entries[idx].type = E820_TYPE_RAM;
-		pr_info("Hyper-V reserve [mem %#018Lx-%#018Lx]\n", start, end);
-
-		hv_mshv_res[i].name = "Hypervisor Code and Data";
-		hv_mshv_res[i].flags = IORESOURCE_BUSY | IORESOURCE_SYSTEM_RAM;
-		hv_mshv_res[i].start = start;
-		hv_mshv_res[i].end = end;
-	}
-}
-
-/*
- * Log memory ranges that the hypervisor uses. The ranges are marked
- * by a custom bootloader.
- */
-static void __init hv_dump_mshv_memory(void)
-{
-	u64 start, end;
-	int i;
-
-	for (i = 0; i < ranges_nr; i++) {
-		start = hv_mshv_res[i].start;
-		end = hv_mshv_res[i].end;
-		pr_info("Hyper-V reserve [mem %#018Lx-%#018Lx]\n", start, end);
-	}
-}
-
-/* this cannot be done during platform init, hence called from hyperv_init() */
-void __init hv_mark_resources(void)
-{
-	int i, max = ARRAY_SIZE(hv_mshv_res);
-
-	for (i = 0; i < max && hv_mshv_res[i].end; i++)
-		insert_resource(&iomem_resource, &hv_mshv_res[i]);
-}
-
 static void __init ms_hyperv_init_platform(void)
 {
 	int hv_max_functions_eax;
@@ -717,13 +810,9 @@ static void __init ms_hyperv_init_platform(void)
 		 ms_hyperv.max_vp_index, ms_hyperv.max_lp_index);
 
 	hv_identify_partition_type();
-	if (hv_root_partition()) {
-		/* very first thing, reserve/log exclusive hypervisor memory */
-		if (mshv_loader_new)
-			hv_dump_mshv_memory();
-		else
-			hv_resv_mshv_memory();
-	}
+
+	if (hv_root_partition())
+		hv_dump_mshv_memory();
 
 	if (ms_hyperv.hints & HV_X64_HYPERV_NESTED) {
 		hv_nested = true;
@@ -875,6 +964,9 @@ static void __init ms_hyperv_init_platform(void)
 	if (hv_root_partition() ||
 	    (!ms_hyperv.paravisor_present && hv_isolation_type_snp()))
 		smp_ops.smp_prepare_cpus = hv_smp_prepare_cpus;
+
+	if (hv_root_partition())
+		smp_ops.smp_cpus_done = hv_smp_cpus_done;
 # endif
 
 	/*

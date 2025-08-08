@@ -39,11 +39,10 @@ int hv_call_get_vp_registers(u32 vp_index, u64 partition_id, u16 count,
 	input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
 	output_page = *this_cpu_ptr(hyperv_pcpu_output_arg);
 
+	memset(input_page, 0, sizeof(*input_page));
 	input_page->partition_id = partition_id;
 	input_page->vp_index = vp_index;
 	input_page->input_vtl.as_uint8 = input_vtl.as_uint8;
-	input_page->rsvd_z8 = 0;
-	input_page->rsvd_z16 = 0;
 
 	while (remaining) {
 		rep_count = min(remaining, HV_GET_REGISTER_BATCH_SIZE);
@@ -82,11 +81,10 @@ int hv_call_set_vp_registers(u32 vp_index, u64 partition_id, u16 count,
 	local_irq_save(flags);
 	input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
 
+	memset(input_page, 0, sizeof(*input_page));
 	input_page->partition_id = partition_id;
 	input_page->vp_index = vp_index;
 	input_page->input_vtl.as_uint8 = input_vtl.as_uint8;
-	input_page->rsvd_z8 = 0;
-	input_page->rsvd_z16 = 0;
 
 	while (remaining) {
 		rep_count = min(remaining, HV_SET_REGISTER_BATCH_SIZE);
@@ -121,6 +119,7 @@ int hv_call_get_partition_property(u64 partition_id,
 	local_irq_save(flags);
 	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
 	output = *this_cpu_ptr(hyperv_pcpu_output_arg);
+
 	memset(input, 0, sizeof(*input));
 	input->partition_id = partition_id;
 	input->property_code = property_code;

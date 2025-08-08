@@ -15,6 +15,7 @@
 #include <linux/hashtable.h>
 #include <linux/dev_printk.h>
 #include <linux/build_bug.h>
+#include <linux/mmu_notifier.h>
 #include <uapi/linux/mshv.h>
 
 /*
@@ -43,7 +44,7 @@ struct mshv_vp {
 	struct {
 		atomic64_t vp_signaled_count;
 		struct {
-			u64 intercept_suspend: 1;
+			u64 intercept_suspended: 1;
 			u64 root_sched_blocked: 1; /* root scheduler only */
 			u64 root_sched_dispatched: 1; /* root scheduler only */
 			u64 reserved: 61;
@@ -82,9 +83,14 @@ struct mshv_mem_region {
 	struct {
 		u64 large_pages:  1; /* 2MiB */
 		u64 range_pinned: 1;
-		u64 reserved:	 62;
+		u64 memreg_isram: 1; /* mem region can be ram or mmio */
+		u64 reserved:	 61;
 	} flags;
 	struct mshv_partition *partition;
+#if defined(CONFIG_MMU_NOTIFIER)
+	struct mmu_interval_notifier memreg_mni;
+	struct mutex memreg_mutex;	/* protects region pages remapping */
+#endif
 	struct page *pages[];
 };
 
@@ -341,12 +347,6 @@ static inline int mshv_debugfs_vp_create(struct mshv_vp *vp)
 }
 static inline void mshv_debugfs_vp_remove(struct mshv_vp *vp) { }
 #endif
-
-#if IS_ENABLED(CONFIG_MSHV_DIAG)
-void mshv_trace_buffer_complete(const struct hv_eventlog_message_payload *msg);
-#else
-static inline void mshv_trace_buffer_complete(const struct hv_eventlog_message_payload *msg) {}
-#endif /* CONFIG_MSHV_DIAG */
 
 extern struct mshv_root mshv_root;
 extern enum hv_scheduler_type hv_scheduler_type;

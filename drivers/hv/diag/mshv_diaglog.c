@@ -25,7 +25,9 @@
 
 #include <asm/mshyperv.h>
 #include <hyperv/hvtrapi.h>
+
 #include "../mshv.h"
+#include "mshv_diag.h"
 
 static size_t MSHV_TICKS_PER_SEC = NSEC_PER_SEC/100; /* 1 tick is 100 ns long in mshv */
 
@@ -223,7 +225,7 @@ static ssize_t diaglog_fop_read(struct file *file, char __user *ubuf,
 	return numrd;
 }
 
-int diaglog_fop_release(struct inode *inode, struct file *filp)
+static int diaglog_fop_release(struct inode *inode, struct file *filp)
 {
 	kfree(filp->private_data);
 	filp->private_data = NULL;
@@ -290,6 +292,8 @@ static int unmap_diaglog_pages(int numbufs)
 		local_irq_save(flags);
 
 		input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
+
+		memset(input_page, 0, sizeof(*input_page));
 		input_page->type = HV_EVENT_LOG_TYPE_SYSTEM_DIAGNOSTICS;
 		input_page->buffer_index = i;
 		input_page->partition_id = HV_PARTITION_ID_SELF;
@@ -322,6 +326,7 @@ static int get_diaglog_info(void)
 		input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
 		output_page = *this_cpu_ptr(hyperv_pcpu_output_arg);
 
+		memset(input_page, 0, sizeof(*input_page));
 		input_page->property_id =
 				      HV_SYSTEM_PROPERTY_DIAGNOSTICS_LOG_BUFFERS;
 		status = hv_do_hypercall(HVCALL_GET_SYSTEM_PROPERTY, input_page,
@@ -381,6 +386,8 @@ static int __init map_diag_buffers(uint tot_pages, struct page ***pppages)
 			local_irq_save(flags);
 
 			input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
+
+			memset(input_page, 0, sizeof(*input_page));
 			input_page->type = HV_EVENT_LOG_TYPE_SYSTEM_DIAGNOSTICS;
 			input_page->buffer_index = i;
 			input_page->partition_id = HV_PARTITION_ID_SELF;

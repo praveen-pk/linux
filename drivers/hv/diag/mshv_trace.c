@@ -17,6 +17,7 @@
 #include <hyperv/hvtrapi.h>
 #include <asm/mshyperv.h>
 
+#include "../mshv.h"
 #include "mshv_diag.h"
 
 struct mshv_trace_buffer {
@@ -60,7 +61,7 @@ static struct mshv_trace_buffer *mshv_trace_next_buffer(u32 next_buffer_index)
 	return &mshv_trace_state->tbs[next_buffer_index];
 }
 
-void mshv_trace_buffer_complete(const struct hv_eventlog_message_payload *msg)
+static void mshv_trace_buffer_complete(const struct hv_eventlog_message_payload *msg)
 {
 	struct mshv_trace_state *state = mshv_trace_state;
 	struct mshv_trace *trace;
@@ -89,12 +90,11 @@ void mshv_trace_buffer_complete(const struct hv_eventlog_message_payload *msg)
 
 	wake_up(&trace->events_queue);
 }
-EXPORT_SYMBOL_GPL(mshv_trace_buffer_complete);
 
 static int hv_call_unmap_event_log_buffer(enum hv_eventlog_type type,
 					  u32 index)
 {
-	union hv_input_unmap_eventlog_buffer input;
+	union hv_input_unmap_eventlog_buffer input = { 0 };
 	u64 status;
 
 	input.type = type;
@@ -122,6 +122,7 @@ static int hv_call_map_event_log_buffer(enum hv_eventlog_type type, u32 index,
 
 	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
 
+	memset(input, 0, sizeof(*input));
 	input->type = type;
 	input->buffer_index = index;
 	input->partition_id = HV_PARTITION_ID_SELF;
@@ -140,7 +141,7 @@ static int hv_call_map_event_log_buffer(enum hv_eventlog_type type, u32 index,
 static int hv_call_release_event_log_buffer(enum hv_eventlog_type type,
 					    u32 buffer_index)
 {
-	union hv_input_eventlog_release_buffer input;
+	union hv_input_eventlog_release_buffer input = { 0 };
 	u64 status;
 
 	input.type = type;
@@ -293,6 +294,7 @@ static int hv_call_initialize_event_log_buffer_group(enum hv_eventlog_type type,
 
 	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
 
+	memset(input, 0, sizeof(*input));
 	input->init.type = type;
 	input->init.mode = mode;
 	input->maximum_buffer_count = max_buffers_count;
@@ -315,7 +317,7 @@ static int hv_call_initialize_event_log_buffer_group(enum hv_eventlog_type type,
 
 static int hv_call_finalize_event_log_buffer_group(enum hv_eventlog_type type)
 {
-	union hv_input_finalize_eventlog_buffer_group input;
+	union hv_input_finalize_eventlog_buffer_group input = { 0 };
 	u64 status;
 
 	input.type = type;
@@ -366,7 +368,7 @@ free_lb:
 static int hv_call_delete_event_log_buffer(enum hv_eventlog_type type,
 					   u32 buffer_index)
 {
-	union hv_input_delete_eventlog_buffer input;
+	union hv_input_delete_eventlog_buffer input = { 0 };
 	u64 status;
 
 	input.type = type;
@@ -385,7 +387,7 @@ static int hv_call_delete_event_log_buffer(enum hv_eventlog_type type,
 static int hv_call_create_event_log_buffer(enum hv_eventlog_type type,
 					   u32 buffer_index)
 {
-	union hv_input_create_eventlog_buffer input;
+	union hv_input_create_eventlog_buffer input = { 0 };
 	u64 status;
 
 	input.type = type;
@@ -594,11 +596,13 @@ static int mshv_trace_state_create(struct mshv_trace_state **statep,
 	enum hv_eventlog_type type = HV_EVENT_LOG_TYPE_LOCAL_DIAGNOSTICS;
 	int err;
 
+	register_mshv_trcbuf_complete_cb(mshv_trace_buffer_complete);
+
 	err = mshv_trace_buffers_group_init(cfg, type, &state);
 	if (err) {
 		pr_err("%s: failed to initialize trace buffer group: %d\n",
 		       __func__, err);
-		return err;
+		goto unregister_cb;
 	}
 
 	err = mshv_trace_buffers_create(state);
@@ -623,6 +627,8 @@ delete_tbs:
 	(void)mshv_trace_buffers_delete(state);
 finalize_state:
 	(void)mshv_trace_buffers_group_fini(state);
+unregister_cb:
+	register_mshv_trcbuf_complete_cb(NULL);
 	return err;
 }
 
@@ -640,6 +646,7 @@ static int mshv_trace_state_destroy(struct mshv_trace_state **statep)
 
 	*statep = NULL;
 
+	register_mshv_trcbuf_complete_cb(NULL);
 	return 0;
 }
 
@@ -758,8 +765,8 @@ static int hv_call_set_event_group_sources(enum hv_eventlog_type type,
 	local_irq_save(flags);
 
 	input = *this_cpu_ptr(hyperv_pcpu_input_arg);
-	memset(input, 0, sizeof(*input));
 
+	memset(input, 0, sizeof(*input));
 	input->type = type;
 	input->group_count = group_count;
 	input->configuration_flags = configuration_flags;
@@ -796,7 +803,7 @@ static int mshv_trace_state_set_sources(const struct mshv_trace_state *state,
 static int hv_call_flush_event_log_buffer(enum hv_eventlog_type type,
 					  u32 buffer_index)
 {
-	union hv_input_flush_eventlog_buffer input;
+	union hv_input_flush_eventlog_buffer input = { 0 };
 	u64 status;
 
 	input.type = type;
