@@ -24,6 +24,8 @@
 
 extern u64 hv_current_partition_id;
 
+int __init hyperv_init(void);
+
 /*
  * Declare calls to get and set Hyper-V VP register values on ARM64, which
  * requires a hypercall.
@@ -76,6 +78,9 @@ static inline bool hv_pcidev_is_attached_dev(struct pci_dev *pdev)
 }
 
 extern bool hv_no_attdev;
+
+void hv_smp_prepare_cpus(unsigned int max_cpus);
+int hv_cpu_on(unsigned int cpu, phys_addr_t entry_point);
 
 /* SMCCC hypercall parameters */
 #define HV_SMCCC_FUNC_NUMBER	1
