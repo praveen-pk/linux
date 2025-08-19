@@ -248,5 +248,5 @@ bool hv_lp_exists(u32 lp_index)
 		BUG();
 	}
 
-	return hv_result_to_errno(status);
+	return hv_result_success(status);
 }
