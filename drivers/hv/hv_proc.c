@@ -75,6 +75,7 @@ int hv_call_deposit_pages(int node, u64 partition_id, u32 num_pages)
 
 	input_page = *this_cpu_ptr(hyperv_pcpu_input_arg);
 
+	memset(input_page, 0, sizeof(*input_page));
 	input_page->partition_id = partition_id;
 
 	/* Populate gpa_page_list - these will fit on the input page */
@@ -191,6 +192,7 @@ int hv_call_create_vp(int node, u64 partition_id, u32 vp_index, u32 flags)
 
 		input = *this_cpu_ptr(hyperv_pcpu_input_arg);
 
+		memset(input, 0, sizeof(*input));
 		input->partition_id = partition_id;
 		input->vp_index = vp_index;
 		input->flags = flags;
