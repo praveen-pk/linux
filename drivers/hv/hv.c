@@ -84,11 +84,6 @@ int hv_post_message(union hv_connection_id connection_id,
 						   sizeof(*aligned_msg));
 		else
 			status = HV_STATUS_INVALID_PARAMETER;
-#if defined(CONFIG_X86_64)
-	} else if (hv_nested) {
-		status = hv_do_nested_hypercall(HVCALL_POST_MESSAGE,
-				aligned_msg, NULL);
-#endif
 	} else {
 		u64 control = HVCALL_POST_MESSAGE;
 
