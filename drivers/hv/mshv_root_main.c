@@ -2341,6 +2341,23 @@ static long mshv_ioctl_process_pt_flags(void __user *user_arg, u64 *pt_flags,
 	for (i = 0; i < HV_PARTITION_PROCESSOR_FEATURES_BANKS; i++)
 		disabled_procs->as_uint64[i] = -1;
 
+	/* Check if user provided newer struct with feature fields */
+	if (args.pt_flags & BIT(MSHV_PT_BIT_CPU_AND_XSAVE_FEATURES)) {
+		if (copy_from_user(&args, user_arg, sizeof(args)))
+			return -EFAULT;
+
+		if (args.pt_num_cpu_fbanks > MSHV_NUM_CPU_FEATURES_BANKS ||
+			mshv_field_nonzero(args, pt_rsvd) ||
+			mshv_field_nonzero(args, pt_rsvd1))
+			return -EINVAL;
+
+		for (i = 0; i < args.pt_num_cpu_fbanks; i++)
+			disabled_procs->as_uint64[i] = args.pt_cpu_fbanks[i];
+#if defined(__x86_64__)
+		disabled_xsave->as_uint64 = args.pt_disabled_xsave;
+#endif
+	}
+
 #if defined(__x86_64__)
 	/* Enable default features that are known to be supported */
 	disabled_procs->cet_ibt_support = 0;
@@ -2417,6 +2434,7 @@ static long mshv_ioctl_process_pt_flags(void __user *user_arg, u64 *pt_flags,
 	disabled_procs->vmx_exception_inject_support = 0;
 	disabled_procs->rdpru_support = 0;
 	disabled_procs->mbec_support = 0;
+	disabled_procs->nested_virt_support = 0;
 	disabled_procs->psfd_support = 0;
 
 	/* Enable default XSave features that are known to be supported*/
@@ -2428,22 +2446,6 @@ static long mshv_ioctl_process_pt_flags(void __user *user_arg, u64 *pt_flags,
 	disabled_xsave->xsave_supervisor_support = 0;
 	disabled_xsave->xsave_comp_support = 0;
 #endif
-	/* Check if user provided newer struct with feature fields */
-	if (args.pt_flags & BIT(MSHV_PT_BIT_CPU_AND_XSAVE_FEATURES)) {
-		if (copy_from_user(&args, user_arg, sizeof(args)))
-			return -EFAULT;
-
-		if (args.pt_num_cpu_fbanks > MSHV_NUM_CPU_FEATURES_BANKS ||
-			mshv_field_nonzero(args, pt_rsvd) ||
-			mshv_field_nonzero(args, pt_rsvd1))
-			return -EINVAL;
-
-		for (i = 0; i < args.pt_num_cpu_fbanks; i++)
-			disabled_procs->as_uint64[i] = args.pt_cpu_fbanks[i];
-#if defined(__x86_64__)
-		disabled_xsave->as_uint64 = args.pt_disabled_xsave;
-#endif
-	}
 
 	/* Only support EXO partitions */
 	*pt_flags = HV_PARTITION_CREATION_FLAG_EXO_PARTITION |
@@ -2457,6 +2459,9 @@ static long mshv_ioctl_process_pt_flags(void __user *user_arg, u64 *pt_flags,
 		*pt_flags |= HV_PARTITION_CREATION_FLAG_GPA_SUPER_PAGES_ENABLED;
 	if (args.pt_flags & BIT(MSHV_PT_BIT_NESTED_VIRTUALIZATION))
 		*pt_flags |= HV_PARTITION_CREATION_FLAG_NESTED_VIRTUALIZATION_CAPABLE;
+
+	/* Hardwcode nested virtualization for now */
+	*pt_flags |= HV_PARTITION_CREATION_FLAG_NESTED_VIRTUALIZATION_CAPABLE;
 
 	switch (args.pt_isolation) {
 	case MSHV_PT_ISOLATION_NONE:
