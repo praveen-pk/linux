@@ -2417,6 +2417,7 @@ static long mshv_ioctl_process_pt_flags(void __user *user_arg, u64 *pt_flags,
 	disabled_procs->vmx_exception_inject_support = 0;
 	disabled_procs->rdpru_support = 0;
 	disabled_procs->mbec_support = 0;
+	disabled_procs->nested_virt_support = 0;
 	disabled_procs->psfd_support = 0;
 
 	/* Enable default XSave features that are known to be supported*/
@@ -2457,6 +2458,9 @@ static long mshv_ioctl_process_pt_flags(void __user *user_arg, u64 *pt_flags,
 		*pt_flags |= HV_PARTITION_CREATION_FLAG_GPA_SUPER_PAGES_ENABLED;
 	if (args.pt_flags & BIT(MSHV_PT_BIT_NESTED_VIRTUALIZATION))
 		*pt_flags |= HV_PARTITION_CREATION_FLAG_NESTED_VIRTUALIZATION_CAPABLE;
+
+	/* Hardwcode nested virtualization for now */
+	*pt_flags |= HV_PARTITION_CREATION_FLAG_NESTED_VIRTUALIZATION_CAPABLE;
 
 	switch (args.pt_isolation) {
 	case MSHV_PT_ISOLATION_NONE:
