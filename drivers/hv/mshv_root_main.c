@@ -2341,6 +2341,9 @@ static long mshv_ioctl_process_pt_flags(void __user *user_arg, u64 *pt_flags,
 	for (i = 0; i < HV_PARTITION_PROCESSOR_FEATURES_BANKS; i++)
 		disabled_procs->as_uint64[i] = -1;
 
+
+	disabled_xsave = &cr_props->disabled_processor_xsave_features;
+
 	/* Check if user provided newer struct with feature fields */
 	if (args.pt_flags & BIT(MSHV_PT_BIT_CPU_AND_XSAVE_FEATURES)) {
 		if (copy_from_user(&args, user_arg, sizeof(args)))
@@ -2438,7 +2441,6 @@ static long mshv_ioctl_process_pt_flags(void __user *user_arg, u64 *pt_flags,
 	disabled_procs->psfd_support = 0;
 
 	/* Enable default XSave features that are known to be supported*/
-	disabled_xsave = &cr_props->disabled_processor_xsave_features;
 	disabled_xsave->as_uint64 = -1;
 	disabled_xsave->xsave_support = 0;
 	disabled_xsave->xsaveopt_support = 0;
