@@ -2369,7 +2369,6 @@ CONFIG_ARM_SMCCC_SOC_ID=y
 #
 # Tegra firmware driver
 #
-# CONFIG_TEGRA_IVC is not set
 # end of Tegra firmware driver
 
 #
