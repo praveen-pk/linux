@@ -10933,6 +10933,11 @@ struct mlx5_ifc_mcda_reg_bits {
 };
 
 enum {
+	MLX5_MFRL_REG_PCI_RESET_METHOD_LINK_TOGGLE = 0,
+	MLX5_MFRL_REG_PCI_RESET_METHOD_HOT_RESET = 1,
+};
+
+enum {
 	MLX5_MFRL_REG_RESET_STATE_IDLE = 0,
 	MLX5_MFRL_REG_RESET_STATE_IN_NEGOTIATION = 1,
 	MLX5_MFRL_REG_RESET_STATE_RESET_IN_PROGRESS = 2,
@@ -10959,7 +10964,8 @@ struct mlx5_ifc_mfrl_reg_bits {
 	u8         pci_sync_for_fw_update_start[0x1];
 	u8         pci_sync_for_fw_update_resp[0x2];
 	u8         rst_type_sel[0x3];
-	u8         reserved_at_28[0x4];
+	u8         pci_reset_req_method[0x3];
+	u8         reserved_at_2b[0x1];
 	u8         reset_state[0x4];
 	u8         reset_type[0x8];
 	u8         reset_level[0x8];
