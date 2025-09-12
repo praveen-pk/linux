@@ -2051,7 +2051,7 @@ static int mshv_handle_pinned_region(struct mshv_mem_region *region)
 	if (ret) {
 		pt_err(partition, "Failed to populate memory region: %d\n",
 		       ret);
-		goto err_out;
+		return ret;
 	}
 
 	/*
@@ -2086,14 +2086,13 @@ static int mshv_handle_pinned_region(struct mshv_mem_region *region)
 		 * Don't unpin if marking shared failed because pages are no
 		 * longer mapped in the host, ie root, anymore.
 		 */
-		goto err_out;
 	}
 
-	return 0;
+	return ret;
 
 evict_region:
 	mshv_region_evict(region);
-err_out:
+
 	return ret;
 }
 
