@@ -2293,6 +2293,18 @@
 	ipcmni_extend	[KNL] Extend the maximum number of unique System V
 			IPC identifiers from 32,768 to 16,777,216.
 
+	ipe.enforce=	[IPE]
+			Format: <bool>
+			Determine whether IPE starts in permissive (0) or
+			enforce (1) mode. The default is enforce.
+
+	ipe.success_audit=
+			[IPE]
+			Format: <bool>
+			Start IPE with success auditing enabled, emitting
+			an audit event when a binary is allowed. The default
+			is 0.
+
 	irqaffinity=	[SMP] Set the default irq affinity mask
 			The argument is a cpu list, as described above.
 
@@ -3368,6 +3380,7 @@
 					       srbds=off [X86,INTEL]
 					       ssbd=force-off [ARM64]
 					       tsx_async_abort=off [X86]
+					       vmscape=off [X86]
 
 				Exceptions:
 					       This does not have any effect on
@@ -4496,6 +4509,38 @@
 				bridges without forcing it upstream. Note:
 				this removes isolation between devices and
 				may put more devices in an IOMMU group.
+		config_acs=
+				Format:
+				<ACS flags>@<pci_dev>[; ...]
+				Specify one or more PCI devices (in the format
+				specified above) optionally prepended with flags
+				and separated by semicolons. The respective
+				capabilities will be enabled, disabled or
+				unchanged based on what is specified in
+				flags.
+
+				ACS Flags is defined as follows:
+				  bit-0 : ACS Source Validation
+				  bit-1 : ACS Translation Blocking
+				  bit-2 : ACS P2P Request Redirect
+				  bit-3 : ACS P2P Completion Redirect
+				  bit-4 : ACS Upstream Forwarding
+				  bit-5 : ACS P2P Egress Control
+				  bit-6 : ACS Direct Translated P2P
+				Each bit can be marked as:
+				  '0' – force disabled
+				  '1' – force enabled
+				  'x' – unchanged
+				For example,
+				  pci=config_acs=10x
+				would configure all devices that support
+				ACS to enable P2P Request Redirect, disable
+				Translation Blocking, and leave Source
+				Validation unchanged from whatever power-up
+				or firmware set it to.
+
+				Note: this may remove isolation between devices
+				and may put more devices in an IOMMU group.
 		force_floating	[S390] Force usage of floating interrupts.
 		nomio		[S390] Do not use MIO instructions.
 		norid		[S390] ignore the RID field and force use of
@@ -6645,6 +6690,19 @@
 			If not specified, "default" is used. In this case,
 			the RNG's choice is left to each individual trust source.
 
+	tsa=		[X86] Control mitigation for Transient Scheduler
+			Attacks on AMD CPUs. Search the following in your
+			favourite search engine for more details:
+
+			"Technical guidance for mitigating transient scheduler
+			attacks".
+
+			off		- disable the mitigation
+			on		- enable the mitigation (default)
+			user		- mitigate only user/kernel transitions
+			vm		- mitigate only guest/host transitions
+
+
 	tsc=		Disable clocksource stability checks for TSC.
 			Format: <string>
 			[x86] reliable: mark tsc clocksource as reliable, this
@@ -7060,6 +7118,16 @@
 
 	vmpoff=		[KNL,S390] Perform z/VM CP command after power off.
 			Format: <command>
+
+	vmscape=	[X86] Controls mitigation for VMscape attacks.
+			VMscape attacks can leak information from a userspace
+			hypervisor to a guest via speculative side-channels.
+
+			off		- disable the mitigation
+			ibpb		- use Indirect Branch Prediction Barrier
+					  (IBPB) mitigation (default)
+			force		- force vulnerability detection even on
+					  unaffected processors
 
 	vsyscall=	[X86-64]
 			Controls the behavior of vsyscalls (i.e. calls to
